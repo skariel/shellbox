@@ -1,9 +1,8 @@
-package main
+package infra
 
 import (
 	"context"
 	"fmt"
-	"log"
 	"os/exec"
 	"strings"
 	"time"
@@ -44,6 +43,8 @@ type AzureClients struct {
 	NetworkClient  *armnetwork.VirtualNetworksClient
 	NSGClient      *armnetwork.SecurityGroupsClient
 	ComputeClient  *armcompute.VirtualMachinesClient
+	PublicIPClient *armnetwork.PublicIPAddressesClient
+	NICClient      *armnetwork.InterfacesClient
 	CosmosClient   *armcosmos.DatabaseAccountsClient
 	KeyVaultClient *armkeyvault.VaultsClient
 	SecretsClient  *armkeyvault.SecretsClient
@@ -59,7 +60,7 @@ func getSubscriptionID() (string, error) {
 }
 
 // newAzureClients creates and returns all necessary Azure clients
-func newAzureClients() (*AzureClients, error) {
+func NewAzureClients() (*AzureClients, error) {
 	// Get credentials from Azure CLI
 	cred, err := azidentity.NewAzureCLICredential(nil)
 	if err != nil {
@@ -90,6 +91,18 @@ func newAzureClients() (*AzureClients, error) {
 		return nil, fmt.Errorf("failed to create NSG client: %w", err)
 	}
 
+	// Initialize Public IP client
+	publicIPClient, err := armnetwork.NewPublicIPAddressesClient(subscriptionID, cred, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Public IP client: %w", err)
+	}
+
+	// Initialize NIC client
+	nicClient, err := armnetwork.NewInterfacesClient(subscriptionID, cred, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create interfaces client: %w", err)
+	}
+
 	// Initialize compute client
 	computeClient, err := armcompute.NewVirtualMachinesClient(subscriptionID, cred, nil)
 	if err != nil {
@@ -118,13 +131,15 @@ func newAzureClients() (*AzureClients, error) {
 		NetworkClient:  networkClient,
 		NSGClient:      nsgClient,
 		ComputeClient:  computeClient,
+		PublicIPClient: publicIPClient,
+		NICClient:      nicClient,
 		CosmosClient:   cosmosClient,
 		KeyVaultClient: keyVaultClient,
 		SecretsClient:  secretsClient,
 	}, nil
 }
 
-func createNetworkInfrastructure(ctx context.Context, clients *AzureClients) error {
+func CreateNetworkInfrastructure(ctx context.Context, clients *AzureClients) error {
 	pollUntilDoneOption := runtime.PollUntilDoneOptions{
 		Frequency: 2 * time.Second,
 	}
@@ -266,19 +281,4 @@ func createNetworkInfrastructure(ctx context.Context, clients *AzureClients) err
 	}
 
 	return nil
-}
-
-func main() {
-	ctx := context.Background()
-
-	clients, err := newAzureClients()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	if err := createNetworkInfrastructure(ctx, clients); err != nil {
-		log.Fatal(err)
-	}
-
-	log.Printf("Network infrastructure created successfully")
 }
