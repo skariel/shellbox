@@ -1,0 +1,37 @@
+# Use Ubuntu 22.04 LTS (Jammy Jellyfish)
+FROM ubuntu:22.04
+
+# Avoid prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Update and install required packages
+RUN apt-get update && apt-get install -y \
+    openssh-server \
+    sudo \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user and add to sudo group
+RUN useradd -m -s /bin/bash ubuntu \
+    && echo "ubuntu ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/ubuntu \
+    && chmod 0440 /etc/sudoers.d/ubuntu
+
+# Configure SSH
+RUN mkdir -p /var/run/sshd \
+    && mkdir -p /home/ubuntu/.ssh \
+    && chmod 700 /home/ubuntu/.ssh \
+    && touch /home/ubuntu/.ssh/authorized_keys \
+    && chmod 600 /home/ubuntu/.ssh/authorized_keys \
+    && chown -R ubuntu:ubuntu /home/ubuntu/.ssh
+
+# Secure SSH configuration
+RUN sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin no/' /etc/ssh/sshd_config \
+    && sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config \
+    && sed -i 's/#PubkeyAuthentication yes/PubkeyAuthentication yes/' /etc/ssh/sshd_config \
+    && echo "AuthorizedKeysFile %h/.ssh/authorized_keys" >> /etc/ssh/sshd_config
+
+# Expose SSH port
+EXPOSE 22
+
+# Start SSH server
+CMD ["/usr/sbin/sshd", "-D"]
