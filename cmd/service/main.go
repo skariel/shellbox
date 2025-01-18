@@ -2,11 +2,22 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 
 	"shellbox/internal/infra"
 )
 
+func readSSHKey(path string) (string, error) {
+	expandedPath := filepath.Clean(os.ExpandEnv(path))
+	key, err := os.ReadFile(expandedPath)
+	if err != nil {
+		return "", fmt.Errorf("reading SSH key: %w", err)
+	}
+	return string(key), nil
+}
 func main() {
 	ctx := context.Background()
 
@@ -20,5 +31,16 @@ func main() {
 		log.Fatal(err)
 	}
 
-	log.Printf("done upserting")
+	log.Println("done upserting")
+	pubKey, err := readSSHKey("$HOME/.ssh/id_ed25519.pub")
+	if err != nil {
+		log.Fatalf("could not load ssh pub key: %s", err)
+	}
+	log.Println("creating bastion")
+	infra.DeployBastion(ctx, clients, &infra.BastionConfig{
+		AdminUsername: "shellbox",
+		SSHPublicKey:  pubKey,
+		VMSize:        "Standard_B2ms",
+	})
+
 }
