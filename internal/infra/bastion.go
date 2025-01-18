@@ -39,24 +39,6 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *BastionCo
 		Frequency: 2 * time.Second,
 	}
 
-	// Get VNet to reference subnet
-	vnet, err := clients.NetworkClient.Get(ctx, resourceGroupName, vnetName, nil)
-	if err != nil {
-		return fmt.Errorf("failed to get virtual network: %w", err)
-	}
-
-	// Find bastion subnet
-	var bastionSubnetID string
-	for _, subnet := range vnet.Properties.Subnets {
-		if *subnet.Name == bastionSubnetName {
-			bastionSubnetID = *subnet.ID
-			break
-		}
-	}
-	if bastionSubnetID == "" {
-		return fmt.Errorf("bastion subnet not found in VNet")
-	}
-
 	// Create public IP for bastion
 	ipPoller, err := clients.PublicIPClient.BeginCreateOrUpdate(ctx, resourceGroupName, bastionIPName, armnetwork.PublicIPAddress{
 		Location: to.Ptr(location),
@@ -76,6 +58,11 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *BastionCo
 	}
 
 	// Create NIC for bastion
+
+	bastionSubnetID, err := GetBastionSubnetID()
+	if err != nil {
+		return err
+	}
 	nicPoller, err := clients.NICClient.BeginCreateOrUpdate(ctx, resourceGroupName, bastionNICName, armnetwork.Interface{
 		Location: to.Ptr(location),
 		Properties: &armnetwork.InterfacePropertiesFormat{

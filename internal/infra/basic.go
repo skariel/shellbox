@@ -2,6 +2,7 @@ package infra
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -137,6 +138,16 @@ func NewAzureClients() (*AzureClients, error) {
 		KeyVaultClient: keyVaultClient,
 		SecretsClient:  secretsClient,
 	}, nil
+}
+
+var _bastionSubnetID string = ""
+
+func GetBastionSubnetID() (string, error) {
+	if _bastionSubnetID != "" {
+		return _bastionSubnetID, nil
+	} else {
+		return "", errors.New("could not fined BastionSubnetID")
+	}
 }
 
 func CreateNetworkInfrastructure(ctx context.Context, clients *AzureClients) error {
@@ -275,9 +286,20 @@ func CreateNetworkInfrastructure(ctx context.Context, clients *AzureClients) err
 	if err != nil {
 		return fmt.Errorf("failed to start virtual network creation: %w", err)
 	}
-	_, err = vnetPoller.PollUntilDone(ctx, &pollUntilDoneOption)
+	vnetResult, err := vnetPoller.PollUntilDone(ctx, &pollUntilDoneOption)
 	if err != nil {
 		return fmt.Errorf("failed to create virtual network: %w", err)
+	}
+
+	// Find bastion subnet
+	for _, subnet := range vnetResult.VirtualNetwork.Properties.Subnets {
+		if *subnet.Name == bastionSubnetName {
+			_bastionSubnetID = *subnet.ID
+			break
+		}
+	}
+	if _bastionSubnetID == "" {
+		return fmt.Errorf("bastion subnet not found in VNet")
 	}
 
 	return nil
