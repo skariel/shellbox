@@ -143,8 +143,8 @@ chmod 640 /var/log/shellbox/bastion.log
 		armauthorization.RoleAssignmentCreateParameters{
 			Properties: &armauthorization.RoleAssignmentProperties{
 				RoleDefinitionID: to.Ptr(roleDefID),
-				principalType:    to.Ptr(armauthorization.PrincipalTypeServicePrincipal),
-				principalId:      nil, // This will be set by Azure when the VM is created
+				PrincipalType:    to.Ptr(armauthorization.PrincipalTypeServicePrincipal),
+				PrincipalID:      nil, // This will be set by Azure when the VM is created
 			},
 		}, nil)
 	if err != nil {
