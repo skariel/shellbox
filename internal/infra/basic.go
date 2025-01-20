@@ -49,6 +49,7 @@ type AzureClients struct {
 	CosmosClient   *armcosmos.DatabaseAccountsClient
 	KeyVaultClient *armkeyvault.VaultsClient
 	SecretsClient  *armkeyvault.SecretsClient
+	RoleClient     *armauthorization.RoleAssignmentsClient
 }
 
 // getSubscriptionID gets the subscription ID from az cli
@@ -127,6 +128,11 @@ func NewAzureClients() (*AzureClients, error) {
 		return nil, fmt.Errorf("failed to create secrets client: %w", err)
 	}
 
+	roleClient, err := armauthorization.NewRoleAssignmentsClient(subscriptionID, cred, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create role assignments client: %w", err)
+	}
+
 	return &AzureClients{
 		ResourceClient: resourceClient,
 		NetworkClient:  networkClient,
@@ -137,6 +143,7 @@ func NewAzureClients() (*AzureClients, error) {
 		CosmosClient:   cosmosClient,
 		KeyVaultClient: keyVaultClient,
 		SecretsClient:  secretsClient,
+		RoleClient:     roleClient,
 	}, nil
 }
 

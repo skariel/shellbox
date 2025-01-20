@@ -19,6 +19,11 @@ const (
 	readerRoleID      = "/providers/Microsoft.Authorization/roleDefinitions/acdd72a7-3385-48ef-bd42-f606fba81ae7"
 )
 
+// NewGUID generates a new GUID string
+func NewGUID() string {
+	return fmt.Sprintf("%d", time.Now().UnixNano())
+}
+
 // BastionConfig holds configuration for bastion deployment
 type BastionConfig struct {
 	AdminUsername string
@@ -120,6 +125,22 @@ touch /var/log/shellbox/bastion.log
 chmod 640 /var/log/shellbox/bastion.log
 `
 
+	// Create role assignment for the VM's managed identity
+	roleDefID := fmt.Sprintf("/subscriptions/%s%s", subscriptionID, contributorRoleID)
+	guid := NewGUID()
+	_, err = clients.RoleClient.Create(ctx,
+		fmt.Sprintf("/subscriptions/%s/resourceGroups/%s", subscriptionID, resourceGroupName),
+		guid,
+		armauthorization.RoleAssignmentCreateParameters{
+			Properties: &armauthorization.RoleAssignmentProperties{
+				RoleDefinitionID: to.Ptr(roleDefID),
+				PrincipalType:    to.Ptr(armauthorization.PrincipalTypeServicePrincipal),
+			},
+		}, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create role assignment: %w", err)
+	}
+
 	// Create bastion VM
 	vmPoller, err := clients.ComputeClient.BeginCreateOrUpdate(ctx, resourceGroupName, bastionVMName, armcompute.VirtualMachine{
 		Location: to.Ptr(location),
@@ -179,31 +200,6 @@ chmod 640 /var/log/shellbox/bastion.log
 	_, err = vmPoller.PollUntilDone(ctx, &pollUntilDoneOption)
 	if err != nil {
 		return fmt.Errorf("failed to create bastion VM: %w", err)
-	}
-
-	// Get the VM's managed identity
-	vm, err := clients.ComputeClient.Get(ctx, resourceGroupName, bastionVMName, nil)
-	if err != nil {
-		return fmt.Errorf("failed to get bastion VM: %w", err)
-	}
-
-	if vm.Identity == nil || vm.Identity.PrincipalID == nil {
-		return fmt.Errorf("bastion VM has no managed identity")
-	}
-
-	// Create role assignments for the VM's managed identity
-	_, err = clients.RoleClient.Create(ctx,
-		fmt.Sprintf("/subscriptions/%s/resourceGroups/%s", subscriptionID, resourceGroupName),
-		"bastion-contributor",
-		armauthorization.RoleAssignmentCreateParameters{
-			Properties: &armauthorization.RoleAssignmentProperties{
-				RoleDefinitionID: to.Ptr(contributorRoleID),
-				PrincipalID:      vm.Identity.PrincipalID,
-				PrincipalType:    to.Ptr(armauthorization.PrincipalTypeServicePrincipal),
-			},
-		}, nil)
-	if err != nil {
-		return fmt.Errorf("failed to assign Contributor role: %w", err)
 	}
 
 	return nil
