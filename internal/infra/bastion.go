@@ -20,7 +20,6 @@ const (
 )
 
 // NewGUID generates a new GUID string
-// NewGUID generates a new GUID string
 func NewGUID() string {
 	return fmt.Sprintf("%d", time.Now().UnixNano())
 }
@@ -33,7 +32,6 @@ type BastionConfig struct {
 }
 
 // DefaultBastionConfig returns a default configuration for bastion deployment
-// DefaultBastionConfig returns a default configuration for bastion deployment
 func DefaultBastionConfig() *BastionConfig {
 	return &BastionConfig{
 		AdminUsername: "shellboxadmin",
@@ -41,7 +39,6 @@ func DefaultBastionConfig() *BastionConfig {
 	}
 }
 
-// DeployBastion creates a bastion host in the bastion subnet
 // DeployBastion creates a bastion host in the bastion subnet
 func DeployBastion(ctx context.Context, clients *AzureClients, config *BastionConfig) error {
 	const (
@@ -142,8 +139,8 @@ chmod 640 /var/log/shellbox/bastion.log
 		guid,
 		armauthorization.RoleAssignmentCreateParameters{
 			Properties: &armauthorization.RoleAssignmentProperties{
-				RoleDefinitionId: to.Ptr(roleDefID),
-				PrincipalId:      nil, // This will be set by Azure when the VM is created
+				RoleDefinitionID: to.Ptr(roleDefID),
+				PrincipalID:      nil, // This will be set by Azure when the VM is created
 			},
 		}, nil)
 	if err != nil {
