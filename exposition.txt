@@ -1,0 +1,29 @@
+Project Context: shellbox.dev
+
+A cloud development environment service using SSH as its primary interface. Users connect and manage environments through standard SSH commands, with web browser only used for payment processing via QR codes.
+
+Core Architecture:
+- Environments are Docker containers with SSH access and CRIU checkpoint/restore
+- Full state preservation (filesystem, memory, processes) using volume-based checkpointing
+- VMs from ready-to-connect pool (20% of active size) host containers
+- Connection flow: User -> Bastion -> VM -> Container (port 22)
+
+Key Features:
+- Native SSH workflow (connect, SCP, port forwarding)
+- Pay-per-use: billing only during active SSH sessions
+- Instant suspend on disconnect with complete state preservation
+- Volume-based state management between sessions
+
+Technical Stack:
+- Backend: Go, Azure VMs, SQLite with sqlc. IaC using pulumi automation api
+- Supporting services: Paddle (payments), Resend (email), Plausible (analytics)
+- Implementation focus: bottom-up development, code-first approach over infrastructure tools
+
+Development Guidelines:
+- Maintain simplicity in implementation
+- Build foundational functions before high-level components
+- Ensure consistency with existing codebase
+
+I call the user VMs, the instances hosting their containers (user dev envs), -- a "box". Every box will host a single dev env, and boxes will be agentless, i.e. no custom code on them. Instead they will be managed through custome script execution from the bastion (using Azure) 
+
+general note: do not appologize. Just admit if an error was made and move on fast
