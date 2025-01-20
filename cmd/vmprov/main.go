@@ -1,3 +1,6 @@
+// This file shows an example of provisioning a VM on Azure
+// it is not part of the app
+
 package main
 
 import (
