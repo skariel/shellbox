@@ -41,50 +41,64 @@ func readSSHKey(path string) (string, error) {
 	return string(key), nil
 }
 
-func createVM(ctx context.Context, name, sshKey string) error {
-	pollUntilDoneOption := runtime.PollUntilDoneOptions{
-		Frequency: 2 * time.Second}
-	// Get credentials from Azure CLI
+func createAzureClients(subscriptionID string) (*AzureClients, error) {
 	cred, err := azidentity.NewAzureCLICredential(nil)
 	if err != nil {
-		return fmt.Errorf("failed to create credential: %w", err)
+		return nil, fmt.Errorf("failed to create credential: %w", err)
 	}
 
-	// Get subscription ID
+	resourceClient, err := armresources.NewResourceGroupsClient(subscriptionID, cred, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create resource group client: %w", err)
+	}
+
+	vnetClient, err := armnetwork.NewVirtualNetworksClient(subscriptionID, cred, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create vnet client: %w", err)
+	}
+
+	nsgClient, err := armnetwork.NewSecurityGroupsClient(subscriptionID, cred, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create NSG client: %w", err)
+	}
+
+	ipClient, err := armnetwork.NewPublicIPAddressesClient(subscriptionID, cred, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create public IP client: %w", err)
+	}
+
+	nicClient, err := armnetwork.NewInterfacesClient(subscriptionID, cred, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create NIC client: %w", err)
+	}
+
+	vmClient, err := armcompute.NewVirtualMachinesClient(subscriptionID, cred, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create VM client: %w", err)
+	}
+
+	return &AzureClients{
+		ResourceClient: resourceClient,
+		VNetClient:    vnetClient,
+		NSGClient:     nsgClient,
+		IPClient:      ipClient,
+		NICClient:     nicClient,
+		VMClient:      vmClient,
+	}, nil
+}
+
+func createVM(ctx context.Context, name, sshKey string) error {
+	pollUntilDoneOption := runtime.PollUntilDoneOptions{
+		Frequency: 2 * time.Second,
+	}
 	subscriptionID, err := getSubscriptionID()
 	if err != nil {
 		return err
 	}
 
-	// Initialize clients
-	resourceClient, err := armresources.NewResourceGroupsClient(subscriptionID, cred, nil)
+	clients, err := createAzureClients(subscriptionID)
 	if err != nil {
-		return fmt.Errorf("failed to create resource group client: %w", err)
-	}
-
-	vnetClient, err := armnetwork.NewVirtualNetworksClient(subscriptionID, cred, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create vnet client: %w", err)
-	}
-
-	nsgClient, err := armnetwork.NewSecurityGroupsClient(subscriptionID, cred, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create NSG client: %w", err)
-	}
-
-	ipClient, err := armnetwork.NewPublicIPAddressesClient(subscriptionID, cred, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create public IP client: %w", err)
-	}
-
-	nicClient, err := armnetwork.NewInterfacesClient(subscriptionID, cred, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create NIC client: %w", err)
-	}
-
-	vmClient, err := armcompute.NewVirtualMachinesClient(subscriptionID, cred, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create VM client: %w", err)
+		return err
 	}
 
 	location := "westeurope"

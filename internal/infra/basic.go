@@ -148,7 +148,7 @@ func NewAzureClients() (*AzureClients, error) {
 	}, nil
 }
 
-var _bastionSubnetID string = ""
+var _bastionSubnetID string
 
 // GetBastionSubnetID returns the ID of the bastion subnet
 func GetBastionSubnetID() (string, error) {
