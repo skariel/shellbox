@@ -150,14 +150,15 @@ func NewAzureClients() (*AzureClients, error) {
 
 var _bastionSubnetID string = ""
 
+// GetBastionSubnetID returns the ID of the bastion subnet
 func GetBastionSubnetID() (string, error) {
 	if _bastionSubnetID != "" {
 		return _bastionSubnetID, nil
-	} else {
-		return "", errors.New("could not fined BastionSubnetID")
 	}
+	return "", errors.New("could not find BastionSubnetID")
 }
 
+// CreateNetworkInfrastructure sets up the basic network infrastructure in Azure
 func CreateNetworkInfrastructure(ctx context.Context, clients *AzureClients) error {
 	pollUntilDoneOption := runtime.PollUntilDoneOptions{
 		Frequency: 2 * time.Second,
