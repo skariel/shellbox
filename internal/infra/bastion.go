@@ -126,28 +126,6 @@ touch /var/log/shellbox/bastion.log
 chmod 640 /var/log/shellbox/bastion.log
 `
 
-	// Get subscription ID
-	subscriptionID, err := getSubscriptionID()
-	if err != nil {
-		return fmt.Errorf("failed to get subscription ID: %w", err)
-	}
-
-	// Create role assignment for the VM's managed identity
-	roleDefID := fmt.Sprintf("/subscriptions/%s%s", subscriptionID, contributorRoleID)
-	guid := NewGUID()
-	_, err = clients.RoleClient.Create(ctx,
-		fmt.Sprintf("/subscriptions/%s/resourceGroups/%s", subscriptionID, resourceGroupName),
-		guid,
-		armauthorization.RoleAssignmentCreateParameters{
-			Properties: &armauthorization.RoleAssignmentProperties{
-				RoleDefinitionID: to.Ptr(roleDefID),
-				PrincipalID:      nil, // This will be set by Azure when the VM is created
-			},
-		}, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create role assignment: %w", err)
-	}
-
 	// Create bastion VM
 	vmPoller, err := clients.ComputeClient.BeginCreateOrUpdate(ctx, resourceGroupName, bastionVMName, armcompute.VirtualMachine{
 		Location: to.Ptr(location),
@@ -207,6 +185,38 @@ chmod 640 /var/log/shellbox/bastion.log
 	_, err = vmPoller.PollUntilDone(ctx, &pollUntilDoneOption)
 	if err != nil {
 		return fmt.Errorf("failed to create bastion VM: %w", err)
+	}
+
+	// Get the VM to retrieve its managed identity principal ID
+	vm, err := clients.ComputeClient.Get(ctx, resourceGroupName, bastionVMName, nil)
+	if err != nil {
+		return fmt.Errorf("failed to get bastion VM: %w", err)
+	}
+
+	if vm.Identity == nil || vm.Identity.PrincipalID == nil {
+		return fmt.Errorf("VM managed identity not found")
+	}
+
+	// Get subscription ID
+	subscriptionID, err := getSubscriptionID()
+	if err != nil {
+		return fmt.Errorf("failed to get subscription ID: %w", err)
+	}
+
+	// Create role assignment for the VM's managed identity
+	roleDefID := fmt.Sprintf("/subscriptions/%s%s", subscriptionID, contributorRoleID)
+	guid := NewGUID()
+	_, err = clients.RoleClient.Create(ctx,
+		fmt.Sprintf("/subscriptions/%s/resourceGroups/%s", subscriptionID, resourceGroupName),
+		guid,
+		armauthorization.RoleAssignmentCreateParameters{
+			Properties: &armauthorization.RoleAssignmentProperties{
+				RoleDefinitionID: to.Ptr(roleDefID),
+				PrincipalID:      vm.Identity.PrincipalID,
+			},
+		}, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create role assignment: %w", err)
 	}
 
 	return nil
