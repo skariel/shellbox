@@ -19,9 +19,13 @@ const (
 	readerRoleID      = "/providers/Microsoft.Authorization/roleDefinitions/acdd72a7-3385-48ef-bd42-f606fba81ae7"
 )
 
+import (
+	"github.com/google/uuid"
+)
+
 // NewGUID generates a new GUID string
 func NewGUID() string {
-	return fmt.Sprintf("%d", time.Now().UnixNano())
+	return uuid.New().String()
 }
 
 // BastionConfig holds configuration for bastion deployment
