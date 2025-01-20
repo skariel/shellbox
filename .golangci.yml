@@ -1,7 +1,6 @@
 linters:
   enable:
     - gofmt
-    - golint
     - govet
     - errcheck
     - staticcheck
@@ -12,11 +11,12 @@ linters:
     - gocyclo
     - gosec
     - prealloc
+    - revive
 
 linters-settings:
   gocyclo:
     min-complexity: 15
-  golint:
+  revive:
     min-confidence: 0.8
   gosec:
     excludes:
@@ -25,10 +25,10 @@ linters-settings:
 run:
   deadline: 5m
   tests: true
-  skip-dirs:
-    - vendor
 
 issues:
+  exclude-dirs:
+    - vendor
   exclude-rules:
     - path: _test\.go
       linters:
