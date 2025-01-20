@@ -8,15 +8,15 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization"
 )
 
 const (
 	// Role definitions
 	contributorRoleID = "/providers/Microsoft.Authorization/roleDefinitions/b24988ac-6180-42a0-ab88-20f7382dd24c"
-	readerRoleID     = "/providers/Microsoft.Authorization/roleDefinitions/acdd72a7-3385-48ef-bd42-f606fba81ae7"
+	readerRoleID      = "/providers/Microsoft.Authorization/roleDefinitions/acdd72a7-3385-48ef-bd42-f606fba81ae7"
 )
 
 // BastionConfig holds configuration for bastion deployment
@@ -192,7 +192,7 @@ chmod 640 /var/log/shellbox/bastion.log
 	}
 
 	// Create role assignments for the VM's managed identity
-	_, err = clients.RoleClient.Create(ctx, 
+	_, err = clients.RoleClient.Create(ctx,
 		fmt.Sprintf("/subscriptions/%s/resourceGroups/%s", subscriptionID, resourceGroupName),
 		"bastion-contributor",
 		armauthorization.RoleAssignmentCreateParameters{
