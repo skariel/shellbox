@@ -1,0 +1,35 @@
+linters:
+  enable:
+    - gofmt
+    - golint
+    - govet
+    - errcheck
+    - staticcheck
+    - gosimple
+    - ineffassign
+    - unconvert
+    - misspell
+    - gocyclo
+    - gosec
+    - prealloc
+
+linters-settings:
+  gocyclo:
+    min-complexity: 15
+  golint:
+    min-confidence: 0.8
+  gosec:
+    excludes:
+      - G204  # Subprocess launching with variable
+
+run:
+  deadline: 5m
+  tests: true
+  skip-dirs:
+    - vendor
+
+issues:
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - gosec
