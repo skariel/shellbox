@@ -125,6 +125,12 @@ touch /var/log/shellbox/bastion.log
 chmod 640 /var/log/shellbox/bastion.log
 `
 
+	// Get subscription ID
+	subscriptionID, err := getSubscriptionID()
+	if err != nil {
+		return fmt.Errorf("failed to get subscription ID: %w", err)
+	}
+
 	// Create role assignment for the VM's managed identity
 	roleDefID := fmt.Sprintf("/subscriptions/%s%s", subscriptionID, contributorRoleID)
 	guid := NewGUID()
@@ -135,6 +141,7 @@ chmod 640 /var/log/shellbox/bastion.log
 			Properties: &armauthorization.RoleAssignmentProperties{
 				RoleDefinitionID: to.Ptr(roleDefID),
 				PrincipalType:    to.Ptr(armauthorization.PrincipalTypeServicePrincipal),
+				PrincipalId:      nil, // This will be set by Azure when the VM is created
 			},
 		}, nil)
 	if err != nil {
