@@ -46,7 +46,7 @@ func main() {
 	}
 
 	log.Println("creating test boxes")
-	
+
 	// Create first box
 	box1ID, err := infra.CreateBox(ctx, clients, &infra.BoxConfig{
 		AdminUsername: "shellbox",
