@@ -9,9 +9,14 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
+	"github.com/google/uuid"
 )
 
 const (
+	// Location is the Azure region where resources will be created
+	location = "westus2"
+	// ResourceGroupName is the resource group where all resources will be created
+	resourceGroupName = "shellbox-infra"
 	// VMPublisher is the publisher of the VM image
 	VMPublisher = "Canonical"
 	// VMOffer is the offer of the VM image
@@ -40,7 +45,7 @@ type BoxTags struct {
 // CreateBox creates a new box VM with proper networking setup.
 // It returns the VM's resource ID and any error encountered.
 func CreateBox(ctx context.Context, clients *AzureClients, config *BoxConfig) (string, error) {
-	boxID := NewGUID()
+	boxID := uuid.New().String()
 	vmName := fmt.Sprintf("box-%s", boxID)
 	nicName := fmt.Sprintf("box-nic-%s", boxID)
 	nsgName := fmt.Sprintf("box-nsg-%s", boxID)
@@ -184,7 +189,7 @@ func createBoxVM(ctx context.Context, clients *AzureClients, vmName string, nicI
 				ImageReference: &armcompute.ImageReference{
 					Publisher: to.Ptr(VMPublisher),
 					Offer:     to.Ptr(VMOffer),
-					Sku:       to.Ptr(VMSku),
+					SKU:       to.Ptr(VMSku),
 					Version:   to.Ptr(VMVersion),
 				},
 				OSDisk: &armcompute.OSDisk{
