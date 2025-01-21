@@ -45,8 +45,10 @@ func main() {
 		log.Fatal(err)
 	}
 
-	log.Println("creating test box")
-	boxID, err := infra.CreateBox(ctx, clients, &infra.BoxConfig{
+	log.Println("creating test boxes")
+	
+	// Create first box
+	box1ID, err := infra.CreateBox(ctx, clients, &infra.BoxConfig{
 		AdminUsername: "shellbox",
 		SSHPublicKey:  pubKey,
 		VMSize:        "Standard_B2ms",
@@ -54,5 +56,16 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("created box with ID: %s", boxID)
+	log.Printf("created box1 with ID: %s", box1ID)
+
+	// Create second box
+	box2ID, err := infra.CreateBox(ctx, clients, &infra.BoxConfig{
+		AdminUsername: "shellbox",
+		SSHPublicKey:  pubKey,
+		VMSize:        "Standard_B2ms",
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("created box2 with ID: %s", box2ID)
 }
