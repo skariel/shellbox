@@ -83,7 +83,7 @@ func createBoxNSG(ctx context.Context, clients *AzureClients, nsgName string) (*
 				{
 					Name: to.Ptr("AllowICMPFromBastion"),
 					Properties: &armnetwork.SecurityRulePropertiesFormat{
-						Protocol:                 to.Ptr(armnetwork.SecurityRuleProtocolICMP),
+						Protocol:                 to.Ptr(armnetwork.SecurityRuleProtocolIcmp),
 						SourceAddressPrefix:      to.Ptr(bastionSubnet),
 						SourcePortRange:          to.Ptr("*"),
 						DestinationAddressPrefix: to.Ptr("*"),
