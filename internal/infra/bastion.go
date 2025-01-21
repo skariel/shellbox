@@ -120,11 +120,7 @@ apt-get upgrade -y
 # Install required packages
 apt-get install -y \
     jq \
-    azure-cli \
     python3-pip
-
-# Configure Azure CLI for MSI
-az login --identity
 
 # Setup monitoring and logging
 mkdir -p /var/log/shellbox
