@@ -3,4 +3,3 @@ go.sum
 *.nogit
 .env
 .aider*
-service
