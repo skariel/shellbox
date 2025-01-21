@@ -148,7 +148,10 @@ func NewAzureClients() (*AzureClients, error) {
 	}, nil
 }
 
-var _bastionSubnetID string
+var (
+	_bastionSubnetID string
+	_boxesSubnetID   string
+)
 
 // GetBastionSubnetID returns the ID of the bastion subnet
 func GetBastionSubnetID() (string, error) {
@@ -156,6 +159,14 @@ func GetBastionSubnetID() (string, error) {
 		return _bastionSubnetID, nil
 	}
 	return "", errors.New("could not find BastionSubnetID")
+}
+
+// GetBoxesSubnetID returns the ID of the boxes subnet
+func GetBoxesSubnetID() (string, error) {
+	if _boxesSubnetID != "" {
+		return _boxesSubnetID, nil
+	}
+	return "", errors.New("could not find BoxesSubnetID")
 }
 
 // CreateNetworkInfrastructure sets up the basic network infrastructure in Azure
@@ -300,15 +311,20 @@ func CreateNetworkInfrastructure(ctx context.Context, clients *AzureClients) err
 		return fmt.Errorf("failed to create virtual network: %w", err)
 	}
 
-	// Find bastion subnet
+	// Find bastion and boxes subnets
 	for _, subnet := range vnetResult.VirtualNetwork.Properties.Subnets {
-		if *subnet.Name == bastionSubnetName {
+		switch *subnet.Name {
+		case bastionSubnetName:
 			_bastionSubnetID = *subnet.ID
-			break
+		case boxesSubnetName:
+			_boxesSubnetID = *subnet.ID
 		}
 	}
 	if _bastionSubnetID == "" {
 		return fmt.Errorf("bastion subnet not found in VNet")
+	}
+	if _boxesSubnetID == "" {
+		return fmt.Errorf("boxes subnet not found in VNet")
 	}
 
 	return nil

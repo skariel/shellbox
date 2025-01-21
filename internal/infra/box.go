@@ -128,7 +128,10 @@ func createBoxNSG(ctx context.Context, clients *AzureClients, nsgName string) (*
 }
 
 func createBoxNIC(ctx context.Context, clients *AzureClients, nicName string, nsgID *string) (*armnetwork.Interface, error) {
-	boxesSubnetID := "" // TODO: implement GetBoxesSubnetID() similar to GetBastionSubnetID()
+	boxesSubnetID, err := GetBoxesSubnetID()
+	if err != nil {
+		return nil, fmt.Errorf("getting boxes subnet ID: %w", err)
+	}
 
 	nicParams := armnetwork.Interface{
 		Location: to.Ptr(location),
