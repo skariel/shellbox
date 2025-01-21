@@ -253,7 +253,9 @@ func DeallocateBox(ctx context.Context, clients *AzureClients, vmID string) erro
 func FindBoxesByStatus(ctx context.Context, clients *AzureClients, status string) ([]string, error) {
 	filter := fmt.Sprintf("tagName eq 'status' and tagValue eq '%s'", status)
 	
-	pager := clients.ComputeClient.NewListPager(resourceGroupName, nil)
+	pager := clients.ComputeClient.NewListPager(resourceGroupName, &armcompute.VirtualMachinesClientListOptions{
+		Filter: &filter,
+	})
 	var boxes []string
 
 	for pager.More() {
