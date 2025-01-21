@@ -4,10 +4,19 @@ import (
 	"context"
 	"fmt"
 	"time"
-	
+
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
+)
+
+const (
+	// VM image configuration
+	vmPublisher = "Canonical"
+	vmOffer     = "0001-com-ubuntu-server-jammy"
+	vmSku       = "22_04-lts-gen2"
+	vmVersion   = "latest"
 )
 
 // BoxConfig holds the configuration for a box VM
@@ -95,14 +104,18 @@ func createBoxNSG(ctx context.Context, clients *AzureClients, nsgName string) (*
 		},
 	}
 
-	poller, err := clients.NSGClient.BeginCreateOrUpdate(ctx, resourceGroupName, nsgName, nsgParams, nil)
-	if err != nil {
-		return nil, err
+	pollOptions := &runtime.PollUntilDoneOptions{
+		Frequency: 2 * time.Second,
 	}
 
-	nsg, err := poller.PollUntilDone(ctx, nil)
+	poller, err := clients.NSGClient.BeginCreateOrUpdate(ctx, resourceGroupName, nsgName, nsgParams, nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("starting NSG creation: %w", err)
+	}
+
+	nsg, err := poller.PollUntilDone(ctx, pollOptions)
+	if err != nil {
+		return nil, fmt.Errorf("creating NSG: %w", err)
 	}
 
 	return &nsg.SecurityGroup, nil
@@ -131,14 +144,18 @@ func createBoxNIC(ctx context.Context, clients *AzureClients, nicName string, ns
 		},
 	}
 
-	poller, err := clients.NICClient.BeginCreateOrUpdate(ctx, resourceGroupName, nicName, nicParams, nil)
-	if err != nil {
-		return nil, err
+	pollOptions := &runtime.PollUntilDoneOptions{
+		Frequency: 2 * time.Second,
 	}
 
-	result, err := poller.PollUntilDone(ctx, nil)
+	poller, err := clients.NICClient.BeginCreateOrUpdate(ctx, resourceGroupName, nicName, nicParams, nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("starting NIC creation: %w", err)
+	}
+
+	result, err := poller.PollUntilDone(ctx, pollOptions)
+	if err != nil {
+		return nil, fmt.Errorf("creating NIC: %w", err)
 	}
 
 	return &result.Interface, nil
@@ -160,10 +177,10 @@ func createBoxVM(ctx context.Context, clients *AzureClients, vmName string, nicI
 			},
 			StorageProfile: &armcompute.StorageProfile{
 				ImageReference: &armcompute.ImageReference{
-					Publisher: to.Ptr("Canonical"),
-					Offer:     to.Ptr("UbuntuServer"),
-					Sku:       to.Ptr("18.04-LTS"),
-					Version:   to.Ptr("latest"),
+					Publisher: to.Ptr(vmPublisher),
+					Offer:     to.Ptr(vmOffer),
+					Sku:       to.Ptr(vmSku),
+					Version:   to.Ptr(vmVersion),
 				},
 				OSDisk: &armcompute.OSDisk{
 					CreateOption: to.Ptr(armcompute.DiskCreateOptionTypesFromImage),
@@ -197,14 +214,18 @@ func createBoxVM(ctx context.Context, clients *AzureClients, vmName string, nicI
 		},
 	}
 
-	poller, err := clients.ComputeClient.BeginCreateOrUpdate(ctx, resourceGroupName, vmName, vmParams, nil)
-	if err != nil {
-		return nil, err
+	pollOptions := &runtime.PollUntilDoneOptions{
+		Frequency: 2 * time.Second,
 	}
 
-	result, err := poller.PollUntilDone(ctx, nil)
+	poller, err := clients.ComputeClient.BeginCreateOrUpdate(ctx, resourceGroupName, vmName, vmParams, nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("starting VM creation: %w", err)
+	}
+
+	result, err := poller.PollUntilDone(ctx, pollOptions)
+	if err != nil {
+		return nil, fmt.Errorf("creating VM: %w", err)
 	}
 
 	return &result.VirtualMachine, nil
@@ -212,13 +233,20 @@ func createBoxVM(ctx context.Context, clients *AzureClients, vmName string, nicI
 
 // DeallocateBox deallocates a box VM
 func DeallocateBox(ctx context.Context, clients *AzureClients, vmID string) error {
-	poller, err := clients.ComputeClient.BeginDeallocate(ctx, resourceGroupName, vmID, nil)
-	if err != nil {
-		return err
+	pollOptions := &runtime.PollUntilDoneOptions{
+		Frequency: 2 * time.Second,
 	}
 
-	_, err = poller.PollUntilDone(ctx, nil)
-	return err
+	poller, err := clients.ComputeClient.BeginDeallocate(ctx, resourceGroupName, vmID, nil)
+	if err != nil {
+		return fmt.Errorf("starting VM deallocation: %w", err)
+	}
+
+	_, err = poller.PollUntilDone(ctx, pollOptions)
+	if err != nil {
+		return fmt.Errorf("deallocating VM: %w", err)
+	}
+	return nil
 }
 
 // FindBoxesByStatus returns box IDs matching the given status
@@ -231,7 +259,7 @@ func FindBoxesByStatus(ctx context.Context, clients *AzureClients, status string
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("listing VMs: %w", err)
 		}
 
 		for _, vm := range page.Value {
