@@ -48,6 +48,12 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *BastionCo
 		bastionIPName  = "bastion-ip"
 	)
 
+	// Get subscription ID early
+	subscriptionID, err := getSubscriptionID()
+	if err != nil {
+		return fmt.Errorf("failed to get subscription ID: %w", err)
+	}
+
 	pollUntilDoneOption := runtime.PollUntilDoneOptions{
 		Frequency: 2 * time.Second,
 	}
@@ -186,15 +192,8 @@ chmod 640 /var/log/shellbox/bastion.log
 	if err != nil {
 		return fmt.Errorf("failed to create bastion VM: %w", err)
 	}
-
 	if vm.Identity == nil || vm.Identity.PrincipalID == nil {
-		return fmt.Errorf("VM managed identity not found")
-	}
-
-	// Get subscription ID
-	subscriptionID, err := getSubscriptionID()
-	if err != nil {
-		return fmt.Errorf("failed to get subscription ID: %w", err)
+		return fmt.Errorf("VM managed identity not found after creation")
 	}
 
 	// Create role assignment for the VM's managed identity
