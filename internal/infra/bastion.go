@@ -182,15 +182,9 @@ chmod 640 /var/log/shellbox/bastion.log
 	if err != nil {
 		return fmt.Errorf("failed to start bastion VM creation: %w", err)
 	}
-	_, err = vmPoller.PollUntilDone(ctx, &pollUntilDoneOption)
+	vm, err := vmPoller.PollUntilDone(ctx, &pollUntilDoneOption)
 	if err != nil {
 		return fmt.Errorf("failed to create bastion VM: %w", err)
-	}
-
-	// Get the VM to retrieve its managed identity principal ID
-	vm, err := clients.ComputeClient.Get(ctx, resourceGroupName, bastionVMName, nil)
-	if err != nil {
-		return fmt.Errorf("failed to get bastion VM: %w", err)
 	}
 
 	if vm.Identity == nil || vm.Identity.PrincipalID == nil {
