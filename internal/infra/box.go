@@ -81,6 +81,19 @@ func createBoxNSG(ctx context.Context, clients *AzureClients, nsgName string) (*
 		Properties: &armnetwork.SecurityGroupPropertiesFormat{
 			SecurityRules: []*armnetwork.SecurityRule{
 				{
+					Name: to.Ptr("AllowICMPFromBastion"),
+					Properties: &armnetwork.SecurityRulePropertiesFormat{
+						Protocol:                 to.Ptr(armnetwork.SecurityRuleProtocolICMP),
+						SourceAddressPrefix:      to.Ptr(bastionSubnet),
+						SourcePortRange:          to.Ptr("*"),
+						DestinationAddressPrefix: to.Ptr("*"),
+						DestinationPortRange:     to.Ptr("*"),
+						Access:                   to.Ptr(armnetwork.SecurityRuleAccessAllow),
+						Priority:                 to.Ptr(int32(100)),
+						Direction:                to.Ptr(armnetwork.SecurityRuleDirectionInbound),
+					},
+				},
+				{
 					Name: to.Ptr("AllowSSHFromBastion"),
 					Properties: &armnetwork.SecurityRulePropertiesFormat{
 						Protocol:                 to.Ptr(armnetwork.SecurityRuleProtocolTCP),
@@ -89,7 +102,7 @@ func createBoxNSG(ctx context.Context, clients *AzureClients, nsgName string) (*
 						DestinationAddressPrefix: to.Ptr("*"),
 						DestinationPortRange:     to.Ptr("22"),
 						Access:                   to.Ptr(armnetwork.SecurityRuleAccessAllow),
-						Priority:                 to.Ptr(int32(100)),
+						Priority:                 to.Ptr(int32(110)),
 						Direction:                to.Ptr(armnetwork.SecurityRuleDirectionInbound),
 					},
 				},
