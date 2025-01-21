@@ -10,7 +10,12 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
 	"github.com/google/uuid"
+
+	"github.com/shellboxes/shellbox/internal/infra/basic"
 )
+
+// Alias AzureClients from basic package
+type AzureClients = basic.AzureClients
 
 const (
 	// Location is the Azure region where resources will be created
