@@ -75,7 +75,7 @@ func CreateBox(ctx context.Context, clients *AzureClients, config *BoxConfig) (s
 
 func createBoxNSG(ctx context.Context, clients *AzureClients, nsgName string) (*armnetwork.SecurityGroup, error) {
 	bastionSubnet := "10.0.0.0/24"
-	
+
 	nsgParams := armnetwork.SecurityGroup{
 		Location: to.Ptr(location),
 		Properties: &armnetwork.SecurityGroupPropertiesFormat{
@@ -129,7 +129,7 @@ func createBoxNSG(ctx context.Context, clients *AzureClients, nsgName string) (*
 
 func createBoxNIC(ctx context.Context, clients *AzureClients, nicName string, nsgID *string) (*armnetwork.Interface, error) {
 	boxesSubnetID := "" // TODO: implement GetBoxesSubnetID() similar to GetBastionSubnetID()
-	
+
 	nicParams := armnetwork.Interface{
 		Location: to.Ptr(location),
 		Properties: &armnetwork.InterfacePropertiesFormat{
@@ -260,7 +260,7 @@ func DeallocateBox(ctx context.Context, clients *AzureClients, vmID string) erro
 // It filters VMs based on their status tag and returns their resource IDs.
 func FindBoxesByStatus(ctx context.Context, clients *AzureClients, status string) ([]string, error) {
 	filter := fmt.Sprintf("tagName eq 'status' and tagValue eq '%s'", status)
-	
+
 	pager := clients.ComputeClient.NewListPager(resourceGroupName, &armcompute.VirtualMachinesClientListOptions{
 		Filter: &filter,
 	})
