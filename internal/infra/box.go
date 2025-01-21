@@ -12,28 +12,33 @@ import (
 )
 
 const (
-	// VM image configuration
-	vmPublisher = "Canonical"
-	vmOffer     = "0001-com-ubuntu-server-jammy"
-	vmSku       = "22_04-lts-gen2"
-	vmVersion   = "latest"
+	// VMPublisher is the publisher of the VM image
+	VMPublisher = "Canonical"
+	// VMOffer is the offer of the VM image
+	VMOffer = "0001-com-ubuntu-server-jammy"
+	// VMSku is the SKU of the VM image
+	VMSku = "22_04-lts-gen2"
+	// VMVersion is the version of the VM image
+	VMVersion = "latest"
 )
 
-// BoxConfig holds the configuration for a box VM
+// BoxConfig holds the configuration parameters for creating a box VM.
 type BoxConfig struct {
 	VMSize        string
 	AdminUsername string
 	SSHPublicKey  string
 }
 
-// BoxTags represents searchable metadata for box VMs
+// BoxTags represents searchable metadata for box VMs.
+// These tags are used to track VM status and lifecycle.
 type BoxTags struct {
 	Status    string // ready, allocated, deallocated
 	CreatedAt string
 	BoxID     string
 }
 
-// CreateBox creates a new box VM with proper networking setup
+// CreateBox creates a new box VM with proper networking setup.
+// It returns the VM's resource ID and any error encountered.
 func CreateBox(ctx context.Context, clients *AzureClients, config *BoxConfig) (string, error) {
 	boxID := NewGUID()
 	vmName := fmt.Sprintf("box-%s", boxID)
@@ -177,10 +182,10 @@ func createBoxVM(ctx context.Context, clients *AzureClients, vmName string, nicI
 			},
 			StorageProfile: &armcompute.StorageProfile{
 				ImageReference: &armcompute.ImageReference{
-					Publisher: to.Ptr(vmPublisher),
-					Offer:     to.Ptr(vmOffer),
-					Sku:       to.Ptr(vmSku),
-					Version:   to.Ptr(vmVersion),
+					Publisher: to.Ptr(VMPublisher),
+					Offer:     to.Ptr(VMOffer),
+					Sku:       to.Ptr(VMSku),
+					Version:   to.Ptr(VMVersion),
 				},
 				OSDisk: &armcompute.OSDisk{
 					CreateOption: to.Ptr(armcompute.DiskCreateOptionTypesFromImage),
@@ -231,7 +236,8 @@ func createBoxVM(ctx context.Context, clients *AzureClients, vmName string, nicI
 	return &result.VirtualMachine, nil
 }
 
-// DeallocateBox deallocates a box VM
+// DeallocateBox deallocates a box VM.
+// It stops the VM and releases compute resources while preserving the VM configuration.
 func DeallocateBox(ctx context.Context, clients *AzureClients, vmID string) error {
 	pollOptions := &runtime.PollUntilDoneOptions{
 		Frequency: 2 * time.Second,
@@ -249,7 +255,8 @@ func DeallocateBox(ctx context.Context, clients *AzureClients, vmID string) erro
 	return nil
 }
 
-// FindBoxesByStatus returns box IDs matching the given status
+// FindBoxesByStatus returns box IDs matching the given status.
+// It filters VMs based on their status tag and returns their resource IDs.
 func FindBoxesByStatus(ctx context.Context, clients *AzureClients, status string) ([]string, error) {
 	filter := fmt.Sprintf("tagName eq 'status' and tagValue eq '%s'", status)
 	
