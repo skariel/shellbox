@@ -210,9 +210,10 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *BastionCo
 	}
 
 	// Copy server binary to bastion
-	scpCmd := fmt.Sprintf("scp -o StrictHostKeyChecking=no /tmp/server %s@%s:/home/%s/server", config.AdminUsername, *publicIP.Properties.IPAddress, config.AdminUsername)
 	if err := exec.Command("scp", "-o", "StrictHostKeyChecking=no", "/tmp/server",
-		fmt.Sprintf("%s@%s:/home/%s/server", config.AdminUsername, *publicIP.Properties.IPAddress, config.AdminUsername)).Run(); err != nil {
+		fmt.Sprintf("%s@%s:\"/home/%s/server\"", config.AdminUsername, *publicIP.Properties.IPAddress, config.AdminUsername)).Run(); err != nil {
+		scpCmd := fmt.Sprintf("scp -o StrictHostKeyChecking=no /tmp/server %s@%s:\"/home/%s/server\"", 
+			config.AdminUsername, *publicIP.Properties.IPAddress, config.AdminUsername)
 		return fmt.Errorf("failed to copy server binary (cmd: %s): %w", scpCmd, err)
 	}
 
