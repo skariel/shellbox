@@ -63,8 +63,9 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *BastionCo
 		Frequency: 2 * time.Second,
 	}
 
+	rgName := getResourceGroupName()
 	// Create public IP for bastion
-	ipPoller, err := clients.PublicIPClient.BeginCreateOrUpdate(ctx, resourceGroupName, bastionIPName, armnetwork.PublicIPAddress{
+	ipPoller, err := clients.PublicIPClient.BeginCreateOrUpdate(ctx, rgName, bastionIPName, armnetwork.PublicIPAddress{
 		Location: to.Ptr(location),
 		SKU: &armnetwork.PublicIPAddressSKU{
 			Name: to.Ptr(armnetwork.PublicIPAddressSKUNameStandard),
@@ -87,7 +88,7 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *BastionCo
 	if err != nil {
 		return err
 	}
-	nicPoller, err := clients.NICClient.BeginCreateOrUpdate(ctx, resourceGroupName, bastionNICName, armnetwork.Interface{
+	nicPoller, err := clients.NICClient.BeginCreateOrUpdate(ctx, rgName, bastionNICName, armnetwork.Interface{
 		Location: to.Ptr(location),
 		Properties: &armnetwork.InterfacePropertiesFormat{
 			IPConfigurations: []*armnetwork.InterfaceIPConfiguration{
@@ -121,7 +122,7 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *BastionCo
 	}
 
 	// Create bastion VM
-	vmPoller, err := clients.ComputeClient.BeginCreateOrUpdate(ctx, resourceGroupName, bastionVMName, armcompute.VirtualMachine{
+	vmPoller, err := clients.ComputeClient.BeginCreateOrUpdate(ctx, rgName, bastionVMName, armcompute.VirtualMachine{
 		Location: to.Ptr(location),
 		Identity: &armcompute.VirtualMachineIdentity{
 			Type: to.Ptr(armcompute.ResourceIdentityTypeSystemAssigned),
@@ -233,7 +234,7 @@ scpSuccess:
 		case <-retryTicker.C:
 			guid := NewGUID()
 			_, err = clients.RoleClient.Create(ctx,
-				fmt.Sprintf("/subscriptions/%s/resourceGroups/%s", subscriptionID, resourceGroupName),
+				fmt.Sprintf("/subscriptions/%s/resourceGroups/%s", subscriptionID, rgName),
 				guid,
 				armauthorization.RoleAssignmentCreateParameters{
 					Properties: &armauthorization.RoleAssignmentProperties{

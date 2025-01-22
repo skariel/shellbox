@@ -22,8 +22,8 @@ import (
 // Configuration constants
 const (
 	// Resource group configuration
-	resourceGroupName = "shellbox-infra14"
-	location          = "westus2"
+	resourceGroupPrefix = "shellbox-infra"
+	location           = "westus2"
 
 	// Network configuration
 	vnetName         = "shellbox-network"
@@ -51,6 +51,11 @@ type AzureClients struct {
 	KeyVaultClient *armkeyvault.VaultsClient
 	SecretsClient  *armkeyvault.SecretsClient
 	RoleClient     *armauthorization.RoleAssignmentsClient
+}
+
+// getResourceGroupName returns a resource group name with timestamp
+func getResourceGroupName() string {
+	return fmt.Sprintf("%s-%d", resourceGroupPrefix, time.Now().Unix())
 }
 
 // getSubscriptionID gets the subscription ID from az cli
@@ -175,8 +180,9 @@ func CreateNetworkInfrastructure(ctx context.Context, clients *AzureClients) err
 		Frequency: 2 * time.Second,
 	}
 
+	rgName := getResourceGroupName()
 	// Create resource group
-	_, err := clients.ResourceClient.CreateOrUpdate(ctx, resourceGroupName, armresources.ResourceGroup{
+	_, err := clients.ResourceClient.CreateOrUpdate(ctx, rgName, armresources.ResourceGroup{
 		Location: to.Ptr(location),
 	}, nil)
 	if err != nil {
@@ -184,7 +190,7 @@ func CreateNetworkInfrastructure(ctx context.Context, clients *AzureClients) err
 	}
 
 	// Create Bastion NSG
-	bastionNSGPoller, err := clients.NSGClient.BeginCreateOrUpdate(ctx, resourceGroupName, bastionNSGName, armnetwork.SecurityGroup{
+	bastionNSGPoller, err := clients.NSGClient.BeginCreateOrUpdate(ctx, rgName, bastionNSGName, armnetwork.SecurityGroup{
 		Location: to.Ptr(location),
 		Properties: &armnetwork.SecurityGroupPropertiesFormat{
 			SecurityRules: []*armnetwork.SecurityRule{
@@ -278,7 +284,7 @@ func CreateNetworkInfrastructure(ctx context.Context, clients *AzureClients) err
 	}
 
 	// Create Virtual Network with subnets
-	vnetPoller, err := clients.NetworkClient.BeginCreateOrUpdate(ctx, resourceGroupName, vnetName, armnetwork.VirtualNetwork{
+	vnetPoller, err := clients.NetworkClient.BeginCreateOrUpdate(ctx, rgName, vnetName, armnetwork.VirtualNetwork{
 		Location: to.Ptr(location),
 		Properties: &armnetwork.VirtualNetworkPropertiesFormat{
 			AddressSpace: &armnetwork.AddressSpace{
