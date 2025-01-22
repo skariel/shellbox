@@ -189,7 +189,7 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *BastionCo
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
-	scpDest := fmt.Sprintf("%s@%s:\"/home/%s/server\"", config.AdminUsername, *publicIP.Properties.IPAddress, config.AdminUsername)
+	scpDest := fmt.Sprintf("%s@%s:/home/%s/server", config.AdminUsername, *publicIP.Properties.IPAddress, config.AdminUsername)
 	var lastErr error
 	for {
 		select {
