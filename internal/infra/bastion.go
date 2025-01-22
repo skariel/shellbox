@@ -63,7 +63,7 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *BastionCo
 		Frequency: 2 * time.Second,
 	}
 
-	rgName := getResourceGroupName()
+	rgName := GetResourceGroupName()
 	// Create public IP for bastion
 	ipPoller, err := clients.PublicIPClient.BeginCreateOrUpdate(ctx, rgName, bastionIPName, armnetwork.PublicIPAddress{
 		Location: to.Ptr(location),
