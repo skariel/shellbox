@@ -210,13 +210,13 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *BastionCo
 	}
 
 	// Copy server binary to bastion
-	if err := exec.Command("scp", "-o", "StrictHostKeyChecking=no", "/tmp/server",
+	if err := exec.Command("scp", "/tmp/server",
 		fmt.Sprintf("%s@%s:/opt/shellbox/server", config.AdminUsername, *publicIP.Properties.IPAddress)).Run(); err != nil {
 		return fmt.Errorf("failed to copy server binary: %w", err)
 	}
 
 	// Start the server via SSH
-	if err := exec.Command("ssh", "-o", "StrictHostKeyChecking=no",
+	if err := exec.Command("ssh",
 		fmt.Sprintf("%s@%s", config.AdminUsername, *publicIP.Properties.IPAddress),
 		"nohup /opt/shellbox/server > /opt/shellbox/server.log 2>&1 &").Run(); err != nil {
 		return fmt.Errorf("failed to start server: %w", err)
@@ -235,7 +235,7 @@ func waitForSSH(addr string) error {
 		case <-timeout:
 			return fmt.Errorf("timeout waiting for SSH")
 		case <-ticker.C:
-			cmd := exec.Command("ssh", "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=4", addr, "echo test")
+			cmd := exec.Command("ssh", addr, "echo test")
 			if err := cmd.Run(); err == nil {
 				return nil
 			}
