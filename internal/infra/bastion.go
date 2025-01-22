@@ -205,6 +205,9 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *BastionCo
 	if err := waitForSSH(sshAddr); err != nil {
 		return fmt.Errorf("waiting for SSH: %w", err)
 	}
+	if err != nil {
+		return fmt.Errorf("failed to establish ssh connection to bastion: %w", err)
+	}
 
 	// Copy server binary to bastion
 	if err := exec.Command("scp", "-o", "StrictHostKeyChecking=no", "/tmp/server",
