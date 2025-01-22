@@ -210,9 +210,10 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *BastionCo
 	}
 
 	// Copy server binary to bastion
+	scpCmd := fmt.Sprintf("scp /tmp/server %s@%s:~/shellbox/server", config.AdminUsername, *publicIP.Properties.IPAddress)
 	if err := exec.Command("scp", "/tmp/server",
 		fmt.Sprintf("%s@%s:~/shellbox/server", config.AdminUsername, *publicIP.Properties.IPAddress)).Run(); err != nil {
-		return fmt.Errorf("failed to copy server binary: %w", err)
+		return fmt.Errorf("failed to copy server binary (cmd: %s): %w", scpCmd, err)
 	}
 
 	// Start the server via SSH
