@@ -15,7 +15,9 @@ import (
 
 func cleanupOldResourceGroups(ctx context.Context, clients *infra.AzureClients) error {
 	filter := fmt.Sprintf("startswith(name,'%s')", infra.ResourceGroupPrefix)
-	pager := clients.ResourceClient.NewListPager(&filter, nil)
+	pager := clients.ResourceClient.NewListPager(&armresources.ResourceGroupsClientListOptions{
+		Filter: &filter,
+	})
 
 	now := time.Now()
 	cutoff := now.Add(-5 * time.Minute)
