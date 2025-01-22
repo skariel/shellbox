@@ -192,9 +192,8 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *BastionCo
 		guid,
 		armauthorization.RoleAssignmentCreateParameters{
 			Properties: &armauthorization.RoleAssignmentProperties{
-				RoleDefinitionID: to.Ptr(roleDefID),
 				PrincipalID:      vm.Identity.PrincipalID,
-				PrincipalType:    to.Ptr(armauthorization.PrincipalTypeServicePrincipal),
+				RoleDefinitionID: to.Ptr(roleDefID),
 			},
 		}, nil)
 	if err != nil {
