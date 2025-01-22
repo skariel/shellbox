@@ -26,7 +26,7 @@ var (
 // Configuration constants
 const (
 	// Resource group configuration
-	resourceGroupPrefix = "shellbox-infra"
+	ResourceGroupPrefix = "shellbox-infra"
 	location            = "westus2"
 
 	// Network configuration
@@ -60,7 +60,7 @@ type AzureClients struct {
 // getResourceGroupName returns a resource group name with timestamp
 func getResourceGroupName() string {
 	if _resourceGroupName == "" {
-		_resourceGroupName = fmt.Sprintf("%s-%d", resourceGroupPrefix, time.Now().Unix())
+		_resourceGroupName = fmt.Sprintf("%s-%d", ResourceGroupPrefix, time.Now().Unix())
 	}
 	return _resourceGroupName
 }
