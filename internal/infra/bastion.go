@@ -221,7 +221,6 @@ scpSuccess:
 	retryTicker := time.NewTicker(10 * time.Second)
 	defer retryTicker.Stop()
 
-	var lastErr error
 	for {
 		select {
 		case <-retryTimeout:

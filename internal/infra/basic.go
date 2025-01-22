@@ -22,7 +22,7 @@ import (
 // Configuration constants
 const (
 	// Resource group configuration
-	resourceGroupName = "shellbox-infra11"
+	resourceGroupName = "shellbox-infra12"
 	location          = "westus2"
 
 	// Network configuration
