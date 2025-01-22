@@ -347,10 +347,7 @@ func CreateNetworkInfrastructure(ctx context.Context, clients *AzureClients) err
 
 // CleanupOldResourceGroups deletes resource groups older than 5 minutes
 func CleanupOldResourceGroups(ctx context.Context, clients *AzureClients) error {
-	pager := clients.ResourceClient.NewListPager(&armresources.ResourceGroupsClientListOptions{
-		Filter: to.Ptr(fmt.Sprintf("name ge '%s'", resourceGroupPrefix)),
-	})
-
+	pager := clients.ResourceClient.NewListPager(nil)
 	now := time.Now()
 	cutoff := now.Add(-5 * time.Minute)
 
@@ -361,17 +358,18 @@ func CleanupOldResourceGroups(ctx context.Context, clients *AzureClients) error 
 		}
 
 		for _, group := range page.Value {
+			// Only process groups with our prefix
+			if !strings.HasPrefix(*group.Name, resourceGroupPrefix) {
+				continue
+			}
+
 			// Parse timestamp from group name
 			parts := strings.Split(*group.Name, "-")
 			if len(parts) != 3 {
 				continue
 			}
 
-			if len(parts) < 3 {
-				continue
-			}
-
-			timestamp, err := strconv.ParseInt(parts[len(parts)-1], 10, 64)
+			timestamp, err := strconv.ParseInt(parts[2], 10, 64)
 			if err != nil {
 				log.Printf("Invalid timestamp in resource group name %s: %v", *group.Name, err)
 				continue
@@ -380,9 +378,14 @@ func CleanupOldResourceGroups(ctx context.Context, clients *AzureClients) error 
 			createTime := time.Unix(timestamp, 0)
 			if createTime.Before(cutoff) {
 				log.Printf("Deleting old resource group: %s", *group.Name)
-				_, err := clients.ResourceClient.BeginDelete(ctx, *group.Name, nil)
+				poller, err := clients.ResourceClient.BeginDelete(ctx, *group.Name, nil)
 				if err != nil {
 					log.Printf("Failed to delete resource group %s: %v", *group.Name, err)
+					continue
+				}
+				_, err = poller.PollUntilDone(ctx, nil)
+				if err != nil {
+					log.Printf("Failed to complete deletion of resource group %s: %v", *group.Name, err)
 				}
 			}
 		}
