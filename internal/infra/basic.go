@@ -370,7 +370,7 @@ func CleanupOldResourceGroups(ctx context.Context, clients *AzureClients) error 
 			if len(parts) < 3 {
 				continue
 			}
-			
+
 			timestamp, err := strconv.ParseInt(parts[len(parts)-1], 10, 64)
 			if err != nil {
 				log.Printf("Invalid timestamp in resource group name %s: %v", *group.Name, err)
