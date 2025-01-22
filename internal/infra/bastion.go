@@ -200,5 +200,21 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *BastionCo
 		return fmt.Errorf("failed to create role assignment: %w", err)
 	}
 
+	// Wait a bit for SSH to be ready
+	time.Sleep(30 * time.Second)
+
+	// Copy server binary to bastion
+	if err := exec.Command("scp", "-o", "StrictHostKeyChecking=no", "/tmp/server",
+		fmt.Sprintf("%s@%s:/opt/shellbox/", config.AdminUsername, *publicIP.Properties.IPAddress)).Run(); err != nil {
+		return fmt.Errorf("failed to copy server binary: %w", err)
+	}
+
+	// Start the server via SSH
+	if err := exec.Command("ssh", "-o", "StrictHostKeyChecking=no",
+		fmt.Sprintf("%s@%s", config.AdminUsername, *publicIP.Properties.IPAddress),
+		"nohup /opt/shellbox/server > /opt/shellbox/server.log 2>&1 &").Run(); err != nil {
+		return fmt.Errorf("failed to start server: %w", err)
+	}
+
 	return nil
 }

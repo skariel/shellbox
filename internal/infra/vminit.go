@@ -17,12 +17,9 @@ mkdir -p /etc/ssh/sshd_config.d/
 echo "PermitUserEnvironment yes" > /etc/ssh/sshd_config.d/shellbox.conf
 systemctl reload sshd
 
-# Create server directory and set permissions
+# Create server directory
 mkdir -p /opt/shellbox/
-chmod 755 /opt/shellbox/
-
-# Start server in background with logging
-nohup /opt/shellbox/server > /opt/shellbox/server.log 2>&1 &`
+chmod 755 /opt/shellbox/`
 
 	boxBaseScript = `#!/bin/bash
 sudo apt-get update -y
