@@ -199,7 +199,7 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *BastionCo
 			}
 			return fmt.Errorf("timeout copying server binary")
 		case <-ticker.C:
-			cmd := exec.Command("scp", "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=10", "/tmp/server", scpDest)
+			cmd := exec.Command("scp", "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=4", "/tmp/server", scpDest)
 			output, err := cmd.CombinedOutput()
 			if err == nil {
 				goto scpSuccess
