@@ -14,7 +14,11 @@ ufw --force enable
 # Bastion-specific setup
 mkdir -p /etc/ssh/sshd_config.d/
 echo "PermitUserEnvironment yes" > /etc/ssh/sshd_config.d/shellbox.conf
-systemctl reload sshd`
+systemctl reload sshd
+
+# Create server directory
+mkdir -p /opt/shellbox/
+chmod 755 /opt/shellbox/`
 
 	boxBaseScript = `#!/bin/bash
 sudo apt-get update -y
