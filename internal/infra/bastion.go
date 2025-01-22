@@ -184,6 +184,30 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *BastionCo
 		return fmt.Errorf("VM managed identity not found after creation")
 	}
 
+	// Wait for SSH to be ready
+	sshAddr := fmt.Sprintf("%s@%s", config.AdminUsername, *publicIP.Properties.IPAddress)
+	if err := waitForSSH(sshAddr); err != nil {
+		return fmt.Errorf("waiting for SSH: %w", err)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to establish ssh connection to bastion: %w", err)
+	}
+
+	// Copy server binary to bastion
+	if err := exec.Command("scp", "-o", "StrictHostKeyChecking=no", "/tmp/server",
+		fmt.Sprintf("%s@%s:\"/home/%s/server\"", config.AdminUsername, *publicIP.Properties.IPAddress, config.AdminUsername)).Run(); err != nil {
+		scpCmd := fmt.Sprintf("scp -o StrictHostKeyChecking=no /tmp/server %s@%s:\"/home/%s/server\"",
+			config.AdminUsername, *publicIP.Properties.IPAddress, config.AdminUsername)
+		return fmt.Errorf("failed to copy server binary (cmd: %s): %w", scpCmd, err)
+	}
+
+	// Start the server via SSH
+	if err := exec.Command("ssh",
+		fmt.Sprintf("%s@%s", config.AdminUsername, *publicIP.Properties.IPAddress),
+		fmt.Sprintf("nohup /home/%s/server > /home/%s/server.log 2>&1 &", config.AdminUsername, config.AdminUsername)).Run(); err != nil {
+		return fmt.Errorf("failed to start server: %w", err)
+	}
+
 	// Create role assignment for the VM's managed identity with retries
 	roleDefID := fmt.Sprintf("/subscriptions/%s%s", subscriptionID, contributorRoleID)
 	retryTimeout := time.After(2 * time.Minute)
@@ -215,32 +239,6 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *BastionCo
 			lastErr = err
 		}
 	}
-
-	// Wait for SSH to be ready
-	sshAddr := fmt.Sprintf("%s@%s", config.AdminUsername, *publicIP.Properties.IPAddress)
-	if err := waitForSSH(sshAddr); err != nil {
-		return fmt.Errorf("waiting for SSH: %w", err)
-	}
-	if err != nil {
-		return fmt.Errorf("failed to establish ssh connection to bastion: %w", err)
-	}
-
-	// Copy server binary to bastion
-	if err := exec.Command("scp", "-o", "StrictHostKeyChecking=no", "/tmp/server",
-		fmt.Sprintf("%s@%s:\"/home/%s/server\"", config.AdminUsername, *publicIP.Properties.IPAddress, config.AdminUsername)).Run(); err != nil {
-		scpCmd := fmt.Sprintf("scp -o StrictHostKeyChecking=no /tmp/server %s@%s:\"/home/%s/server\"",
-			config.AdminUsername, *publicIP.Properties.IPAddress, config.AdminUsername)
-		return fmt.Errorf("failed to copy server binary (cmd: %s): %w", scpCmd, err)
-	}
-
-	// Start the server via SSH
-	if err := exec.Command("ssh",
-		fmt.Sprintf("%s@%s", config.AdminUsername, *publicIP.Properties.IPAddress),
-		fmt.Sprintf("nohup /home/%s/server > /home/%s/server.log 2>&1 &", config.AdminUsername, config.AdminUsername)).Run(); err != nil {
-		return fmt.Errorf("failed to start server: %w", err)
-	}
-
-	return nil
 }
 
 func waitForSSH(addr string) error {
