@@ -27,7 +27,7 @@ var (
 const (
 	// Resource group configuration
 	resourceGroupPrefix = "shellbox-infra"
-	location           = "westus2"
+	location            = "westus2"
 
 	// Network configuration
 	vnetName         = "shellbox-network"
