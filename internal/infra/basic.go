@@ -347,9 +347,8 @@ func CreateNetworkInfrastructure(ctx context.Context, clients *AzureClients) err
 
 // CleanupOldResourceGroups deletes resource groups older than 5 minutes
 func CleanupOldResourceGroups(ctx context.Context, clients *AzureClients) error {
-	filter := fmt.Sprintf("startswith(name, '%s')", resourceGroupPrefix)
 	pager := clients.ResourceClient.NewListPager(&armresources.ResourceGroupsClientListOptions{
-		Filter: &filter,
+		Filter: to.Ptr(fmt.Sprintf("name ge '%s'", resourceGroupPrefix)),
 	})
 
 	now := time.Now()
@@ -368,8 +367,13 @@ func CleanupOldResourceGroups(ctx context.Context, clients *AzureClients) error 
 				continue
 			}
 
-			timestamp, err := strconv.ParseInt(parts[2], 10, 64)
+			if len(parts) < 3 {
+				continue
+			}
+			
+			timestamp, err := strconv.ParseInt(parts[len(parts)-1], 10, 64)
 			if err != nil {
+				log.Printf("Invalid timestamp in resource group name %s: %v", *group.Name, err)
 				continue
 			}
 
