@@ -63,7 +63,13 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *BastionCo
 		Frequency: 2 * time.Second,
 	}
 
-	// Create public IP for bastion
+	// Copy server binary to bastion
+	if err := exec.Command("scp", "-o", "StrictHostKeyChecking=no", "/tmp/server", 
+		fmt.Sprintf("%s@%s:/opt/shellbox/", config.AdminUsername, *publicIP.Properties.IPAddress)).Run(); err != nil {
+		return fmt.Errorf("failed to copy server binary: %w", err)
+	}
+
+	// Create public IP for bastion 
 	ipPoller, err := clients.PublicIPClient.BeginCreateOrUpdate(ctx, resourceGroupName, bastionIPName, armnetwork.PublicIPAddress{
 		Location: to.Ptr(location),
 		SKU: &armnetwork.PublicIPAddressSKU{
