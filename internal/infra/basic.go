@@ -62,7 +62,7 @@ type AzureClients struct {
 // getResourceGroupName returns a resource group name with timestamp
 func getResourceGroupName() string {
 	if _resourceGroupName == "" {
-		_resourceGroupName = fmt.Sprintf("%s-%d", ResourceGroupPrefix, time.Now().Unix())
+		_resourceGroupName = fmt.Sprintf("%s-%d", resourceGroupPrefix, time.Now().Unix())
 	}
 	return _resourceGroupName
 }
@@ -367,7 +367,7 @@ func CleanupOldResourceGroups(ctx context.Context, clients *AzureClients) error 
 			if len(parts) != 3 {
 				continue
 			}
-			
+
 			timestamp, err := strconv.ParseInt(parts[2], 10, 64)
 			if err != nil {
 				continue

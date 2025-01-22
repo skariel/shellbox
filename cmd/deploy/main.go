@@ -10,7 +10,6 @@ import (
 	"shellbox/internal/infra"
 )
 
-
 func readSSHKey(path string) (string, error) {
 	expandedPath := filepath.Clean(os.ExpandEnv(path))
 	key, err := os.ReadFile(expandedPath)
