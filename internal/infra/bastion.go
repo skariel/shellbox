@@ -253,7 +253,7 @@ func waitForSSH(addr string) error {
 		case <-timeout:
 			return fmt.Errorf("timeout waiting for SSH")
 		case <-ticker.C:
-			cmd := exec.Command("ssh", addr, "echo test")
+			cmd := exec.Command("ssh", "-o", "StrictHostKeyChecking=no", addr, "echo test")
 			if err := cmd.Run(); err == nil {
 				return nil
 			}
