@@ -211,14 +211,14 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *BastionCo
 
 	// Copy server binary to bastion
 	if err := exec.Command("scp", "/tmp/server",
-		fmt.Sprintf("%s@%s:/opt/shellbox/server", config.AdminUsername, *publicIP.Properties.IPAddress)).Run(); err != nil {
+		fmt.Sprintf("%s@%s:~/shellbox/server", config.AdminUsername, *publicIP.Properties.IPAddress)).Run(); err != nil {
 		return fmt.Errorf("failed to copy server binary: %w", err)
 	}
 
 	// Start the server via SSH
 	if err := exec.Command("ssh",
 		fmt.Sprintf("%s@%s", config.AdminUsername, *publicIP.Properties.IPAddress),
-		"nohup /opt/shellbox/server > /opt/shellbox/server.log 2>&1 &").Run(); err != nil {
+		"nohup ~/shellbox/server > ~/shellbox/server.log 2>&1 &").Run(); err != nil {
 		return fmt.Errorf("failed to start server: %w", err)
 	}
 
