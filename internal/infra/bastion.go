@@ -210,16 +210,16 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *BastionCo
 	}
 
 	// Copy server binary to bastion
-	scpCmd := fmt.Sprintf("scp /tmp/server %s@%s:~/shellbox/server", config.AdminUsername, *publicIP.Properties.IPAddress)
+	scpCmd := fmt.Sprintf("scp /tmp/server %s@%s:/home/%s/shellbox/server", config.AdminUsername, *publicIP.Properties.IPAddress, config.AdminUsername)
 	if err := exec.Command("scp", "/tmp/server",
-		fmt.Sprintf("%s@%s:~/shellbox/server", config.AdminUsername, *publicIP.Properties.IPAddress)).Run(); err != nil {
+		fmt.Sprintf("%s@%s:/home/%s/shellbox/server", config.AdminUsername, *publicIP.Properties.IPAddress, config.AdminUsername)).Run(); err != nil {
 		return fmt.Errorf("failed to copy server binary (cmd: %s): %w", scpCmd, err)
 	}
 
 	// Start the server via SSH
 	if err := exec.Command("ssh",
 		fmt.Sprintf("%s@%s", config.AdminUsername, *publicIP.Properties.IPAddress),
-		"nohup ~/shellbox/server > ~/shellbox/server.log 2>&1 &").Run(); err != nil {
+		fmt.Sprintf("nohup /home/%s/shellbox/server > /home/%s/shellbox/server.log 2>&1 &", config.AdminUsername, config.AdminUsername)).Run(); err != nil {
 		return fmt.Errorf("failed to start server: %w", err)
 	}
 

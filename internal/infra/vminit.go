@@ -17,7 +17,7 @@ echo "PermitUserEnvironment yes" > /etc/ssh/sshd_config.d/shellbox.conf
 systemctl reload sshd
 
 # Create shellbox directory
-mkdir -p ~/shellbox`
+mkdir -p /home/\${admin_user}/shellbox`
 
 	boxBaseScript = `#!/bin/bash
 sudo apt-get update -y
