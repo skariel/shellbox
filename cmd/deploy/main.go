@@ -31,6 +31,9 @@ func main() {
 		log.Printf("cleanup failed: %v", err)
 	}
 
+	rgName := infra.GetResourceGroupName()
+	log.Printf("using resource group: %s", rgName)
+
 	log.Println("upserting networking infra")
 	if err := infra.CreateNetworkInfrastructure(ctx, clients); err != nil {
 		log.Fatal(err)

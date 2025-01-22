@@ -59,8 +59,8 @@ type AzureClients struct {
 	RoleClient     *armauthorization.RoleAssignmentsClient
 }
 
-// getResourceGroupName returns a resource group name with timestamp
-func getResourceGroupName() string {
+// GetResourceGroupName returns a resource group name with timestamp
+func GetResourceGroupName() string {
 	if _resourceGroupName == "" {
 		_resourceGroupName = fmt.Sprintf("%s-%d", resourceGroupPrefix, time.Now().Unix())
 	}
@@ -189,7 +189,7 @@ func CreateNetworkInfrastructure(ctx context.Context, clients *AzureClients) err
 		Frequency: 2 * time.Second,
 	}
 
-	rgName := getResourceGroupName()
+	rgName := GetResourceGroupName()
 	// Create resource group
 	_, err := clients.ResourceClient.CreateOrUpdate(ctx, rgName, armresources.ResourceGroup{
 		Location: to.Ptr(location),
