@@ -2,7 +2,6 @@ package infra
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
 	"time"
 
