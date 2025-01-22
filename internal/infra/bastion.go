@@ -109,24 +109,11 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *BastionCo
 		return fmt.Errorf("failed to create NIC: %w", err)
 	}
 
-	// Create setup script for bastion
-	setupScript := `#!/bin/bash
-set -euo pipefail
-
-# Update system
-apt-get update
-apt-get upgrade -y
-
-# Install required packages
-apt-get install -y \
-    jq \
-    python3-pip
-
-# Setup monitoring and logging
-mkdir -p /var/log/shellbox
-touch /var/log/shellbox/bastion.log
-chmod 640 /var/log/shellbox/bastion.log
-`
+	// Generate cloud-init script
+	customData, err := GenerateBastionInitScript(config.SSHPublicKey)
+	if err != nil {
+		return fmt.Errorf("failed to generate init script: %w", err)
+	}
 
 	// Create bastion VM
 	vmPoller, err := clients.ComputeClient.BeginCreateOrUpdate(ctx, resourceGroupName, bastionVMName, armcompute.VirtualMachine{

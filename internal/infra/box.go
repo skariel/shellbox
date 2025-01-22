@@ -190,6 +190,12 @@ func createBoxVM(ctx context.Context, clients *AzureClients, vmName string, nicI
 		"box_id":     to.Ptr(tags.BoxID),
 	}
 
+	// Generate base initialization script
+	initScript, err := GenerateBoxInitScript()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate box init script: %w", err)
+	}
+
 	vmParams := armcompute.VirtualMachine{
 		Location: to.Ptr(location),
 		Tags:     tagsMap,
@@ -197,6 +203,7 @@ func createBoxVM(ctx context.Context, clients *AzureClients, vmName string, nicI
 			HardwareProfile: &armcompute.HardwareProfile{
 				VMSize: to.Ptr(armcompute.VirtualMachineSizeTypes(config.VMSize)),
 			},
+			CustomData: to.Ptr(initScript),
 			StorageProfile: &armcompute.StorageProfile{
 				ImageReference: &armcompute.ImageReference{
 					Publisher: to.Ptr(VMPublisher),
