@@ -184,22 +184,29 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *BastionCo
 		return fmt.Errorf("VM managed identity not found after creation")
 	}
 
-	// Wait for SSH to be ready
-	sshAddr := fmt.Sprintf("%s@%s", config.AdminUsername, *publicIP.Properties.IPAddress)
-	if err := waitForSSH(sshAddr); err != nil {
-		return fmt.Errorf("waiting for SSH: %w", err)
-	}
-	if err != nil {
-		return fmt.Errorf("failed to establish ssh connection to bastion: %w", err)
-	}
+	// Copy server binary to bastion with retries
+	timeout := time.After(2 * time.Minute)
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
 
-	// Copy server binary to bastion
-	if err := exec.Command("scp", "-o", "StrictHostKeyChecking=no", "/tmp/server",
-		fmt.Sprintf("%s@%s:\"/home/%s/server\"", config.AdminUsername, *publicIP.Properties.IPAddress, config.AdminUsername)).Run(); err != nil {
-		scpCmd := fmt.Sprintf("scp -o StrictHostKeyChecking=no /tmp/server %s@%s:\"/home/%s/server\"",
-			config.AdminUsername, *publicIP.Properties.IPAddress, config.AdminUsername)
-		return fmt.Errorf("failed to copy server binary (cmd: %s): %w", scpCmd, err)
+	scpDest := fmt.Sprintf("%s@%s:\"/home/%s/server\"", config.AdminUsername, *publicIP.Properties.IPAddress, config.AdminUsername)
+	var lastErr error
+	for {
+		select {
+		case <-timeout:
+			if lastErr != nil {
+				return fmt.Errorf("timeout copying server binary: %w", lastErr)
+			}
+			return fmt.Errorf("timeout copying server binary")
+		case <-ticker.C:
+			if err := exec.Command("scp", "-o", "StrictHostKeyChecking=no", "/tmp/server", scpDest).Run(); err == nil {
+				goto scpSuccess
+			} else {
+				lastErr = err
+			}
+		}
 	}
+scpSuccess:
 
 	// Start the server via SSH
 	if err := exec.Command("ssh",
@@ -237,24 +244,6 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *BastionCo
 				return nil
 			}
 			lastErr = err
-		}
-	}
-}
-
-func waitForSSH(addr string) error {
-	timeout := time.After(2 * time.Minute)
-	ticker := time.NewTicker(5 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-timeout:
-			return fmt.Errorf("timeout waiting for SSH")
-		case <-ticker.C:
-			cmd := exec.Command("ssh", "-o", "StrictHostKeyChecking=no", addr, "echo test")
-			if err := cmd.Run(); err == nil {
-				return nil
-			}
 		}
 	}
 }
