@@ -26,10 +26,13 @@ func main() {
 		log.Fatal(err)
 	}
 
-	log.Println("cleaning up old resource groups")
-	if err := infra.CleanupOldResourceGroups(ctx, clients); err != nil {
-		log.Printf("cleanup failed: %v", err)
-	}
+	// Run cleanup in background
+	go func() {
+		log.Println("cleaning up old resource groups")
+		if err := infra.CleanupOldResourceGroups(context.Background(), clients); err != nil {
+			log.Printf("cleanup failed: %v", err)
+		}
+	}()
 
 	rgName := infra.GetResourceGroupName()
 	log.Printf("using resource group: %s", rgName)
