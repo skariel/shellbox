@@ -3,6 +3,7 @@ package infra
 import (
 	"context"
 	"fmt"
+	"os/exec"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
@@ -46,6 +47,11 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *BastionCo
 		bastionNICName = "bastion-nic"
 		bastionIPName  = "bastion-ip"
 	)
+
+	// Compile server binary
+	if err := exec.Command("go", "build", "-o", "/tmp/server", "./cmd/server").Run(); err != nil {
+		return fmt.Errorf("failed to compile server binary: %w", err)
+	}
 
 	// Get subscription ID early
 	subscriptionID, err := getSubscriptionID()
