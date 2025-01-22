@@ -19,6 +19,10 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 )
 
+var (
+	_resourceGroupName string
+)
+
 // Configuration constants
 const (
 	// Resource group configuration
@@ -55,7 +59,10 @@ type AzureClients struct {
 
 // getResourceGroupName returns a resource group name with timestamp
 func getResourceGroupName() string {
-	return fmt.Sprintf("%s-%d", resourceGroupPrefix, time.Now().Unix())
+	if _resourceGroupName == "" {
+		_resourceGroupName = fmt.Sprintf("%s-%d", resourceGroupPrefix, time.Now().Unix())
+	}
+	return _resourceGroupName
 }
 
 // getSubscriptionID gets the subscription ID from az cli
