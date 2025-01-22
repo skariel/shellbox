@@ -184,20 +184,36 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *BastionCo
 		return fmt.Errorf("VM managed identity not found after creation")
 	}
 
-	// Create role assignment for the VM's managed identity
+	// Create role assignment for the VM's managed identity with retries
 	roleDefID := fmt.Sprintf("/subscriptions/%s%s", subscriptionID, contributorRoleID)
-	guid := NewGUID()
-	_, err = clients.RoleClient.Create(ctx,
-		fmt.Sprintf("/subscriptions/%s/resourceGroups/%s", subscriptionID, resourceGroupName),
-		guid,
-		armauthorization.RoleAssignmentCreateParameters{
-			Properties: &armauthorization.RoleAssignmentProperties{
-				PrincipalID:      vm.Identity.PrincipalID,
-				RoleDefinitionID: to.Ptr(roleDefID),
-			},
-		}, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create role assignment: %w", err)
+	retryTimeout := time.After(2 * time.Minute)
+	retryTicker := time.NewTicker(10 * time.Second)
+	defer retryTicker.Stop()
+
+	var lastErr error
+	for {
+		select {
+		case <-retryTimeout:
+			if lastErr != nil {
+				return fmt.Errorf("timeout waiting for role assignment: %w", lastErr)
+			}
+			return fmt.Errorf("timeout waiting for role assignment")
+		case <-retryTicker.C:
+			guid := NewGUID()
+			_, err = clients.RoleClient.Create(ctx,
+				fmt.Sprintf("/subscriptions/%s/resourceGroups/%s", subscriptionID, resourceGroupName),
+				guid,
+				armauthorization.RoleAssignmentCreateParameters{
+					Properties: &armauthorization.RoleAssignmentProperties{
+						PrincipalID:      vm.Identity.PrincipalID,
+						RoleDefinitionID: to.Ptr(roleDefID),
+					},
+				}, nil)
+			if err == nil {
+				return nil
+			}
+			lastErr = err
+		}
 	}
 
 	// Wait for SSH to be ready
