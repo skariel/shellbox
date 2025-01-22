@@ -143,7 +143,7 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *BastionCo
 			OSProfile: &armcompute.OSProfile{
 				ComputerName:  to.Ptr("shellbox-bastion"),
 				AdminUsername: to.Ptr(config.AdminUsername),
-				CustomData:    to.Ptr(base64.StdEncoding.EncodeToString([]byte(setupScript))),
+				CustomData:    to.Ptr(customData),
 				LinuxConfiguration: &armcompute.LinuxConfiguration{
 					DisablePasswordAuthentication: to.Ptr(true),
 					SSH: &armcompute.SSHConfiguration{
