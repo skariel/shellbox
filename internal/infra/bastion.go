@@ -200,8 +200,11 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *BastionCo
 		return fmt.Errorf("failed to create role assignment: %w", err)
 	}
 
-	// Wait a bit for SSH to be ready
-	time.Sleep(30 * time.Second)
+	// Wait for SSH to be ready
+	sshAddr := fmt.Sprintf("%s@%s", config.AdminUsername, *publicIP.Properties.IPAddress)
+	if err := waitForSSH(sshAddr); err != nil {
+		return fmt.Errorf("waiting for SSH: %w", err)
+	}
 
 	// Copy server binary to bastion
 	if err := exec.Command("scp", "-o", "StrictHostKeyChecking=no", "/tmp/server",
@@ -217,4 +220,22 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *BastionCo
 	}
 
 	return nil
+}
+
+func waitForSSH(addr string) error {
+	timeout := time.After(2 * time.Minute)
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-timeout:
+			return fmt.Errorf("timeout waiting for SSH")
+		case <-ticker.C:
+			cmd := exec.Command("ssh", "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=4", addr, "echo test")
+			if err := cmd.Run(); err == nil {
+				return nil
+			}
+		}
+	}
 }
