@@ -347,7 +347,7 @@ func CreateNetworkInfrastructure(ctx context.Context, clients *AzureClients) err
 
 // CleanupOldResourceGroups deletes resource groups older than 5 minutes
 func CleanupOldResourceGroups(ctx context.Context, clients *AzureClients) error {
-	filter := fmt.Sprintf("startswith(name,'%s')", resourceGroupPrefix)
+	filter := fmt.Sprintf("startswith(name, '%s')", resourceGroupPrefix)
 	pager := clients.ResourceClient.NewListPager(&armresources.ResourceGroupsClientListOptions{
 		Filter: &filter,
 	})
