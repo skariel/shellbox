@@ -203,7 +203,6 @@ func createBoxVM(ctx context.Context, clients *AzureClients, vmName string, nicI
 			HardwareProfile: &armcompute.HardwareProfile{
 				VMSize: to.Ptr(armcompute.VirtualMachineSizeTypes(config.VMSize)),
 			},
-			CustomData: to.Ptr(initScript),
 			StorageProfile: &armcompute.StorageProfile{
 				ImageReference: &armcompute.ImageReference{
 					Publisher: to.Ptr(VMPublisher),
@@ -221,6 +220,7 @@ func createBoxVM(ctx context.Context, clients *AzureClients, vmName string, nicI
 			OSProfile: &armcompute.OSProfile{
 				ComputerName:  to.Ptr(vmName),
 				AdminUsername: to.Ptr(config.AdminUsername),
+				CustomData:    to.Ptr(initScript),
 				LinuxConfiguration: &armcompute.LinuxConfiguration{
 					DisablePasswordAuthentication: to.Ptr(true),
 					SSH: &armcompute.SSHConfiguration{
