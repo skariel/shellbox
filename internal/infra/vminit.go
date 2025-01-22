@@ -3,7 +3,6 @@ package infra
 import (
 	"encoding/base64"
 	"fmt"
-	"os"
 )
 
 const (
