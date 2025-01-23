@@ -42,7 +42,6 @@ func NewCache() *Cache {
 
 var globalCache = NewCache()
 
-
 // AzureClients holds all the Azure SDK clients needed for the application
 type AzureClients struct {
 	cred           *azidentity.ManagedIdentityCredential

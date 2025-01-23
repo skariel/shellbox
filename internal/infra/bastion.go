@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"shellbox/internal/ssh"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
@@ -13,7 +14,6 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
 	"github.com/google/uuid"
 )
-
 
 // NewGUID generates a new GUID string
 func NewGUID() string {
@@ -34,7 +34,6 @@ func DefaultBastionConfig() *BastionConfig {
 		VMSize:        string(armcompute.VirtualMachineSizeTypesStandardD2SV3),
 	}
 }
-
 
 var defaultPollOptions = runtime.PollUntilDoneOptions{
 	Frequency: 2 * time.Second,

@@ -12,7 +12,6 @@ import (
 	"github.com/google/uuid"
 )
 
-
 // BoxConfig holds the configuration parameters for creating a box VM.
 type BoxConfig struct {
 	VMSize        string

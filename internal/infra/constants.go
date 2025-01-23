@@ -3,7 +3,7 @@ package infra
 // Resource group configuration
 const (
 	resourceGroupPrefix = "shellbox-infra"
-	location           = "westus2"
+	location            = "westus2"
 )
 
 // Network configuration
@@ -25,9 +25,9 @@ const (
 const (
 	// VM image configuration
 	VMPublisher = "Canonical"
-	VMOffer    = "0001-com-ubuntu-server-jammy"
-	VMSku      = "22_04-lts-gen2"
-	VMVersion  = "latest"
+	VMOffer     = "0001-com-ubuntu-server-jammy"
+	VMSku       = "22_04-lts-gen2"
+	VMVersion   = "latest"
 
 	// Bastion VM configuration
 	bastionVMName  = "shellbox-bastion"
