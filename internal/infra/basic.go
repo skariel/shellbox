@@ -74,7 +74,7 @@ func getSubscriptionIDFromMetadata() (string, error) {
 
 	var subscriptionID string
 	_, err := RetryWithTimeout(context.Background(), opts, func(ctx context.Context) (bool, error) {
-		req, err := http.NewRequestWithContext(ctx, "GET", 
+		req, err := http.NewRequestWithContext(ctx, "GET",
 			"http://169.254.169.254/metadata/instance/compute/subscriptionId?api-version=2021-02-01&format=text", nil)
 		if err != nil {
 			return false, fmt.Errorf("creating metadata request: %w", err)
@@ -95,7 +95,7 @@ func getSubscriptionIDFromMetadata() (string, error) {
 		if len(subscriptionIDBytes) == 0 {
 			return false, fmt.Errorf("empty subscription ID from metadata service")
 		}
-		
+
 		subscriptionID = string(subscriptionIDBytes)
 		return true, nil
 	})
