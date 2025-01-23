@@ -48,6 +48,7 @@ const (
 // AzureClients holds all the Azure SDK clients needed for the application
 type AzureClients struct {
 	cred           *azidentity.ManagedIdentityCredential
+	subscriptionID string
 	ResourceClient *armresources.ResourceGroupsClient
 	NetworkClient  *armnetwork.VirtualNetworksClient
 	NSGClient      *armnetwork.SecurityGroupsClient
@@ -76,29 +77,20 @@ func NewAzureClients() (*AzureClients, error) {
 		return nil, fmt.Errorf("failed to create credential: %w", err)
 	}
 
-	// Get subscription ID from the current identity
+	// Get subscription ID once
 	client, err := armsubscription.NewSubscriptionsClient(cred, nil)
 	if err != nil {
 		return nil, fmt.Errorf("creating subscription client: %w", err)
 	}
-	pager := client.NewListPager(nil)
-
-	var subscriptionID string
-	for pager.More() {
-		page, err := pager.NextPage(context.Background())
-		if err != nil {
-			return nil, fmt.Errorf("listing subscriptions: %w", err)
-		}
-		// Use the first available subscription
-		if len(page.Value) > 0 {
-			subscriptionID = *page.Value[0].SubscriptionID
-			break
-		}
+	
+	page, err := client.NewListPager(nil).NextPage(context.Background())
+	if err != nil {
+		return nil, fmt.Errorf("listing subscriptions: %w", err)
 	}
-
-	if subscriptionID == "" {
+	if len(page.Value) == 0 {
 		return nil, fmt.Errorf("no subscription found for managed identity")
 	}
+	subscriptionID := *page.Value[0].SubscriptionID
 
 	// Initialize resource client
 	resourceClient, err := armresources.NewResourceGroupsClient(subscriptionID, cred, nil)
@@ -160,6 +152,7 @@ func NewAzureClients() (*AzureClients, error) {
 
 	return &AzureClients{
 		cred:           cred,
+		subscriptionID: subscriptionID,
 		ResourceClient: resourceClient,
 		NetworkClient:  networkClient,
 		NSGClient:      nsgClient,
@@ -354,6 +347,11 @@ func CreateNetworkInfrastructure(ctx context.Context, clients *AzureClients) err
 	}
 
 	return nil
+}
+
+// GetSubscriptionID returns the stored subscription ID
+func (c *AzureClients) GetSubscriptionID() string {
+	return c.subscriptionID
 }
 
 // CleanupOldResourceGroups deletes resource groups older than 5 minutes
