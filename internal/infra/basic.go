@@ -47,6 +47,7 @@ const (
 
 // AzureClients holds all the Azure SDK clients needed for the application
 type AzureClients struct {
+	cred           *azidentity.ManagedIdentityCredential
 	ResourceClient *armresources.ResourceGroupsClient
 	NetworkClient  *armnetwork.VirtualNetworksClient
 	NSGClient      *armnetwork.SecurityGroupsClient
@@ -156,6 +157,7 @@ func NewAzureClients() (*AzureClients, error) {
 	}
 
 	return &AzureClients{
+		cred:           cred,
 		ResourceClient: resourceClient,
 		NetworkClient:  networkClient,
 		NSGClient:      nsgClient,
