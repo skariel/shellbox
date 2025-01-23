@@ -190,7 +190,7 @@ func assignRoleToVM(ctx context.Context, clients *AzureClients, principalID *str
 	subscriptionID := clients.GetSubscriptionID()
 	roleDefID := getBastionRoleID(subscriptionID)
 	guid := NewGUID()
-	
+
 	_, err := clients.RoleClient.Create(ctx,
 		fmt.Sprintf("/subscriptions/%s/resourceGroups/%s", subscriptionID, clients.GetResourceGroupName()),
 		guid,
