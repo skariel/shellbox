@@ -345,10 +345,10 @@ func CreateNetworkInfrastructure(ctx context.Context, clients *AzureClients) err
 			globalCache.boxesSubnetID = *subnet.ID
 		}
 	}
-	if _bastionSubnetID == "" {
+	if globalCache.bastionSubnetID == "" {
 		return fmt.Errorf("bastion subnet not found in VNet")
 	}
-	if _boxesSubnetID == "" {
+	if globalCache.boxesSubnetID == "" {
 		return fmt.Errorf("boxes subnet not found in VNet")
 	}
 
