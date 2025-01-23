@@ -66,80 +66,66 @@ func (c *AzureClients) GetResourceGroupName() string {
 	return c.infraIDs.resourceGroupName
 }
 
-// newAzureClients creates and returns all necessary Azure clients
-func NewAzureClients() (*AzureClients, error) {
-	// Get credentials from managed identity
-	cred, err := azidentity.NewManagedIdentityCredential(nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create credential: %w", err)
-	}
-
-	// Get subscription ID from instance metadata
+func getSubscriptionIDFromMetadata() (string, error) {
 	req, err := http.NewRequest("GET", "http://169.254.169.254/metadata/instance/compute/subscriptionId?api-version=2021-02-01&format=text", nil)
 	if err != nil {
-		return nil, fmt.Errorf("creating metadata request: %w", err)
+		return "", fmt.Errorf("creating metadata request: %w", err)
 	}
 	req.Header.Add("Metadata", "true")
 
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("getting subscription ID from metadata: %w", err)
+		return "", fmt.Errorf("getting subscription ID from metadata: %w", err)
 	}
 	defer resp.Body.Close()
 
 	subscriptionIDBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("reading subscription ID: %w", err)
+		return "", fmt.Errorf("reading subscription ID: %w", err)
 	}
 	if len(subscriptionIDBytes) == 0 {
-		return nil, fmt.Errorf("empty subscription ID from metadata service")
+		return "", fmt.Errorf("empty subscription ID from metadata service")
 	}
-	subscriptionID := string(subscriptionIDBytes)
+	return string(subscriptionIDBytes), nil
+}
 
-	// Initialize resource client
+func initializeAzureClients(subscriptionID string, cred *azidentity.ManagedIdentityCredential) (*AzureClients, error) {
 	resourceClient, err := armresources.NewResourceGroupsClient(subscriptionID, cred, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create resource group client: %w", err)
 	}
 
-	// Initialize network client
 	networkClient, err := armnetwork.NewVirtualNetworksClient(subscriptionID, cred, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create network client: %w", err)
 	}
 
-	// Initialize NSG client
 	nsgClient, err := armnetwork.NewSecurityGroupsClient(subscriptionID, cred, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create NSG client: %w", err)
 	}
 
-	// Initialize Public IP client
 	publicIPClient, err := armnetwork.NewPublicIPAddressesClient(subscriptionID, cred, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Public IP client: %w", err)
 	}
 
-	// Initialize NIC client
 	nicClient, err := armnetwork.NewInterfacesClient(subscriptionID, cred, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create interfaces client: %w", err)
 	}
 
-	// Initialize compute client
 	computeClient, err := armcompute.NewVirtualMachinesClient(subscriptionID, cred, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create compute client: %w", err)
 	}
 
-	// Initialize Cosmos DB client
 	cosmosClient, err := armcosmos.NewDatabaseAccountsClient(subscriptionID, cred, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cosmos client: %w", err)
 	}
 
-	// Initialize Key Vault clients
 	keyVaultClient, err := armkeyvault.NewVaultsClient(subscriptionID, cred, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create key vault client: %w", err)
@@ -170,6 +156,21 @@ func NewAzureClients() (*AzureClients, error) {
 		SecretsClient:  secretsClient,
 		RoleClient:     roleClient,
 	}, nil
+}
+
+// NewAzureClients creates and returns all necessary Azure clients
+func NewAzureClients() (*AzureClients, error) {
+	cred, err := azidentity.NewManagedIdentityCredential(nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create credential: %w", err)
+	}
+
+	subscriptionID, err := getSubscriptionIDFromMetadata()
+	if err != nil {
+		return nil, err
+	}
+
+	return initializeAzureClients(subscriptionID, cred)
 }
 
 // GetBastionSubnetID returns the ID of the bastion subnet
