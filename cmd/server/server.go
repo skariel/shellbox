@@ -32,7 +32,8 @@ func waitForManagedIdentity(timeout time.Duration) (*infra.AzureClients, error) 
 			clients, err := infra.NewAzureClients()
 			if err == nil {
 				// Test the clients by trying to list resource groups
-				_, err = clients.ResourceClient.List(ctx, nil, nil)
+				pager := clients.ResourceClient.NewListPager(nil)
+				_, err = pager.NextPage(ctx)
 				if err == nil {
 					log.Println("managed identity is ready")
 					return clients, nil
