@@ -46,6 +46,10 @@ const (
 	bastionIPName  = "bastion-ip"
 )
 
+var defaultPollOptions = runtime.PollUntilDoneOptions{
+	Frequency: 2 * time.Second,
+}
+
 func compileBastionServer() error {
 	if err := exec.Command("go", "build", "-o", "/tmp/server", "./cmd/server").Run(); err != nil {
 		return fmt.Errorf("failed to compile server binary: %w", err)
@@ -54,10 +58,6 @@ func compileBastionServer() error {
 }
 
 func createBastionPublicIP(ctx context.Context, clients *AzureClients) (*armnetwork.PublicIPAddress, error) {
-	pollUntilDoneOption := runtime.PollUntilDoneOptions{
-		Frequency: 2 * time.Second,
-	}
-
 	rgName := GetResourceGroupName()
 	ipPoller, err := clients.PublicIPClient.BeginCreateOrUpdate(ctx, rgName, bastionIPName, armnetwork.PublicIPAddress{
 		Location: to.Ptr(location),
@@ -71,7 +71,7 @@ func createBastionPublicIP(ctx context.Context, clients *AzureClients) (*armnetw
 	if err != nil {
 		return nil, fmt.Errorf("failed to start public IP creation: %w", err)
 	}
-	res, err := ipPoller.PollUntilDone(ctx, &pollUntilDoneOption)
+	res, err := ipPoller.PollUntilDone(ctx, &defaultPollOptions)
 	if err != nil {
 		return nil, fmt.Errorf("failed to poll IP creation: %w", err)
 	}
@@ -80,10 +80,6 @@ func createBastionPublicIP(ctx context.Context, clients *AzureClients) (*armnetw
 }
 
 func createBastionNIC(ctx context.Context, clients *AzureClients, publicIPID *string) (*armnetwork.Interface, error) {
-	pollUntilDoneOption := runtime.PollUntilDoneOptions{
-		Frequency: 2 * time.Second,
-	}
-
 	bastionSubnetID, err := GetBastionSubnetID()
 	if err != nil {
 		return nil, err
@@ -112,7 +108,7 @@ func createBastionNIC(ctx context.Context, clients *AzureClients, publicIPID *st
 	if err != nil {
 		return nil, fmt.Errorf("failed to start NIC creation: %w", err)
 	}
-	res, err := nicPoller.PollUntilDone(ctx, &pollUntilDoneOption)
+	res, err := nicPoller.PollUntilDone(ctx, &defaultPollOptions)
 	if err != nil {
 		return nil, fmt.Errorf("failed to poll NIC creation: %w", err)
 	}
@@ -199,7 +195,7 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *BastionCo
 	if err != nil {
 		return fmt.Errorf("failed to start bastion VM creation: %w", err)
 	}
-	vm, err := vmPoller.PollUntilDone(ctx, &pollUntilDoneOption)
+	vm, err := vmPoller.PollUntilDone(ctx, &defaultPollOptions)
 	if err != nil {
 		return fmt.Errorf("failed to create bastion VM: %w", err)
 	}
