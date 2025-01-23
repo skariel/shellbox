@@ -1,7 +1,6 @@
 package sshutil
 
 import (
-	"context"
 	"fmt"
 	"os/exec"
 )
