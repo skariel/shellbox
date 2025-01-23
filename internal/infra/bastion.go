@@ -195,7 +195,7 @@ func copyServerBinary(ctx context.Context, clients *AzureClients, config *Bastio
 	remotePath := fmt.Sprintf("/home/%s/server", config.AdminUsername)
 	rgPath := fmt.Sprintf("/home/%s/rgname", config.AdminUsername)
 
-	_, err := RetryWithTimeout(ctx, opts, func(ctx context.Context) (bool, error) {
+	_, err = RetryWithTimeout(ctx, opts, func(ctx context.Context) (bool, error) {
 		if err := sshutil.CopyFile(ctx, "/tmp/server", remotePath, config.AdminUsername, publicIPAddress); err != nil {
 			return false, err
 		}
