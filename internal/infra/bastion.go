@@ -189,7 +189,7 @@ func copyServerBinary(config *BastionConfig, publicIPAddress string) error {
 func startServerOnBastion(config *BastionConfig, publicIPAddress string) error {
 	opts := DefaultRetryOptions()
 	opts.Operation = "start server on bastion"
-	
+
 	command := fmt.Sprintf("nohup /home/%s/server > /home/%s/server.log 2>&1 &", config.AdminUsername, config.AdminUsername)
 	_, err := RetryWithTimeout(context.Background(), opts, func(ctx context.Context) (bool, error) {
 		if err := ssh.ExecuteCommand(command, config.AdminUsername, publicIPAddress); err != nil {
