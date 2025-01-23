@@ -181,21 +181,6 @@ func startServerOnBastion(config *BastionConfig, publicIPAddress string) error {
 	return ssh.ExecuteCommand(command, config.AdminUsername, publicIPAddress)
 }
 
-const bastionRoleDefinition = `{
-	"Name": "Shellbox Bastion Role",
-	"Description": "Custom role for Shellbox bastion to manage boxes and their resources",
-	"AssignableScopes": ["/"],
-	"Actions": [
-		"Microsoft.Compute/virtualMachines/*",
-		"Microsoft.Network/networkInterfaces/*",
-		"Microsoft.Network/networkSecurityGroups/*",
-		"Microsoft.Compute/disks/*",
-		"Microsoft.Resources/subscriptions/resourceGroups/read"
-	],
-	"NotActions": [],
-	"DataActions": [],
-	"NotDataActions": []
-}`
 
 func createBastionRole(ctx context.Context, clients *AzureClients) (string, error) {
 	subscriptionID := clients.GetSubscriptionID()
