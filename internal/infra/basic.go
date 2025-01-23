@@ -210,6 +210,16 @@ func (c *AzureClients) GetBoxesSubnetID() (string, error) {
 	return "", errors.New("could not find BoxesSubnetID")
 }
 
+// SetBastionSubnetID sets the bastion subnet ID
+func (c *AzureClients) SetBastionSubnetID(id string) {
+	c.infraIDs.bastionSubnetID = id
+}
+
+// SetBoxesSubnetID sets the boxes subnet ID
+func (c *AzureClients) SetBoxesSubnetID(id string) {
+	c.infraIDs.boxesSubnetID = id
+}
+
 // CreateNetworkInfrastructure sets up the basic network infrastructure in Azure
 func CreateNetworkInfrastructure(ctx context.Context, clients *AzureClients) error {
 	pollUntilDoneOption := runtime.PollUntilDoneOptions{

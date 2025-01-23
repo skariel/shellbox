@@ -56,7 +56,7 @@ func main() {
 	if len(parts) != 3 {
 		log.Fatalf("invalid network details format")
 	}
-	bastionSubnetID, boxesSubnetID, vnetName := parts[0], parts[1], parts[2]
+	bastionSubnetID, boxesSubnetID, _ := parts[0], parts[1], parts[2]
 
 	keyPath := "/home/shellbox/.ssh/id_rsa"
 	// Generate SSH key pair
@@ -74,8 +74,8 @@ func main() {
 
 	// Set infrastructure details from files
 	clients.SetResourceGroupName(string(rgName))
-	clients.infraIDs.bastionSubnetID = bastionSubnetID
-	clients.infraIDs.boxesSubnetID = boxesSubnetID
+	clients.SetBastionSubnetID(bastionSubnetID)
+	clients.SetBoxesSubnetID(boxesSubnetID)
 
 	config := &infra.BoxConfig{
 		AdminUsername: "shellbox",
