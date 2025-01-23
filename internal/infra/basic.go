@@ -66,6 +66,11 @@ func (c *AzureClients) GetResourceGroupName() string {
 	return c.infraIDs.resourceGroupName
 }
 
+// SetResourceGroupName sets the resource group name
+func (c *AzureClients) SetResourceGroupName(name string) {
+	c.infraIDs.resourceGroupName = name
+}
+
 func getSubscriptionIDFromMetadata() (string, error) {
 	opts := DefaultRetryOptions()
 	opts.Operation = "metadata service query"

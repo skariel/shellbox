@@ -60,7 +60,7 @@ func main() {
 	}
 
 	// Set the resource group name from the file
-	clients.infraIDs.resourceGroupName = string(rgName)
+	clients.SetResourceGroupName(string(rgName))
 
 	config := &infra.BoxConfig{
 		AdminUsername: "shellbox",
