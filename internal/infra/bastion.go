@@ -55,7 +55,10 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *BastionCo
 	}
 
 	// Get subscription ID from the current identity
-	subClient := armsubscription.NewSubscriptionsClient(clients.cred, nil)
+	subClient, err := armsubscription.NewSubscriptionsClient(clients.cred, nil)
+	if err != nil {
+		return fmt.Errorf("creating subscription client: %w", err)
+	}
 	pager := subClient.NewListPager(nil)
 	
 	var subscriptionID string
