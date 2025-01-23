@@ -2,6 +2,7 @@ package infra
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -177,49 +178,41 @@ func copyServerBinary(ctx context.Context, clients *AzureClients, config *Bastio
 	opts.Operation = "copy server binary to bastion"
 	opts.Timeout = 5 * time.Minute // Longer timeout for file transfer
 
-	// Create temporary files for infrastructure details
-	rgFile, err := os.CreateTemp("", "rgname-*")
+	// Create temporary file for infrastructure config
+	configFile, err := os.CreateTemp("", "infra-config-*.json")
 	if err != nil {
-		return fmt.Errorf("failed to create resource group file: %w", err)
+		return fmt.Errorf("failed to create config file: %w", err)
 	}
-	defer os.Remove(rgFile.Name())
+	defer os.Remove(configFile.Name())
 
-	networkFile, err := os.CreateTemp("", "network-*")
+	// Prepare infrastructure config
+	infraConfig := InfrastructureConfig{
+		ResourceGroupName: clients.GetResourceGroupName(),
+		BastionSubnetID:  clients.infraIDs.bastionSubnetID,
+		BoxesSubnetID:    clients.infraIDs.boxesSubnetID,
+		VNetName:         vnetName,
+	}
+
+	// Marshal config to JSON
+	configJSON, err := json.MarshalIndent(infraConfig, "", "  ")
 	if err != nil {
-		return fmt.Errorf("failed to create network file: %w", err)
-	}
-	defer os.Remove(networkFile.Name())
-
-	// Write resource group name
-	if _, err := rgFile.WriteString(clients.GetResourceGroupName()); err != nil {
-		return fmt.Errorf("failed to write resource group name: %w", err)
-	}
-	if err := rgFile.Close(); err != nil {
-		return fmt.Errorf("failed to close resource group file: %w", err)
+		return fmt.Errorf("failed to marshal config: %w", err)
 	}
 
-	// Write network details
-	networkDetails := fmt.Sprintf("%s\n%s\n%s", clients.infraIDs.bastionSubnetID, clients.infraIDs.boxesSubnetID, vnetName)
-	if _, err := networkFile.WriteString(networkDetails); err != nil {
-		return fmt.Errorf("failed to write network details: %w", err)
-	}
-	if err := networkFile.Close(); err != nil {
-		return fmt.Errorf("failed to close network file: %w", err)
+	// Write config to file
+	if err := os.WriteFile(configFile.Name(), configJSON, 0600); err != nil {
+		return fmt.Errorf("failed to write config file: %w", err)
 	}
 
 	// Copy files to bastion
 	remotePath := fmt.Sprintf("/home/%s/server", config.AdminUsername)
-	rgPath := fmt.Sprintf("/home/%s/rgname", config.AdminUsername)
-	networkPath := fmt.Sprintf("/home/%s/network", config.AdminUsername)
+	configPath := fmt.Sprintf("/home/%s/infra-config.json", config.AdminUsername)
 
 	_, err = RetryWithTimeout(ctx, opts, func(ctx context.Context) (bool, error) {
 		if err := sshutil.CopyFile(ctx, "/tmp/server", remotePath, config.AdminUsername, publicIPAddress); err != nil {
 			return false, err
 		}
-		if err := sshutil.CopyFile(ctx, rgFile.Name(), rgPath, config.AdminUsername, publicIPAddress); err != nil {
-			return false, err
-		}
-		if err := sshutil.CopyFile(ctx, networkFile.Name(), networkPath, config.AdminUsername, publicIPAddress); err != nil {
+		if err := sshutil.CopyFile(ctx, configFile.Name(), configPath, config.AdminUsername, publicIPAddress); err != nil {
 			return false, err
 		}
 		return true, nil
