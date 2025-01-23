@@ -2,7 +2,6 @@ package infra
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -35,9 +34,9 @@ type VMConfig struct {
 // to allow it to work with existing infrastructure rather than creating new resources.
 type InfrastructureConfig struct {
 	ResourceGroupName string `json:"resource_group_name"`
-	BastionSubnetID  string `json:"bastion_subnet_id"`
-	BoxesSubnetID    string `json:"boxes_subnet_id"`
-	VNetName         string `json:"vnet_name"`
+	BastionSubnetID   string `json:"bastion_subnet_id"`
+	BoxesSubnetID     string `json:"boxes_subnet_id"`
+	VNetName          string `json:"vnet_name"`
 }
 
 // InfrastructureIDs holds infrastructure resource identifiers

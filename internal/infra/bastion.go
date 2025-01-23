@@ -188,9 +188,9 @@ func copyServerBinary(ctx context.Context, clients *AzureClients, config *Bastio
 	// Prepare infrastructure config
 	infraConfig := InfrastructureConfig{
 		ResourceGroupName: clients.GetResourceGroupName(),
-		BastionSubnetID:  clients.infraIDs.bastionSubnetID,
-		BoxesSubnetID:    clients.infraIDs.boxesSubnetID,
-		VNetName:         vnetName,
+		BastionSubnetID:   clients.infraIDs.bastionSubnetID,
+		BoxesSubnetID:     clients.infraIDs.boxesSubnetID,
+		VNetName:          vnetName,
 	}
 
 	// Marshal config to JSON
