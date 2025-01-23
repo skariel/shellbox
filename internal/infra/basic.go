@@ -24,8 +24,8 @@ import (
 // Cache holds infrastructure-related cached values
 type Cache struct {
 	resourceGroupName string
-	bastionSubnetID  string
-	boxesSubnetID    string
+	bastionSubnetID   string
+	boxesSubnetID     string
 }
 
 // NewCache creates a new cache instance
@@ -175,7 +175,6 @@ func NewAzureClients() (*AzureClients, error) {
 		RoleClient:     roleClient,
 	}, nil
 }
-
 
 // GetBastionSubnetID returns the ID of the bastion subnet
 func GetBastionSubnetID() (string, error) {
