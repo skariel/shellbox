@@ -212,7 +212,7 @@ func assignRoleToVM(ctx context.Context, clients *AzureClients, principalID *str
 
 	// Assign at subscription level to allow resource creation in any resource group
 	scope := fmt.Sprintf("/subscriptions/%s", subscriptionID)
-	
+
 	_, err := clients.RoleClient.Create(ctx,
 		scope,
 		guid,
