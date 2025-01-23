@@ -5,14 +5,11 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"sync"
 	"syscall"
-	"time"
 
 	"shellbox/internal/infra"
 	"shellbox/internal/ssh"
 )
-
 
 func main() {
 	log.Println("starting shellbox server")
