@@ -18,6 +18,7 @@ func readSSHKey(path string) (string, error) {
 	}
 	return string(key), nil
 }
+
 func main() {
 	ctx := context.Background()
 
@@ -47,6 +48,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("could not load ssh pub key: %s", err)
 	}
+	
 	log.Println("creating bastion")
 	if err := infra.DeployBastion(ctx, clients, &infra.BastionConfig{
 		AdminUsername: "shellbox",
@@ -56,27 +58,5 @@ func main() {
 		log.Fatal(err)
 	}
 
-	log.Println("creating test boxes")
-
-	// Create first box
-	box1ID, err := infra.CreateBox(ctx, clients, &infra.BoxConfig{
-		AdminUsername: "shellbox",
-		SSHPublicKey:  pubKey,
-		VMSize:        "Standard_B2ms",
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	log.Printf("created box1 with ID: %s", box1ID)
-
-	// Create second box
-	box2ID, err := infra.CreateBox(ctx, clients, &infra.BoxConfig{
-		AdminUsername: "shellbox",
-		SSHPublicKey:  pubKey,
-		VMSize:        "Standard_B2ms",
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	log.Printf("created box2 with ID: %s", box2ID)
+	log.Println("infrastructure deployment complete")
 }
