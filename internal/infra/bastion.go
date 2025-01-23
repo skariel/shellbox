@@ -40,27 +40,25 @@ func DefaultBastionConfig() *BastionConfig {
 	}
 }
 
-// DeployBastion creates a bastion host in the bastion subnet
-func DeployBastion(ctx context.Context, clients *AzureClients, config *BastionConfig) error {
-	const (
-		bastionVMName  = "shellbox-bastion"
-		bastionNICName = "bastion-nic"
-		bastionIPName  = "bastion-ip"
-	)
+const (
+	bastionVMName  = "shellbox-bastion"
+	bastionNICName = "bastion-nic"
+	bastionIPName  = "bastion-ip"
+)
 
-	// Compile server binary
+func compileBastionServer() error {
 	if err := exec.Command("go", "build", "-o", "/tmp/server", "./cmd/server").Run(); err != nil {
 		return fmt.Errorf("failed to compile server binary: %w", err)
 	}
+	return nil
+}
 
-	subscriptionID := clients.GetSubscriptionID()
-
+func createBastionPublicIP(ctx context.Context, clients *AzureClients) (*armnetwork.PublicIPAddress, error) {
 	pollUntilDoneOption := runtime.PollUntilDoneOptions{
 		Frequency: 2 * time.Second,
 	}
 
 	rgName := GetResourceGroupName()
-	// Create public IP for bastion
 	ipPoller, err := clients.PublicIPClient.BeginCreateOrUpdate(ctx, rgName, bastionIPName, armnetwork.PublicIPAddress{
 		Location: to.Ptr(location),
 		SKU: &armnetwork.PublicIPAddressSKU{
@@ -71,19 +69,22 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *BastionCo
 		},
 	}, nil)
 	if err != nil {
-		return fmt.Errorf("failed to start public IP creation: %w", err)
+		return nil, fmt.Errorf("failed to start public IP creation: %w", err)
 	}
-	publicIP, err := ipPoller.PollUntilDone(ctx, &pollUntilDoneOption)
-	if err != nil {
-		return fmt.Errorf("failed to create public IP: %w", err)
+	return ipPoller.PollUntilDone(ctx, &pollUntilDoneOption)
+}
+
+func createBastionNIC(ctx context.Context, clients *AzureClients, publicIPID *string) (*armnetwork.Interface, error) {
+	pollUntilDoneOption := runtime.PollUntilDoneOptions{
+		Frequency: 2 * time.Second,
 	}
-
-	// Create NIC for bastion
-
+	
 	bastionSubnetID, err := GetBastionSubnetID()
 	if err != nil {
-		return err
+		return nil, err
 	}
+
+	rgName := GetResourceGroupName()
 	nicPoller, err := clients.NICClient.BeginCreateOrUpdate(ctx, rgName, bastionNICName, armnetwork.Interface{
 		Location: to.Ptr(location),
 		Properties: &armnetwork.InterfacePropertiesFormat{
@@ -96,7 +97,7 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *BastionCo
 						},
 						PrivateIPAllocationMethod: to.Ptr(armnetwork.IPAllocationMethodDynamic),
 						PublicIPAddress: &armnetwork.PublicIPAddress{
-							ID: publicIP.ID,
+							ID: publicIPID,
 						},
 					},
 				},
@@ -104,9 +105,25 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *BastionCo
 		},
 	}, nil)
 	if err != nil {
-		return fmt.Errorf("failed to start NIC creation: %w", err)
+		return nil, fmt.Errorf("failed to start NIC creation: %w", err)
 	}
-	nic, err := nicPoller.PollUntilDone(ctx, &pollUntilDoneOption)
+	return nicPoller.PollUntilDone(ctx, &pollUntilDoneOption)
+}
+
+// DeployBastion creates a bastion host in the bastion subnet
+func DeployBastion(ctx context.Context, clients *AzureClients, config *BastionConfig) error {
+	if err := compileBastionServer(); err != nil {
+		return err
+	}
+
+	subscriptionID := clients.GetSubscriptionID()
+
+	publicIP, err := createBastionPublicIP(ctx, clients)
+	if err != nil {
+		return fmt.Errorf("failed to create public IP: %w", err)
+	}
+
+	nic, err := createBastionNIC(ctx, clients, publicIP.ID)
 	if err != nil {
 		return fmt.Errorf("failed to create NIC: %w", err)
 	}
