@@ -14,7 +14,7 @@ import (
 
 const (
 	targetPoolSize = 2
-	checkInterval = 1 * time.Minute
+	checkInterval  = 1 * time.Minute
 )
 
 type BoxPool struct {
@@ -48,18 +48,18 @@ func (p *BoxPool) maintainPool(ctx context.Context) {
 			if currentSize < targetPoolSize {
 				boxesToCreate := targetPoolSize - currentSize
 				log.Printf("creating %d boxes to maintain pool size", boxesToCreate)
-				
+
 				for i := 0; i < boxesToCreate; i++ {
 					boxID, err := infra.CreateBox(ctx, p.clients, p.config)
 					if err != nil {
 						log.Printf("failed to create box: %v", err)
 						continue
 					}
-					
+
 					p.mu.Lock()
 					p.boxes[boxID] = "ready"
 					p.mu.Unlock()
-					
+
 					log.Printf("created box with ID: %s", boxID)
 				}
 			}

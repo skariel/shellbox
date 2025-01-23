@@ -48,7 +48,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("could not load ssh pub key: %s", err)
 	}
-	
+
 	log.Println("creating bastion")
 	if err := infra.DeployBastion(ctx, clients, &infra.BastionConfig{
 		AdminUsername: "shellbox",
