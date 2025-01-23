@@ -10,9 +10,9 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"sync"
 	"syscall"
-	"path/filepath"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -125,7 +125,6 @@ func main() {
 		SSHPublicKey:  publicKey,
 		VMSize:        "Standard_B2ms",
 	}
-
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
