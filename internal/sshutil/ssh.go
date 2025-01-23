@@ -29,11 +29,11 @@ func GenerateKeyPair(keyPath string) (privateKey string, publicKey string, err e
 	privateKeyString := string(pem.EncodeToMemory(privateKeyPEM))
 
 	// Generate public key in SSH format
-	publicKey, err := ssh.NewPublicKey(&key.PublicKey)
+	sshPublicKey, err := ssh.NewPublicKey(&key.PublicKey)
 	if err != nil {
 		return "", "", fmt.Errorf("creating ssh public key: %w", err)
 	}
-	publicKeyString := string(ssh.MarshalAuthorizedKey(publicKey))
+	publicKeyString := string(ssh.MarshalAuthorizedKey(sshPublicKey))
 	// Remove any trailing newline that might be present
 	publicKeyString = strings.TrimSpace(publicKeyString)
 
