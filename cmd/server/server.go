@@ -2,14 +2,47 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"shellbox/internal/infra"
 	"shellbox/internal/ssh"
 )
+
+func waitForManagedIdentity(timeout time.Duration) (*infra.AzureClients, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	var lastErr error
+	for {
+		select {
+		case <-ctx.Done():
+			if lastErr != nil {
+				return nil, fmt.Errorf("timeout waiting for managed identity: %w", lastErr)
+			}
+			return nil, fmt.Errorf("timeout waiting for managed identity")
+		case <-ticker.C:
+			clients, err := infra.NewAzureClients()
+			if err == nil {
+				// Test the clients by trying to list resource groups
+				_, err = clients.ResourceClient.List(ctx, nil, nil)
+				if err == nil {
+					log.Println("managed identity is ready")
+					return clients, nil
+				}
+			}
+			lastErr = err
+			log.Printf("waiting for managed identity to be ready: %v", err)
+		}
+	}
+}
 
 func main() {
 	log.Println("starting shellbox server")
@@ -22,9 +55,10 @@ func main() {
 	}
 	log.Printf("generated SSH key pair and saved private key to: %s", keyPath)
 
-	clients, err := infra.NewAzureClients()
+	// Wait for managed identity to be fully ready before proceeding
+	clients, err := waitForManagedIdentity(2 * time.Minute)
 	if err != nil {
-		log.Fatalf("failed to create Azure clients: %v", err)
+		log.Fatalf("failed waiting for managed identity: %v", err)
 	}
 
 	config := &infra.BoxConfig{

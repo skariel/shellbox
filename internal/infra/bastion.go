@@ -188,38 +188,22 @@ func getBastionRoleID(subscriptionID string) string {
 
 func assignRoleToVM(ctx context.Context, clients *AzureClients, principalID *string) error {
 	subscriptionID := clients.GetSubscriptionID()
-
 	roleDefID := getBastionRoleID(subscriptionID)
-
-	retryTimeout := time.After(2 * time.Minute)
-	retryTicker := time.NewTicker(10 * time.Second)
-	defer retryTicker.Stop()
-
-	var lastErr error
-	for {
-		select {
-		case <-retryTimeout:
-			if lastErr != nil {
-				return fmt.Errorf("timeout waiting for role assignment: %w", lastErr)
-			}
-			return fmt.Errorf("timeout waiting for role assignment")
-		case <-retryTicker.C:
-			guid := NewGUID()
-			_, err := clients.RoleClient.Create(ctx,
-				fmt.Sprintf("/subscriptions/%s/resourceGroups/%s", subscriptionID, clients.GetResourceGroupName()),
-				guid,
-				armauthorization.RoleAssignmentCreateParameters{
-					Properties: &armauthorization.RoleAssignmentProperties{
-						PrincipalID:      principalID,
-						RoleDefinitionID: to.Ptr(roleDefID),
-					},
-				}, nil)
-			if err == nil {
-				return nil
-			}
-			lastErr = err
-		}
+	guid := NewGUID()
+	
+	_, err := clients.RoleClient.Create(ctx,
+		fmt.Sprintf("/subscriptions/%s/resourceGroups/%s", subscriptionID, clients.GetResourceGroupName()),
+		guid,
+		armauthorization.RoleAssignmentCreateParameters{
+			Properties: &armauthorization.RoleAssignmentProperties{
+				PrincipalID:      principalID,
+				RoleDefinitionID: to.Ptr(roleDefID),
+			},
+		}, nil)
+	if err != nil {
+		return fmt.Errorf("creating role assignment: %w", err)
 	}
+	return nil
 }
 
 // DeployBastion creates a bastion host in the bastion subnet
