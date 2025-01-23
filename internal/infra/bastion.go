@@ -178,7 +178,7 @@ func copyServerBinary(ctx context.Context, clients *AzureClients, config *Bastio
 	opts.Timeout = 5 * time.Minute // Longer timeout for file transfer
 
 	// Write resource group name to a file
-	if err := os.WriteFile("/tmp/rgname", []byte(clients.GetResourceGroupName()), 0644); err != nil {
+	if err := os.WriteFile("/tmp/rgname", []byte(clients.GetResourceGroupName()), 0600); err != nil {
 		return fmt.Errorf("failed to write resource group name: %w", err)
 	}
 
