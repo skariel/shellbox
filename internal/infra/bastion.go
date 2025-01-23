@@ -210,8 +210,11 @@ func assignRoleToVM(ctx context.Context, clients *AzureClients, principalID *str
 	roleDefID := getBastionRoleID(subscriptionID)
 	guid := NewGUID()
 
+	// Assign at subscription level to allow resource creation in any resource group
+	scope := fmt.Sprintf("/subscriptions/%s", subscriptionID)
+	
 	_, err := clients.RoleClient.Create(ctx,
-		fmt.Sprintf("/subscriptions/%s/resourceGroups/%s", subscriptionID, clients.GetResourceGroupName()),
+		scope,
 		guid,
 		armauthorization.RoleAssignmentCreateParameters{
 			Properties: &armauthorization.RoleAssignmentProperties{
