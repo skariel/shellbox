@@ -177,9 +177,18 @@ func copyServerBinary(ctx context.Context, clients *AzureClients, config *Bastio
 	opts.Operation = "copy server binary to bastion"
 	opts.Timeout = 5 * time.Minute // Longer timeout for file transfer
 
-	// Write resource group name to a file
-	if err := os.WriteFile("/tmp/rgname", []byte(clients.GetResourceGroupName()), 0600); err != nil {
+	// Create temporary file for resource group name
+	tmpFile, err := os.CreateTemp("", "rgname-*")
+	if err != nil {
+		return fmt.Errorf("failed to create temp file: %w", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	if _, err := tmpFile.WriteString(clients.GetResourceGroupName()); err != nil {
 		return fmt.Errorf("failed to write resource group name: %w", err)
+	}
+	if err := tmpFile.Close(); err != nil {
+		return fmt.Errorf("failed to close temp file: %w", err)
 	}
 
 	// Copy both the server binary and resource group name file
@@ -190,7 +199,7 @@ func copyServerBinary(ctx context.Context, clients *AzureClients, config *Bastio
 		if err := sshutil.CopyFile(ctx, "/tmp/server", remotePath, config.AdminUsername, publicIPAddress); err != nil {
 			return false, err
 		}
-		if err := sshutil.CopyFile(ctx, "/tmp/rgname", rgPath, config.AdminUsername, publicIPAddress); err != nil {
+		if err := sshutil.CopyFile(ctx, tmpFile.Name(), rgPath, config.AdminUsername, publicIPAddress); err != nil {
 			return false, err
 		}
 		return true, nil
