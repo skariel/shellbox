@@ -35,7 +35,7 @@ func main() {
 		}
 	}()
 
-	rgName := infra.GetResourceGroupName()
+	rgName := clients.GetResourceGroupName()
 	log.Printf("using resource group: %s", rgName)
 
 	log.Println("upserting networking infra")
