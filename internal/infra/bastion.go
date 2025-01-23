@@ -203,7 +203,11 @@ func createBastionRole(ctx context.Context, clients *AzureClients) (string, erro
 	roleID := fmt.Sprintf("shellbox-bastion-role-%s", NewGUID())
 
 	// Create role definition
-	roleDefClient := armauthorization.NewRoleDefinitionsClient(clients.cred, nil)
+	roleDefClient, err := armauthorization.NewRoleDefinitionsClient(clients.cred, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create role definitions client: %w", err)
+	}
+	
 	poller, err := roleDefClient.BeginCreateOrUpdate(ctx, scope, roleID, armauthorization.RoleDefinition{
 		Properties: &armauthorization.RoleDefinitionProperties{
 			RoleName:         to.Ptr("Shellbox Bastion Role"),
