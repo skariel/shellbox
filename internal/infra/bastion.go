@@ -181,51 +181,15 @@ func startServerOnBastion(config *BastionConfig, publicIPAddress string) error {
 	return ssh.ExecuteCommand(command, config.AdminUsername, publicIPAddress)
 }
 
-func createBastionRole(ctx context.Context, clients *AzureClients) (string, error) {
-	subscriptionID := clients.GetSubscriptionID()
-	scope := fmt.Sprintf("/subscriptions/%s", subscriptionID)
-	roleID := fmt.Sprintf("shellbox-bastion-role-%s", NewGUID())
-
-	// Create role definition
-	roleDefClient, err := armauthorization.NewRoleDefinitionsClient(clients.cred, nil)
-	if err != nil {
-		return "", fmt.Errorf("failed to create role definitions client: %w", err)
-	}
-
-	res, err := roleDefClient.CreateOrUpdate(ctx, scope, roleID, armauthorization.RoleDefinition{
-		Properties: &armauthorization.RoleDefinitionProperties{
-			RoleName:         to.Ptr("Shellbox Bastion Role"),
-			Description:      to.Ptr("Custom role for Shellbox bastion to manage boxes and their resources"),
-			AssignableScopes: []*string{to.Ptr(scope)},
-			Permissions: []*armauthorization.Permission{
-				{
-					Actions: []*string{
-						to.Ptr("Microsoft.Compute/virtualMachines/*"),
-						to.Ptr("Microsoft.Network/networkInterfaces/*"),
-						to.Ptr("Microsoft.Network/networkSecurityGroups/*"),
-						to.Ptr("Microsoft.Compute/disks/*"),
-						to.Ptr("Microsoft.Resources/subscriptions/resourceGroups/read"),
-					},
-					NotActions: []*string{},
-				},
-			},
-		},
-	}, nil)
-	if err != nil {
-		return "", fmt.Errorf("failed to poll role definition creation: %w", err)
-	}
-
-	return *res.ID, nil
+func getBastionRoleID(subscriptionID string) string {
+	// Use built-in Virtual Machine Contributor role
+	return fmt.Sprintf("/subscriptions/%s/providers/Microsoft.Authorization/roleDefinitions/9980e02c-c2be-4d73-94e8-173b1dc7cf3c", subscriptionID)
 }
 
 func assignRoleToVM(ctx context.Context, clients *AzureClients, principalID *string) error {
 	subscriptionID := clients.GetSubscriptionID()
 
-	// Create custom role
-	roleDefID, err := createBastionRole(ctx, clients)
-	if err != nil {
-		return fmt.Errorf("failed to create bastion role: %w", err)
-	}
+	roleDefID := getBastionRoleID(subscriptionID)
 
 	retryTimeout := time.After(2 * time.Minute)
 	retryTicker := time.NewTicker(10 * time.Second)
