@@ -113,31 +113,7 @@ func createBastionNIC(ctx context.Context, clients *AzureClients, publicIPID *st
 	return &res.Interface, nil
 }
 
-// DeployBastion creates a bastion host in the bastion subnet
-func DeployBastion(ctx context.Context, clients *AzureClients, config *BastionConfig) error {
-	if err := compileBastionServer(); err != nil {
-		return err
-	}
-
-	subscriptionID := clients.GetSubscriptionID()
-
-	publicIP, err := createBastionPublicIP(ctx, clients)
-	if err != nil {
-		return fmt.Errorf("failed to create public IP: %w", err)
-	}
-
-	nic, err := createBastionNIC(ctx, clients, publicIP.ID)
-	if err != nil {
-		return fmt.Errorf("failed to create NIC: %w", err)
-	}
-
-	// Generate cloud-init script
-	customData, err := GenerateBastionInitScript(config.SSHPublicKey)
-	if err != nil {
-		return fmt.Errorf("failed to generate init script: %w", err)
-	}
-
-	// Create bastion VM
+func createBastionVM(ctx context.Context, clients *AzureClients, config *BastionConfig, nicID string, customData string) (*armcompute.VirtualMachine, error) {
 	vmPoller, err := clients.ComputeClient.BeginCreateOrUpdate(ctx, GetResourceGroupName(), bastionVMName, armcompute.VirtualMachine{
 		Location: to.Ptr(location),
 		Identity: &armcompute.VirtualMachineIdentity{
@@ -181,7 +157,7 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *BastionCo
 			NetworkProfile: &armcompute.NetworkProfile{
 				NetworkInterfaces: []*armcompute.NetworkInterfaceReference{
 					{
-						ID: nic.ID,
+						ID: to.Ptr(nicID),
 						Properties: &armcompute.NetworkInterfaceReferenceProperties{
 							Primary: to.Ptr(true),
 						},
@@ -191,23 +167,29 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *BastionCo
 		},
 	}, nil)
 	if err != nil {
-		return fmt.Errorf("failed to start bastion VM creation: %w", err)
+		return nil, fmt.Errorf("failed to start bastion VM creation: %w", err)
 	}
+	
 	vm, err := vmPoller.PollUntilDone(ctx, &defaultPollOptions)
 	if err != nil {
-		return fmt.Errorf("failed to create bastion VM: %w", err)
+		return nil, fmt.Errorf("failed to create bastion VM: %w", err)
 	}
+	
 	if vm.Identity == nil || vm.Identity.PrincipalID == nil {
-		return fmt.Errorf("VM managed identity not found after creation")
+		return nil, fmt.Errorf("VM managed identity not found after creation")
 	}
+	
+	return &vm.VirtualMachine, nil
+}
 
-	// Copy server binary to bastion with retries
+func copyServerBinary(config *BastionConfig, publicIPAddress string) error {
 	timeout := time.After(2 * time.Minute)
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
-	scpDest := fmt.Sprintf("%s@%s:/home/%s/server", config.AdminUsername, *publicIP.Properties.IPAddress, config.AdminUsername)
+	scpDest := fmt.Sprintf("%s@%s:/home/%s/server", config.AdminUsername, publicIPAddress, config.AdminUsername)
 	var lastErr error
+	
 	for {
 		select {
 		case <-timeout:
@@ -217,29 +199,33 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *BastionCo
 			return fmt.Errorf("timeout copying server binary")
 		case <-ticker.C:
 			cmd := exec.Command("scp", "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=4", "/tmp/server", scpDest)
-			output, err := cmd.CombinedOutput()
-			if err == nil {
-				goto scpSuccess
+			if output, err := cmd.CombinedOutput(); err == nil {
+				return nil
 			} else {
 				lastErr = fmt.Errorf("%w: %s", err, string(output))
 			}
 		}
 	}
-scpSuccess:
+}
 
-	// Start the server via SSH
-	if err := exec.Command("ssh",
-		fmt.Sprintf("%s@%s", config.AdminUsername, *publicIP.Properties.IPAddress),
-		fmt.Sprintf("nohup /home/%s/server > /home/%s/server.log 2>&1 &", config.AdminUsername, config.AdminUsername)).Run(); err != nil {
+func startServerOnBastion(config *BastionConfig, publicIPAddress string) error {
+	cmd := exec.Command("ssh",
+		fmt.Sprintf("%s@%s", config.AdminUsername, publicIPAddress),
+		fmt.Sprintf("nohup /home/%s/server > /home/%s/server.log 2>&1 &", config.AdminUsername, config.AdminUsername))
+	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to start server: %w", err)
 	}
+	return nil
+}
 
-	// Create role assignment for the VM's managed identity with retries
+func assignRoleToVM(ctx context.Context, clients *AzureClients, principalID *string) error {
+	subscriptionID := clients.GetSubscriptionID()
 	roleDefID := fmt.Sprintf("/subscriptions/%s%s", subscriptionID, contributorRoleID)
 	retryTimeout := time.After(2 * time.Minute)
 	retryTicker := time.NewTicker(10 * time.Second)
 	defer retryTicker.Stop()
 
+	var lastErr error
 	for {
 		select {
 		case <-retryTimeout:
@@ -249,12 +235,12 @@ scpSuccess:
 			return fmt.Errorf("timeout waiting for role assignment")
 		case <-retryTicker.C:
 			guid := NewGUID()
-			_, err = clients.RoleClient.Create(ctx,
+			_, err := clients.RoleClient.Create(ctx,
 				fmt.Sprintf("/subscriptions/%s/resourceGroups/%s", subscriptionID, GetResourceGroupName()),
 				guid,
 				armauthorization.RoleAssignmentCreateParameters{
 					Properties: &armauthorization.RoleAssignmentProperties{
-						PrincipalID:      vm.Identity.PrincipalID,
+						PrincipalID:      principalID,
 						RoleDefinitionID: to.Ptr(roleDefID),
 					},
 				}, nil)
@@ -264,4 +250,41 @@ scpSuccess:
 			lastErr = err
 		}
 	}
+}
+
+// DeployBastion creates a bastion host in the bastion subnet
+func DeployBastion(ctx context.Context, clients *AzureClients, config *BastionConfig) error {
+	if err := compileBastionServer(); err != nil {
+		return err
+	}
+
+	publicIP, err := createBastionPublicIP(ctx, clients)
+	if err != nil {
+		return fmt.Errorf("failed to create public IP: %w", err)
+	}
+
+	nic, err := createBastionNIC(ctx, clients, publicIP.ID)
+	if err != nil {
+		return fmt.Errorf("failed to create NIC: %w", err)
+	}
+
+	customData, err := GenerateBastionInitScript(config.SSHPublicKey)
+	if err != nil {
+		return fmt.Errorf("failed to generate init script: %w", err)
+	}
+
+	vm, err := createBastionVM(ctx, clients, config, *nic.ID, customData)
+	if err != nil {
+		return err
+	}
+
+	if err := copyServerBinary(config, *publicIP.Properties.IPAddress); err != nil {
+		return err
+	}
+
+	if err := startServerOnBastion(config, *publicIP.Properties.IPAddress); err != nil {
+		return err
+	}
+
+	return assignRoleToVM(ctx, clients, vm.Identity.PrincipalID)
 }
