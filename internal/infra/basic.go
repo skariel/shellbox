@@ -21,6 +21,13 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/subscription/armsubscription"
 )
 
+// VMConfig holds common VM configuration fields
+type VMConfig struct {
+	AdminUsername string
+	SSHPublicKey  string
+	VMSize        string
+}
+
 // Cache holds infrastructure-related cached values
 type Cache struct {
 	resourceGroupName string
