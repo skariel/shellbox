@@ -28,7 +28,7 @@ type BoxTags struct {
 }
 
 // CreateBox creates a new box VM with proper networking setup.
-// It returns the VM's resource ID and any error encountered.
+// It returns the box ID and any error encountered.
 func CreateBox(ctx context.Context, clients *AzureClients, config *BoxConfig) (string, error) {
 	boxID := uuid.New().String()
 	vmName := fmt.Sprintf("box-%s", boxID)
@@ -54,12 +54,12 @@ func CreateBox(ctx context.Context, clients *AzureClients, config *BoxConfig) (s
 		BoxID:     boxID,
 	}
 
-	vm, err := createBoxVM(ctx, clients, vmName, *nic.ID, config, tags)
+	_, err = createBoxVM(ctx, clients, vmName, *nic.ID, config, tags)
 	if err != nil {
 		return "", fmt.Errorf("creating box VM: %w", err)
 	}
 
-	return *vm.ID, nil
+	return boxID, nil
 }
 
 func createBoxNSG(ctx context.Context, clients *AzureClients, nsgName string) (*armnetwork.SecurityGroup, error) {
