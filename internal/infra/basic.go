@@ -21,9 +21,19 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/subscription/armsubscription"
 )
 
-var (
-	_resourceGroupName string
-)
+// Cache holds infrastructure-related cached values
+type Cache struct {
+	resourceGroupName string
+	bastionSubnetID  string
+	boxesSubnetID    string
+}
+
+// NewCache creates a new cache instance
+func NewCache() *Cache {
+	return &Cache{}
+}
+
+var globalCache = NewCache()
 
 // Configuration constants
 const (
@@ -63,10 +73,10 @@ type AzureClients struct {
 
 // GetResourceGroupName returns a resource group name with timestamp
 func GetResourceGroupName() string {
-	if _resourceGroupName == "" {
-		_resourceGroupName = fmt.Sprintf("%s-%d", resourceGroupPrefix, time.Now().Unix())
+	if globalCache.resourceGroupName == "" {
+		globalCache.resourceGroupName = fmt.Sprintf("%s-%d", resourceGroupPrefix, time.Now().Unix())
 	}
-	return _resourceGroupName
+	return globalCache.resourceGroupName
 }
 
 // newAzureClients creates and returns all necessary Azure clients
@@ -166,23 +176,19 @@ func NewAzureClients() (*AzureClients, error) {
 	}, nil
 }
 
-var (
-	_bastionSubnetID string
-	_boxesSubnetID   string
-)
 
 // GetBastionSubnetID returns the ID of the bastion subnet
 func GetBastionSubnetID() (string, error) {
-	if _bastionSubnetID != "" {
-		return _bastionSubnetID, nil
+	if globalCache.bastionSubnetID != "" {
+		return globalCache.bastionSubnetID, nil
 	}
 	return "", errors.New("could not find BastionSubnetID")
 }
 
 // GetBoxesSubnetID returns the ID of the boxes subnet
 func GetBoxesSubnetID() (string, error) {
-	if _boxesSubnetID != "" {
-		return _boxesSubnetID, nil
+	if globalCache.boxesSubnetID != "" {
+		return globalCache.boxesSubnetID, nil
 	}
 	return "", errors.New("could not find BoxesSubnetID")
 }
@@ -334,9 +340,9 @@ func CreateNetworkInfrastructure(ctx context.Context, clients *AzureClients) err
 	for _, subnet := range vnetResult.VirtualNetwork.Properties.Subnets {
 		switch *subnet.Name {
 		case bastionSubnetName:
-			_bastionSubnetID = *subnet.ID
+			globalCache.bastionSubnetID = *subnet.ID
 		case boxesSubnetName:
-			_boxesSubnetID = *subnet.ID
+			globalCache.boxesSubnetID = *subnet.ID
 		}
 	}
 	if _bastionSubnetID == "" {
