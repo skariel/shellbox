@@ -177,29 +177,49 @@ func copyServerBinary(ctx context.Context, clients *AzureClients, config *Bastio
 	opts.Operation = "copy server binary to bastion"
 	opts.Timeout = 5 * time.Minute // Longer timeout for file transfer
 
-	// Create temporary file for resource group name
-	tmpFile, err := os.CreateTemp("", "rgname-*")
+	// Create temporary files for infrastructure details
+	rgFile, err := os.CreateTemp("", "rgname-*")
 	if err != nil {
-		return fmt.Errorf("failed to create temp file: %w", err)
+		return fmt.Errorf("failed to create resource group file: %w", err)
 	}
-	defer os.Remove(tmpFile.Name())
+	defer os.Remove(rgFile.Name())
 
-	if _, err := tmpFile.WriteString(clients.GetResourceGroupName()); err != nil {
+	networkFile, err := os.CreateTemp("", "network-*")
+	if err != nil {
+		return fmt.Errorf("failed to create network file: %w", err)
+	}
+	defer os.Remove(networkFile.Name())
+
+	// Write resource group name
+	if _, err := rgFile.WriteString(clients.GetResourceGroupName()); err != nil {
 		return fmt.Errorf("failed to write resource group name: %w", err)
 	}
-	if err := tmpFile.Close(); err != nil {
-		return fmt.Errorf("failed to close temp file: %w", err)
+	if err := rgFile.Close(); err != nil {
+		return fmt.Errorf("failed to close resource group file: %w", err)
 	}
 
-	// Copy both the server binary and resource group name file
+	// Write network details
+	networkDetails := fmt.Sprintf("%s\n%s\n%s", clients.infraIDs.bastionSubnetID, clients.infraIDs.boxesSubnetID, vnetName)
+	if _, err := networkFile.WriteString(networkDetails); err != nil {
+		return fmt.Errorf("failed to write network details: %w", err)
+	}
+	if err := networkFile.Close(); err != nil {
+		return fmt.Errorf("failed to close network file: %w", err)
+	}
+
+	// Copy files to bastion
 	remotePath := fmt.Sprintf("/home/%s/server", config.AdminUsername)
 	rgPath := fmt.Sprintf("/home/%s/rgname", config.AdminUsername)
+	networkPath := fmt.Sprintf("/home/%s/network", config.AdminUsername)
 
 	_, err = RetryWithTimeout(ctx, opts, func(ctx context.Context) (bool, error) {
 		if err := sshutil.CopyFile(ctx, "/tmp/server", remotePath, config.AdminUsername, publicIPAddress); err != nil {
 			return false, err
 		}
-		if err := sshutil.CopyFile(ctx, tmpFile.Name(), rgPath, config.AdminUsername, publicIPAddress); err != nil {
+		if err := sshutil.CopyFile(ctx, rgFile.Name(), rgPath, config.AdminUsername, publicIPAddress); err != nil {
+			return false, err
+		}
+		if err := sshutil.CopyFile(ctx, networkFile.Name(), networkPath, config.AdminUsername, publicIPAddress); err != nil {
 			return false, err
 		}
 		return true, nil

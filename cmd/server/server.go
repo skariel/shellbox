@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"strings"
 	"time"
 
 	"shellbox/internal/infra"
@@ -39,11 +40,23 @@ func waitForManagedIdentity(timeout time.Duration) (*infra.AzureClients, error) 
 func main() {
 	log.Println("starting shellbox server")
 
-	// Read resource group name
+	// Read infrastructure details
 	rgName, err := os.ReadFile("/home/shellbox/rgname")
 	if err != nil {
 		log.Fatalf("failed to read resource group name: %v", err)
 	}
+
+	networkDetails, err := os.ReadFile("/home/shellbox/network")
+	if err != nil {
+		log.Fatalf("failed to read network details: %v", err)
+	}
+
+	// Parse network details
+	parts := strings.Split(string(networkDetails), "\n")
+	if len(parts) != 3 {
+		log.Fatalf("invalid network details format")
+	}
+	bastionSubnetID, boxesSubnetID, vnetName := parts[0], parts[1], parts[2]
 
 	keyPath := "/home/shellbox/.ssh/id_rsa"
 	// Generate SSH key pair
@@ -59,8 +72,10 @@ func main() {
 		log.Fatalf("failed waiting for managed identity: %v", err)
 	}
 
-	// Set the resource group name from the file
+	// Set infrastructure details from files
 	clients.SetResourceGroupName(string(rgName))
+	clients.infraIDs.bastionSubnetID = bastionSubnetID
+	clients.infraIDs.boxesSubnetID = boxesSubnetID
 
 	config := &infra.BoxConfig{
 		AdminUsername: "shellbox",
