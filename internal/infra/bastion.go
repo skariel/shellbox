@@ -14,11 +14,6 @@ import (
 	"github.com/google/uuid"
 )
 
-const (
-	// Role definitions
-	contributorRoleID = "/providers/Microsoft.Authorization/roleDefinitions/b24988ac-6180-42a0-ab88-20f7382dd24c"
-	readerRoleID      = "/providers/Microsoft.Authorization/roleDefinitions/acdd72a7-3385-48ef-bd42-f606fba81ae7"
-)
 
 // NewGUID generates a new GUID string
 func NewGUID() string {
@@ -40,11 +35,6 @@ func DefaultBastionConfig() *BastionConfig {
 	}
 }
 
-const (
-	bastionVMName  = "shellbox-bastion"
-	bastionNICName = "bastion-nic"
-	bastionIPName  = "bastion-ip"
-)
 
 var defaultPollOptions = runtime.PollUntilDoneOptions{
 	Frequency: 2 * time.Second,
@@ -183,39 +173,13 @@ func createBastionVM(ctx context.Context, clients *AzureClients, config *Bastion
 }
 
 func copyServerBinary(config *BastionConfig, publicIPAddress string) error {
-	timeout := time.After(2 * time.Minute)
-	ticker := time.NewTicker(5 * time.Second)
-	defer ticker.Stop()
-
-	scpDest := fmt.Sprintf("%s@%s:/home/%s/server", config.AdminUsername, publicIPAddress, config.AdminUsername)
-	var lastErr error
-
-	for {
-		select {
-		case <-timeout:
-			if lastErr != nil {
-				return fmt.Errorf("timeout copying server binary: %w", lastErr)
-			}
-			return fmt.Errorf("timeout copying server binary")
-		case <-ticker.C:
-			cmd := exec.Command("scp", "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=4", "/tmp/server", scpDest)
-			if output, err := cmd.CombinedOutput(); err == nil {
-				return nil
-			} else {
-				lastErr = fmt.Errorf("%w: %s", err, string(output))
-			}
-		}
-	}
+	remotePath := fmt.Sprintf("/home/%s/server", config.AdminUsername)
+	return ssh.CopyFile("/tmp/server", remotePath, config.AdminUsername, publicIPAddress)
 }
 
 func startServerOnBastion(config *BastionConfig, publicIPAddress string) error {
-	cmd := exec.Command("ssh",
-		fmt.Sprintf("%s@%s", config.AdminUsername, publicIPAddress),
-		fmt.Sprintf("nohup /home/%s/server > /home/%s/server.log 2>&1 &", config.AdminUsername, config.AdminUsername))
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to start server: %w", err)
-	}
-	return nil
+	command := fmt.Sprintf("nohup /home/%s/server > /home/%s/server.log 2>&1 &", config.AdminUsername, config.AdminUsername)
+	return ssh.ExecuteCommand(command, config.AdminUsername, publicIPAddress)
 }
 
 func assignRoleToVM(ctx context.Context, clients *AzureClients, principalID *string) error {

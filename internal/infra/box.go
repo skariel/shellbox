@@ -12,16 +12,6 @@ import (
 	"github.com/google/uuid"
 )
 
-const (
-	// VMPublisher is the publisher of the VM image
-	VMPublisher = "Canonical"
-	// VMOffer is the offer of the VM image
-	VMOffer = "0001-com-ubuntu-server-jammy"
-	// VMSku is the SKU of the VM image
-	VMSku = "22_04-lts-gen2"
-	// VMVersion is the version of the VM image
-	VMVersion = "latest"
-)
 
 // BoxConfig holds the configuration parameters for creating a box VM.
 type BoxConfig struct {

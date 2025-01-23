@@ -42,25 +42,6 @@ func NewCache() *Cache {
 
 var globalCache = NewCache()
 
-// Configuration constants
-const (
-	// Resource group configuration
-	resourceGroupPrefix = "shellbox-infra"
-	location            = "westus2"
-
-	// Network configuration
-	vnetName         = "shellbox-network"
-	vnetAddressSpace = "10.0.0.0/8"
-
-	// Bastion subnet configuration
-	bastionSubnetName = "bastion-subnet"
-	bastionSubnetCIDR = "10.0.0.0/24"
-	bastionNSGName    = "bastion-nsg"
-
-	// Boxes subnet configuration
-	boxesSubnetName = "boxes-subnet"
-	boxesSubnetCIDR = "10.1.0.0/16"
-)
 
 // AzureClients holds all the Azure SDK clients needed for the application
 type AzureClients struct {
