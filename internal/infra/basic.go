@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/subscription/armsubscription"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization"
@@ -19,6 +18,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/keyvault/armkeyvault"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/subscription/armsubscription"
 )
 
 var (
@@ -68,7 +68,6 @@ func GetResourceGroupName() string {
 	return _resourceGroupName
 }
 
-
 // newAzureClients creates and returns all necessary Azure clients
 func NewAzureClients() (*AzureClients, error) {
 	// Get credentials from managed identity
@@ -83,7 +82,7 @@ func NewAzureClients() (*AzureClients, error) {
 		return nil, fmt.Errorf("creating subscription client: %w", err)
 	}
 	pager := client.NewListPager(nil)
-	
+
 	var subscriptionID string
 	for pager.More() {
 		page, err := pager.NextPage(context.Background())
@@ -96,7 +95,7 @@ func NewAzureClients() (*AzureClients, error) {
 			break
 		}
 	}
-	
+
 	if subscriptionID == "" {
 		return nil, fmt.Errorf("no subscription found for managed identity")
 	}

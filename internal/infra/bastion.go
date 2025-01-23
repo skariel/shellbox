@@ -9,9 +9,9 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization"
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/subscription/armsubscription"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/subscription/armsubscription"
 	"github.com/google/uuid"
 )
 
@@ -60,7 +60,7 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *BastionCo
 		return fmt.Errorf("creating subscription client: %w", err)
 	}
 	pager := subClient.NewListPager(nil)
-	
+
 	var subscriptionID string
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
@@ -72,7 +72,7 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *BastionCo
 			break
 		}
 	}
-	
+
 	if subscriptionID == "" {
 		return fmt.Errorf("no subscription found for managed identity")
 	}
