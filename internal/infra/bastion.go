@@ -53,10 +53,24 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *BastionCo
 		return fmt.Errorf("failed to compile server binary: %w", err)
 	}
 
-	// Get subscription ID early
-	subscriptionID, err := getSubscriptionID()
-	if err != nil {
-		return fmt.Errorf("failed to get subscription ID: %w", err)
+	// Get subscription ID from the current identity
+	subClient := armsubscription.NewSubscriptionsClient(clients.cred, nil)
+	pager := subClient.NewListPager(nil)
+	
+	var subscriptionID string
+	for pager.More() {
+		page, err := pager.NextPage(ctx)
+		if err != nil {
+			return fmt.Errorf("listing subscriptions: %w", err)
+		}
+		if len(page.Value) > 0 {
+			subscriptionID = *page.Value[0].SubscriptionID
+			break
+		}
+	}
+	
+	if subscriptionID == "" {
+		return fmt.Errorf("no subscription found for managed identity")
 	}
 
 	pollUntilDoneOption := runtime.PollUntilDoneOptions{
