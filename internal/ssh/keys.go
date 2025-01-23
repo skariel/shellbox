@@ -24,7 +24,7 @@ func GenerateKeyPair(keyPath string) (string, string, error) {
 		Type:  "RSA PRIVATE KEY",
 		Bytes: x509.MarshalPKCS1PrivateKey(privateKey),
 	}
-	
+
 	// Save private key to file
 	if err := os.MkdirAll(filepath.Dir(keyPath), 0700); err != nil {
 		return "", "", fmt.Errorf("failed to create key directory: %w", err)

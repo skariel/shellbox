@@ -5,7 +5,6 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"sync"
 	"syscall"
 	"time"
@@ -68,7 +67,6 @@ func (p *BoxPool) maintainPool(ctx context.Context) {
 		}
 	}
 }
-
 
 func main() {
 	log.Println("starting shellbox server")
