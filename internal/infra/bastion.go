@@ -47,7 +47,7 @@ func compileBastionServer() error {
 }
 
 func createBastionPublicIP(ctx context.Context, clients *AzureClients) (*armnetwork.PublicIPAddress, error) {
-	ipPoller, err := clients.PublicIPClient.BeginCreateOrUpdate(ctx, GetResourceGroupName(), bastionIPName, armnetwork.PublicIPAddress{
+	ipPoller, err := clients.PublicIPClient.BeginCreateOrUpdate(ctx, clients.GetResourceGroupName(), bastionIPName, armnetwork.PublicIPAddress{
 		Location: to.Ptr(location),
 		SKU: &armnetwork.PublicIPAddressSKU{
 			Name: to.Ptr(armnetwork.PublicIPAddressSKUNameStandard),
