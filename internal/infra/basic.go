@@ -28,24 +28,23 @@ type VMConfig struct {
 	VMSize        string
 }
 
-// Cache holds infrastructure-related cached values
-type Cache struct {
+// InfrastructureIDs holds infrastructure resource identifiers
+type InfrastructureIDs struct {
 	resourceGroupName string
 	bastionSubnetID   string
 	boxesSubnetID     string
 }
 
-// NewCache creates a new cache instance
-func NewCache() *Cache {
-	return &Cache{}
+// NewInfrastructureIDs creates a new infrastructure IDs instance
+func NewInfrastructureIDs() *InfrastructureIDs {
+	return &InfrastructureIDs{}
 }
-
-var globalCache = NewCache()
 
 // AzureClients holds all the Azure SDK clients needed for the application
 type AzureClients struct {
 	cred           *azidentity.ManagedIdentityCredential
 	subscriptionID string
+	infraIDs       *InfrastructureIDs
 	ResourceClient *armresources.ResourceGroupsClient
 	NetworkClient  *armnetwork.VirtualNetworksClient
 	NSGClient      *armnetwork.SecurityGroupsClient
@@ -59,11 +58,11 @@ type AzureClients struct {
 }
 
 // GetResourceGroupName returns a resource group name with timestamp
-func GetResourceGroupName() string {
-	if globalCache.resourceGroupName == "" {
-		globalCache.resourceGroupName = fmt.Sprintf("%s-%d", resourceGroupPrefix, time.Now().Unix())
+func (c *AzureClients) GetResourceGroupName() string {
+	if c.infraIDs.resourceGroupName == "" {
+		c.infraIDs.resourceGroupName = fmt.Sprintf("%s-%d", resourceGroupPrefix, time.Now().Unix())
 	}
-	return globalCache.resourceGroupName
+	return c.infraIDs.resourceGroupName
 }
 
 // newAzureClients creates and returns all necessary Azure clients
@@ -150,6 +149,7 @@ func NewAzureClients() (*AzureClients, error) {
 	return &AzureClients{
 		cred:           cred,
 		subscriptionID: subscriptionID,
+		infraIDs:       NewInfrastructureIDs(),
 		ResourceClient: resourceClient,
 		NetworkClient:  networkClient,
 		NSGClient:      nsgClient,
@@ -164,17 +164,17 @@ func NewAzureClients() (*AzureClients, error) {
 }
 
 // GetBastionSubnetID returns the ID of the bastion subnet
-func GetBastionSubnetID() (string, error) {
-	if globalCache.bastionSubnetID != "" {
-		return globalCache.bastionSubnetID, nil
+func (c *AzureClients) GetBastionSubnetID() (string, error) {
+	if c.infraIDs.bastionSubnetID != "" {
+		return c.infraIDs.bastionSubnetID, nil
 	}
 	return "", errors.New("could not find BastionSubnetID")
 }
 
 // GetBoxesSubnetID returns the ID of the boxes subnet
-func GetBoxesSubnetID() (string, error) {
-	if globalCache.boxesSubnetID != "" {
-		return globalCache.boxesSubnetID, nil
+func (c *AzureClients) GetBoxesSubnetID() (string, error) {
+	if c.infraIDs.boxesSubnetID != "" {
+		return c.infraIDs.boxesSubnetID, nil
 	}
 	return "", errors.New("could not find BoxesSubnetID")
 }
@@ -326,15 +326,15 @@ func CreateNetworkInfrastructure(ctx context.Context, clients *AzureClients) err
 	for _, subnet := range vnetResult.VirtualNetwork.Properties.Subnets {
 		switch *subnet.Name {
 		case bastionSubnetName:
-			globalCache.bastionSubnetID = *subnet.ID
+			clients.infraIDs.bastionSubnetID = *subnet.ID
 		case boxesSubnetName:
-			globalCache.boxesSubnetID = *subnet.ID
+			clients.infraIDs.boxesSubnetID = *subnet.ID
 		}
 	}
-	if globalCache.bastionSubnetID == "" {
+	if clients.infraIDs.bastionSubnetID == "" {
 		return fmt.Errorf("bastion subnet not found in VNet")
 	}
-	if globalCache.boxesSubnetID == "" {
+	if clients.infraIDs.boxesSubnetID == "" {
 		return fmt.Errorf("boxes subnet not found in VNet")
 	}
 
