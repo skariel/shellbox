@@ -58,6 +58,7 @@ func main() {
 		log.Fatalf("failed to generate SSH keys: %v", err)
 	}
 	log.Printf("generated SSH key pair and saved private key to: %s", keyPath)
+	log.Printf("public key: %q", publicKey)
 
 	// Wait for managed identity to be fully ready before proceeding
 	clients, err := waitForManagedIdentity(2 * time.Minute)
