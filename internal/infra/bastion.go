@@ -208,7 +208,7 @@ func createBastionRole(ctx context.Context, clients *AzureClients) (string, erro
 		return "", fmt.Errorf("failed to create role definitions client: %w", err)
 	}
 
-	poller, err := roleDefClient.BeginCreateOrUpdate(ctx, scope, roleID, armauthorization.RoleDefinition{
+	res, err := roleDefClient.CreateOrUpdate(ctx, scope, roleID, armauthorization.RoleDefinition{
 		Properties: &armauthorization.RoleDefinitionProperties{
 			RoleName:         to.Ptr("Shellbox Bastion Role"),
 			Description:      to.Ptr("Custom role for Shellbox bastion to manage boxes and their resources"),
@@ -227,12 +227,6 @@ func createBastionRole(ctx context.Context, clients *AzureClients) (string, erro
 			},
 		},
 	}, nil)
-
-	if err != nil {
-		return "", fmt.Errorf("failed to create role definition: %w", err)
-	}
-
-	res, err := poller.PollUntilDone(ctx, &defaultPollOptions)
 	if err != nil {
 		return "", fmt.Errorf("failed to poll role definition creation: %w", err)
 	}
