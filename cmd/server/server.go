@@ -2,6 +2,11 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -9,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"golang.org/x/crypto/ssh"
 	"shellbox/internal/infra"
 )
 
@@ -67,8 +73,39 @@ func (p *BoxPool) maintainPool(ctx context.Context) {
 	}
 }
 
+func generateSSHKeyPair() (string, string, error) {
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to generate private key: %w", err)
+	}
+
+	// Convert private key to PEM format
+	privateKeyPEM := &pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(privateKey),
+	}
+	privateKeyStr := string(pem.EncodeToMemory(privateKeyPEM))
+
+	// Generate public key
+	publicKey, err := ssh.NewPublicKey(&privateKey.PublicKey)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to generate public key: %w", err)
+	}
+	publicKeyStr := string(ssh.MarshalAuthorizedKey(publicKey))
+
+	return privateKeyStr, publicKeyStr, nil
+}
+
 func main() {
 	log.Println("starting shellbox server")
+
+	// Generate SSH key pair
+	privateKey, publicKey, err := generateSSHKeyPair()
+	if err != nil {
+		log.Fatalf("failed to generate SSH keys: %v", err)
+	}
+	log.Println("generated SSH key pair")
+	// TODO: Store keys in vault
 
 	clients, err := infra.NewAzureClients()
 	if err != nil {
