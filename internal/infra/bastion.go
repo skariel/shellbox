@@ -181,7 +181,6 @@ func startServerOnBastion(config *BastionConfig, publicIPAddress string) error {
 	return ssh.ExecuteCommand(command, config.AdminUsername, publicIPAddress)
 }
 
-
 func createBastionRole(ctx context.Context, clients *AzureClients) (string, error) {
 	subscriptionID := clients.GetSubscriptionID()
 	scope := fmt.Sprintf("/subscriptions/%s", subscriptionID)

@@ -34,9 +34,3 @@ const (
 	bastionNICName = "bastion-nic"
 	bastionIPName  = "bastion-ip"
 )
-
-// Role definitions
-const (
-	contributorRoleID = "/providers/Microsoft.Authorization/roleDefinitions/b24988ac-6180-42a0-ab88-20f7382dd24c"
-	readerRoleID      = "/providers/Microsoft.Authorization/roleDefinitions/acdd72a7-3385-48ef-bd42-f606fba81ae7"
-)
