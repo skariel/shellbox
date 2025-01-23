@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
-	"shellbox/internal/ssh"
+	"shellbox/internal/sshutil"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
@@ -178,7 +178,7 @@ func copyServerBinary(config *BastionConfig, publicIPAddress string) error {
 
 	remotePath := fmt.Sprintf("/home/%s/server", config.AdminUsername)
 	_, err := RetryWithTimeout(context.Background(), opts, func(ctx context.Context) (bool, error) {
-		if err := ssh.CopyFile("/tmp/server", remotePath, config.AdminUsername, publicIPAddress); err != nil {
+		if err := sshutil.CopyFile("/tmp/server", remotePath, config.AdminUsername, publicIPAddress); err != nil {
 			return false, err
 		}
 		return true, nil
@@ -192,7 +192,7 @@ func startServerOnBastion(config *BastionConfig, publicIPAddress string) error {
 
 	command := fmt.Sprintf("nohup /home/%s/server > /home/%s/server.log 2>&1 &", config.AdminUsername, config.AdminUsername)
 	_, err := RetryWithTimeout(context.Background(), opts, func(ctx context.Context) (bool, error) {
-		if err := ssh.ExecuteCommand(command, config.AdminUsername, publicIPAddress); err != nil {
+		if err := sshutil.ExecuteCommand(command, config.AdminUsername, publicIPAddress); err != nil {
 			return false, err
 		}
 		return true, nil
