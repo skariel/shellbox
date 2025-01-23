@@ -169,16 +169,16 @@ func createBastionVM(ctx context.Context, clients *AzureClients, config *Bastion
 	if err != nil {
 		return nil, fmt.Errorf("failed to start bastion VM creation: %w", err)
 	}
-	
+
 	vm, err := vmPoller.PollUntilDone(ctx, &defaultPollOptions)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create bastion VM: %w", err)
 	}
-	
+
 	if vm.Identity == nil || vm.Identity.PrincipalID == nil {
 		return nil, fmt.Errorf("VM managed identity not found after creation")
 	}
-	
+
 	return &vm.VirtualMachine, nil
 }
 
@@ -189,7 +189,7 @@ func copyServerBinary(config *BastionConfig, publicIPAddress string) error {
 
 	scpDest := fmt.Sprintf("%s@%s:/home/%s/server", config.AdminUsername, publicIPAddress, config.AdminUsername)
 	var lastErr error
-	
+
 	for {
 		select {
 		case <-timeout:
