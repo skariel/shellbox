@@ -14,7 +14,7 @@ import (
 func main() {
 	log.Println("starting shellbox server")
 
-	keyPath := "/home/ubuntu/.ssh/shellbox_id_rsa"
+	keyPath := "/home/shellbox/.ssh/id_rsa"
 	// Generate SSH key pair
 	_, publicKey, err := ssh.GenerateKeyPair(keyPath)
 	if err != nil {
