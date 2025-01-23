@@ -30,7 +30,7 @@ type BastionConfig struct {
 // DefaultBastionConfig returns a default configuration for bastion deployment
 func DefaultBastionConfig() *BastionConfig {
 	return &BastionConfig{
-		AdminUsername: "shellboxadmin",
+		AdminUsername: "shellbox",
 		VMSize:        string(armcompute.VirtualMachineSizeTypesStandardD2SV3),
 	}
 }
