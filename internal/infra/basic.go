@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -73,20 +75,28 @@ func NewAzureClients() (*AzureClients, error) {
 		return nil, fmt.Errorf("failed to create credential: %w", err)
 	}
 
-	// Get subscription ID once
-	client, err := armsubscription.NewSubscriptionsClient(cred, nil)
+	// Get subscription ID from instance metadata
+	req, err := http.NewRequest("GET", "http://169.254.169.254/metadata/instance/compute/subscriptionId?api-version=2021-02-01&format=text", nil)
 	if err != nil {
-		return nil, fmt.Errorf("creating subscription client: %w", err)
+		return nil, fmt.Errorf("creating metadata request: %w", err)
 	}
+	req.Header.Add("Metadata", "true")
 
-	page, err := client.NewListPager(nil).NextPage(context.Background())
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("listing subscriptions: %w", err)
+		return nil, fmt.Errorf("getting subscription ID from metadata: %w", err)
 	}
-	if len(page.Value) == 0 {
-		return nil, fmt.Errorf("no subscription found for managed identity")
+	defer resp.Body.Close()
+
+	subscriptionIDBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("reading subscription ID: %w", err)
 	}
-	subscriptionID := *page.Value[0].SubscriptionID
+	if len(subscriptionIDBytes) == 0 {
+		return nil, fmt.Errorf("empty subscription ID from metadata service")
+	}
+	subscriptionID := string(subscriptionIDBytes)
 
 	// Initialize resource client
 	resourceClient, err := armresources.NewResourceGroupsClient(subscriptionID, cred, nil)
