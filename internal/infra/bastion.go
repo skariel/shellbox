@@ -171,14 +171,14 @@ func createBastionVM(ctx context.Context, clients *AzureClients, config *Bastion
 	return &vm.VirtualMachine, nil
 }
 
-func copyServerBinary(config *BastionConfig, publicIPAddress string) error {
+func copyServerBinary(ctx context.Context, config *BastionConfig, publicIPAddress string) error {
 	opts := DefaultRetryOptions()
 	opts.Operation = "copy server binary to bastion"
 	opts.Timeout = 5 * time.Minute // Longer timeout for file transfer
 
 	remotePath := fmt.Sprintf("/home/%s/server", config.AdminUsername)
-	_, err := RetryWithTimeout(context.Background(), opts, func(ctx context.Context) (bool, error) {
-		if err := sshutil.CopyFile("/tmp/server", remotePath, config.AdminUsername, publicIPAddress); err != nil {
+	_, err := RetryWithTimeout(ctx, opts, func(ctx context.Context) (bool, error) {
+		if err := sshutil.CopyFile(ctx, "/tmp/server", remotePath, config.AdminUsername, publicIPAddress); err != nil {
 			return false, err
 		}
 		return true, nil
@@ -186,13 +186,13 @@ func copyServerBinary(config *BastionConfig, publicIPAddress string) error {
 	return err
 }
 
-func startServerOnBastion(config *BastionConfig, publicIPAddress string) error {
+func startServerOnBastion(ctx context.Context, config *BastionConfig, publicIPAddress string) error {
 	opts := DefaultRetryOptions()
 	opts.Operation = "start server on bastion"
 
 	command := fmt.Sprintf("nohup /home/%s/server > /home/%s/server.log 2>&1 &", config.AdminUsername, config.AdminUsername)
-	_, err := RetryWithTimeout(context.Background(), opts, func(ctx context.Context) (bool, error) {
-		if err := sshutil.ExecuteCommand(command, config.AdminUsername, publicIPAddress); err != nil {
+	_, err := RetryWithTimeout(ctx, opts, func(ctx context.Context) (bool, error) {
+		if err := sshutil.ExecuteCommand(ctx, command, config.AdminUsername, publicIPAddress); err != nil {
 			return false, err
 		}
 		return true, nil
@@ -251,11 +251,11 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *BastionCo
 		return err
 	}
 
-	if err := copyServerBinary(config, *publicIP.Properties.IPAddress); err != nil {
+	if err := copyServerBinary(ctx, config, *publicIP.Properties.IPAddress); err != nil {
 		return err
 	}
 
-	if err := startServerOnBastion(config, *publicIP.Properties.IPAddress); err != nil {
+	if err := startServerOnBastion(ctx, config, *publicIP.Properties.IPAddress); err != nil {
 		return err
 	}
 
