@@ -1,45 +1,43 @@
 package ssh
 
 import (
+	"context"
 	"fmt"
 	"os/exec"
-	"time"
+	"shellbox/internal/infra"
 )
 
 // CopyFile copies a file to a remote host using scp
 func CopyFile(localPath, remotePath, username, hostname string) error {
-	timeout := time.After(2 * time.Minute)
-	ticker := time.NewTicker(5 * time.Second)
-	defer ticker.Stop()
-
 	scpDest := fmt.Sprintf("%s@%s:%s", username, hostname, remotePath)
-	var lastErr error
+	opts := infra.DefaultRetryOptions()
+	opts.Operation = "scp file transfer"
 
-	for {
-		select {
-		case <-timeout:
-			if lastErr != nil {
-				return fmt.Errorf("timeout copying file: %w", lastErr)
-			}
-			return fmt.Errorf("timeout copying file")
-		case <-ticker.C:
-			cmd := exec.Command("scp", "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=4", localPath, scpDest)
-			if output, err := cmd.CombinedOutput(); err == nil {
-				return nil
-			} else {
-				lastErr = fmt.Errorf("%w: %s", err, string(output))
-			}
+	_, err := infra.RetryWithTimeout(context.Background(), opts, func(ctx context.Context) (bool, error) {
+		cmd := exec.Command("scp", "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=4", localPath, scpDest)
+		if output, err := cmd.CombinedOutput(); err != nil {
+			return false, fmt.Errorf("%w: %s", err, string(output))
 		}
-	}
+		return true, nil
+	})
+	return err
 }
 
 // ExecuteCommand executes a command on a remote host using SSH
 func ExecuteCommand(command, username, hostname string) error {
-	cmd := exec.Command("ssh",
-		fmt.Sprintf("%s@%s", username, hostname),
-		command)
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to execute command: %w", err)
-	}
-	return nil
+	opts := infra.DefaultRetryOptions()
+	opts.Operation = "ssh command execution"
+
+	_, err := infra.RetryWithTimeout(context.Background(), opts, func(ctx context.Context) (bool, error) {
+		cmd := exec.Command("ssh",
+			"-o", "StrictHostKeyChecking=no",
+			"-o", "ConnectTimeout=4",
+			fmt.Sprintf("%s@%s", username, hostname),
+			command)
+		if output, err := cmd.CombinedOutput(); err != nil {
+			return false, fmt.Errorf("%w: %s", err, string(output))
+		}
+		return true, nil
+	})
+	return err
 }

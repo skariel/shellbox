@@ -172,13 +172,32 @@ func createBastionVM(ctx context.Context, clients *AzureClients, config *Bastion
 }
 
 func copyServerBinary(config *BastionConfig, publicIPAddress string) error {
+	opts := DefaultRetryOptions()
+	opts.Operation = "copy server binary to bastion"
+	opts.Timeout = 5 * time.Minute // Longer timeout for file transfer
+
 	remotePath := fmt.Sprintf("/home/%s/server", config.AdminUsername)
-	return ssh.CopyFile("/tmp/server", remotePath, config.AdminUsername, publicIPAddress)
+	_, err := RetryWithTimeout(context.Background(), opts, func(ctx context.Context) (bool, error) {
+		if err := ssh.CopyFile("/tmp/server", remotePath, config.AdminUsername, publicIPAddress); err != nil {
+			return false, err
+		}
+		return true, nil
+	})
+	return err
 }
 
 func startServerOnBastion(config *BastionConfig, publicIPAddress string) error {
+	opts := DefaultRetryOptions()
+	opts.Operation = "start server on bastion"
+	
 	command := fmt.Sprintf("nohup /home/%s/server > /home/%s/server.log 2>&1 &", config.AdminUsername, config.AdminUsername)
-	return ssh.ExecuteCommand(command, config.AdminUsername, publicIPAddress)
+	_, err := RetryWithTimeout(context.Background(), opts, func(ctx context.Context) (bool, error) {
+		if err := ssh.ExecuteCommand(command, config.AdminUsername, publicIPAddress); err != nil {
+			return false, err
+		}
+		return true, nil
+	})
+	return err
 }
 
 func getBastionRoleID(subscriptionID string) string {

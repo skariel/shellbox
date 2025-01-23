@@ -67,27 +67,43 @@ func (c *AzureClients) GetResourceGroupName() string {
 }
 
 func getSubscriptionIDFromMetadata() (string, error) {
-	req, err := http.NewRequest("GET", "http://169.254.169.254/metadata/instance/compute/subscriptionId?api-version=2021-02-01&format=text", nil)
-	if err != nil {
-		return "", fmt.Errorf("creating metadata request: %w", err)
-	}
-	req.Header.Add("Metadata", "true")
+	opts := DefaultRetryOptions()
+	opts.Operation = "metadata service query"
+	opts.Timeout = 30 * time.Second
+	opts.Interval = 2 * time.Second
 
-	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("getting subscription ID from metadata: %w", err)
-	}
-	defer resp.Body.Close()
+	var subscriptionID string
+	_, err := RetryWithTimeout(context.Background(), opts, func(ctx context.Context) (bool, error) {
+		req, err := http.NewRequestWithContext(ctx, "GET", 
+			"http://169.254.169.254/metadata/instance/compute/subscriptionId?api-version=2021-02-01&format=text", nil)
+		if err != nil {
+			return false, fmt.Errorf("creating metadata request: %w", err)
+		}
+		req.Header.Add("Metadata", "true")
 
-	subscriptionIDBytes, err := io.ReadAll(resp.Body)
+		client := &http.Client{Timeout: 5 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			return false, fmt.Errorf("getting subscription ID from metadata: %w", err)
+		}
+		defer resp.Body.Close()
+
+		subscriptionIDBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return false, fmt.Errorf("reading subscription ID: %w", err)
+		}
+		if len(subscriptionIDBytes) == 0 {
+			return false, fmt.Errorf("empty subscription ID from metadata service")
+		}
+		
+		subscriptionID = string(subscriptionIDBytes)
+		return true, nil
+	})
+
 	if err != nil {
-		return "", fmt.Errorf("reading subscription ID: %w", err)
+		return "", err
 	}
-	if len(subscriptionIDBytes) == 0 {
-		return "", fmt.Errorf("empty subscription ID from metadata service")
-	}
-	return string(subscriptionIDBytes), nil
+	return subscriptionID, nil
 }
 
 func initializeAzureClients(subscriptionID string, cred *azidentity.ManagedIdentityCredential) (*AzureClients, error) {

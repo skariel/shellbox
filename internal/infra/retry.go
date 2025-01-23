@@ -9,16 +9,18 @@ import (
 
 // RetryOptions configures the retry behavior
 type RetryOptions struct {
-	Timeout   time.Duration
-	Interval  time.Duration
-	Operation string // Name of operation for logging
+	Timeout     time.Duration
+	Interval    time.Duration
+	Operation   string // Name of operation for logging
+	MaxAttempts int    // Maximum number of attempts (0 for unlimited)
 }
 
 // DefaultRetryOptions returns standard retry settings
 func DefaultRetryOptions() *RetryOptions {
 	return &RetryOptions{
-		Timeout:  2 * time.Minute,
-		Interval: 5 * time.Second,
+		Timeout:     2 * time.Minute,
+		Interval:    5 * time.Second,
+		MaxAttempts: 0,
 	}
 }
 
