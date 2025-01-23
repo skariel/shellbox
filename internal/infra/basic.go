@@ -78,7 +78,10 @@ func NewAzureClients() (*AzureClients, error) {
 	}
 
 	// Get subscription ID from the current identity
-	client := armsubscription.NewSubscriptionsClient(cred, nil)
+	client, err := armsubscription.NewSubscriptionsClient(cred, nil)
+	if err != nil {
+		return nil, fmt.Errorf("creating subscription client: %w", err)
+	}
 	pager := client.NewListPager(nil)
 	
 	var subscriptionID string
