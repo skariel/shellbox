@@ -201,7 +201,7 @@ func createBastionRole(ctx context.Context, clients *AzureClients) (string, erro
 	subscriptionID := clients.GetSubscriptionID()
 	scope := fmt.Sprintf("/subscriptions/%s", subscriptionID)
 	roleID := fmt.Sprintf("shellbox-bastion-role-%s", NewGUID())
-	
+
 	// Create role definition
 	roleDefClient := armauthorization.NewRoleDefinitionsClient(clients.cred, nil)
 	poller, err := roleDefClient.BeginCreateOrUpdate(ctx, scope, roleID, armauthorization.RoleDefinition{
@@ -223,28 +223,28 @@ func createBastionRole(ctx context.Context, clients *AzureClients) (string, erro
 			},
 		},
 	}, nil)
-	
+
 	if err != nil {
 		return "", fmt.Errorf("failed to create role definition: %w", err)
 	}
-	
+
 	res, err := poller.PollUntilDone(ctx, &defaultPollOptions)
 	if err != nil {
 		return "", fmt.Errorf("failed to poll role definition creation: %w", err)
 	}
-	
+
 	return *res.ID, nil
 }
 
 func assignRoleToVM(ctx context.Context, clients *AzureClients, principalID *string) error {
 	subscriptionID := clients.GetSubscriptionID()
-	
+
 	// Create custom role
 	roleDefID, err := createBastionRole(ctx, clients)
 	if err != nil {
 		return fmt.Errorf("failed to create bastion role: %w", err)
 	}
-	
+
 	retryTimeout := time.After(2 * time.Minute)
 	retryTicker := time.NewTicker(10 * time.Second)
 	defer retryTicker.Stop()
