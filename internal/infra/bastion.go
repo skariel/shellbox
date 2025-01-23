@@ -58,8 +58,7 @@ func compileBastionServer() error {
 }
 
 func createBastionPublicIP(ctx context.Context, clients *AzureClients) (*armnetwork.PublicIPAddress, error) {
-	rgName := GetResourceGroupName()
-	ipPoller, err := clients.PublicIPClient.BeginCreateOrUpdate(ctx, rgName, bastionIPName, armnetwork.PublicIPAddress{
+	ipPoller, err := clients.PublicIPClient.BeginCreateOrUpdate(ctx, GetResourceGroupName(), bastionIPName, armnetwork.PublicIPAddress{
 		Location: to.Ptr(location),
 		SKU: &armnetwork.PublicIPAddressSKU{
 			Name: to.Ptr(armnetwork.PublicIPAddressSKUNameStandard),
@@ -85,8 +84,7 @@ func createBastionNIC(ctx context.Context, clients *AzureClients, publicIPID *st
 		return nil, err
 	}
 
-	rgName := GetResourceGroupName()
-	nicPoller, err := clients.NICClient.BeginCreateOrUpdate(ctx, rgName, bastionNICName, armnetwork.Interface{
+	nicPoller, err := clients.NICClient.BeginCreateOrUpdate(ctx, GetResourceGroupName(), bastionNICName, armnetwork.Interface{
 		Location: to.Ptr(location),
 		Properties: &armnetwork.InterfacePropertiesFormat{
 			IPConfigurations: []*armnetwork.InterfaceIPConfiguration{
@@ -252,7 +250,7 @@ scpSuccess:
 		case <-retryTicker.C:
 			guid := NewGUID()
 			_, err = clients.RoleClient.Create(ctx,
-				fmt.Sprintf("/subscriptions/%s/resourceGroups/%s", subscriptionID, rgName),
+				fmt.Sprintf("/subscriptions/%s/resourceGroups/%s", subscriptionID, GetResourceGroupName()),
 				guid,
 				armauthorization.RoleAssignmentCreateParameters{
 					Properties: &armauthorization.RoleAssignmentProperties{
