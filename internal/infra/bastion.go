@@ -181,9 +181,70 @@ func startServerOnBastion(config *BastionConfig, publicIPAddress string) error {
 	return ssh.ExecuteCommand(command, config.AdminUsername, publicIPAddress)
 }
 
+const bastionRoleDefinition = `{
+	"Name": "Shellbox Bastion Role",
+	"Description": "Custom role for Shellbox bastion to manage boxes and their resources",
+	"AssignableScopes": ["/"],
+	"Actions": [
+		"Microsoft.Compute/virtualMachines/*",
+		"Microsoft.Network/networkInterfaces/*",
+		"Microsoft.Network/networkSecurityGroups/*",
+		"Microsoft.Compute/disks/*",
+		"Microsoft.Resources/subscriptions/resourceGroups/read"
+	],
+	"NotActions": [],
+	"DataActions": [],
+	"NotDataActions": []
+}`
+
+func createBastionRole(ctx context.Context, clients *AzureClients) (string, error) {
+	subscriptionID := clients.GetSubscriptionID()
+	scope := fmt.Sprintf("/subscriptions/%s", subscriptionID)
+	roleID := fmt.Sprintf("shellbox-bastion-role-%s", NewGUID())
+	
+	// Create role definition
+	roleDefClient := armauthorization.NewRoleDefinitionsClient(clients.cred, nil)
+	poller, err := roleDefClient.BeginCreateOrUpdate(ctx, scope, roleID, armauthorization.RoleDefinition{
+		Properties: &armauthorization.RoleDefinitionProperties{
+			RoleName:         to.Ptr("Shellbox Bastion Role"),
+			Description:      to.Ptr("Custom role for Shellbox bastion to manage boxes and their resources"),
+			AssignableScopes: []*string{to.Ptr(scope)},
+			Permissions: []*armauthorization.Permission{
+				{
+					Actions: []*string{
+						to.Ptr("Microsoft.Compute/virtualMachines/*"),
+						to.Ptr("Microsoft.Network/networkInterfaces/*"),
+						to.Ptr("Microsoft.Network/networkSecurityGroups/*"),
+						to.Ptr("Microsoft.Compute/disks/*"),
+						to.Ptr("Microsoft.Resources/subscriptions/resourceGroups/read"),
+					},
+					NotActions: []*string{},
+				},
+			},
+		},
+	}, nil)
+	
+	if err != nil {
+		return "", fmt.Errorf("failed to create role definition: %w", err)
+	}
+	
+	res, err := poller.PollUntilDone(ctx, &defaultPollOptions)
+	if err != nil {
+		return "", fmt.Errorf("failed to poll role definition creation: %w", err)
+	}
+	
+	return *res.ID, nil
+}
+
 func assignRoleToVM(ctx context.Context, clients *AzureClients, principalID *string) error {
 	subscriptionID := clients.GetSubscriptionID()
-	roleDefID := fmt.Sprintf("/subscriptions/%s%s", subscriptionID, contributorRoleID)
+	
+	// Create custom role
+	roleDefID, err := createBastionRole(ctx, clients)
+	if err != nil {
+		return fmt.Errorf("failed to create bastion role: %w", err)
+	}
+	
 	retryTimeout := time.After(2 * time.Minute)
 	retryTicker := time.NewTicker(10 * time.Second)
 	defer retryTicker.Stop()
