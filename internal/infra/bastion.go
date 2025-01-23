@@ -182,8 +182,8 @@ func startServerOnBastion(config *BastionConfig, publicIPAddress string) error {
 }
 
 func getBastionRoleID(subscriptionID string) string {
-	// Use built-in Virtual Machine Contributor role
-	return fmt.Sprintf("/subscriptions/%s/providers/Microsoft.Authorization/roleDefinitions/9980e02c-c2be-4d73-94e8-173b1dc7cf3c", subscriptionID)
+	// Use built-in Contributor role which can manage all resources including disks
+	return fmt.Sprintf("/subscriptions/%s/providers/Microsoft.Authorization/roleDefinitions/b24988ac-6180-42a0-ab88-20f7382dd24c", subscriptionID)
 }
 
 func assignRoleToVM(ctx context.Context, clients *AzureClients, principalID *string) error {
