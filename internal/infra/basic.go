@@ -185,7 +185,7 @@ func CreateNetworkInfrastructure(ctx context.Context, clients *AzureClients) err
 		Frequency: 2 * time.Second,
 	}
 
-	rgName := GetResourceGroupName()
+	rgName := clients.GetResourceGroupName()
 	// Create resource group
 	_, err := clients.ResourceClient.CreateOrUpdate(ctx, rgName, armresources.ResourceGroup{
 		Location: to.Ptr(location),

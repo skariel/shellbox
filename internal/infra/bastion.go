@@ -68,12 +68,12 @@ func createBastionPublicIP(ctx context.Context, clients *AzureClients) (*armnetw
 }
 
 func createBastionNIC(ctx context.Context, clients *AzureClients, publicIPID *string) (*armnetwork.Interface, error) {
-	bastionSubnetID, err := GetBastionSubnetID()
+	bastionSubnetID, err := clients.GetBastionSubnetID()
 	if err != nil {
 		return nil, err
 	}
 
-	nicPoller, err := clients.NICClient.BeginCreateOrUpdate(ctx, GetResourceGroupName(), bastionNICName, armnetwork.Interface{
+	nicPoller, err := clients.NICClient.BeginCreateOrUpdate(ctx, clients.GetResourceGroupName(), bastionNICName, armnetwork.Interface{
 		Location: to.Ptr(location),
 		Properties: &armnetwork.InterfacePropertiesFormat{
 			IPConfigurations: []*armnetwork.InterfaceIPConfiguration{
@@ -103,7 +103,7 @@ func createBastionNIC(ctx context.Context, clients *AzureClients, publicIPID *st
 }
 
 func createBastionVM(ctx context.Context, clients *AzureClients, config *BastionConfig, nicID string, customData string) (*armcompute.VirtualMachine, error) {
-	vmPoller, err := clients.ComputeClient.BeginCreateOrUpdate(ctx, GetResourceGroupName(), bastionVMName, armcompute.VirtualMachine{
+	vmPoller, err := clients.ComputeClient.BeginCreateOrUpdate(ctx, clients.GetResourceGroupName(), bastionVMName, armcompute.VirtualMachine{
 		Location: to.Ptr(location),
 		Identity: &armcompute.VirtualMachineIdentity{
 			Type: to.Ptr(armcompute.ResourceIdentityTypeSystemAssigned),
@@ -199,7 +199,7 @@ func assignRoleToVM(ctx context.Context, clients *AzureClients, principalID *str
 		case <-retryTicker.C:
 			guid := NewGUID()
 			_, err := clients.RoleClient.Create(ctx,
-				fmt.Sprintf("/subscriptions/%s/resourceGroups/%s", subscriptionID, GetResourceGroupName()),
+				fmt.Sprintf("/subscriptions/%s/resourceGroups/%s", subscriptionID, clients.GetResourceGroupName()),
 				guid,
 				armauthorization.RoleAssignmentCreateParameters{
 					Properties: &armauthorization.RoleAssignmentProperties{
