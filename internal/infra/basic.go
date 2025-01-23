@@ -5,12 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"os/exec"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/subscription/armsubscription"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization"
@@ -67,27 +67,34 @@ func GetResourceGroupName() string {
 	return _resourceGroupName
 }
 
-// getSubscriptionID gets the subscription ID from az cli
-func getSubscriptionID() (string, error) {
-	out, err := exec.Command("az", "account", "show", "--query", "id", "-o", "tsv").Output()
-	if err != nil {
-		return "", fmt.Errorf("failed to get subscription ID: %w", err)
-	}
-	return strings.TrimSpace(string(out)), nil
-}
 
 // newAzureClients creates and returns all necessary Azure clients
 func NewAzureClients() (*AzureClients, error) {
-	// Get credentials from Azure CLI
-	cred, err := azidentity.NewAzureCLICredential(nil)
+	// Get credentials from managed identity
+	cred, err := azidentity.NewManagedIdentityCredential(nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create credential: %w", err)
 	}
 
-	// Get subscription ID
-	subscriptionID, err := getSubscriptionID()
-	if err != nil {
-		return nil, err
+	// Get subscription ID from the current identity
+	client := armsubscription.NewSubscriptionsClient(cred, nil)
+	pager := client.NewListPager(nil)
+	
+	var subscriptionID string
+	for pager.More() {
+		page, err := pager.NextPage(context.Background())
+		if err != nil {
+			return nil, fmt.Errorf("listing subscriptions: %w", err)
+		}
+		// Use the first available subscription
+		if len(page.Value) > 0 {
+			subscriptionID = *page.Value[0].SubscriptionID
+			break
+		}
+	}
+	
+	if subscriptionID == "" {
+		return nil, fmt.Errorf("no subscription found for managed identity")
 	}
 
 	// Initialize resource client
