@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
+	"golang.org/x/crypto/ssh"
 )
 
 // GenerateKeyPair creates a new SSH key pair and saves the private key to the specified path
@@ -25,16 +27,14 @@ func GenerateKeyPair(keyPath string) (privateKey string, publicKey string, err e
 	}
 	privateKeyString := string(pem.EncodeToMemory(privateKeyPEM))
 
-	// Generate public key in authorized_keys format
-	publicKeyBytes, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
+	// Generate public key in SSH format
+	publicKey, err := ssh.NewPublicKey(&key.PublicKey)
 	if err != nil {
-		return "", "", fmt.Errorf("marshaling public key: %w", err)
+		return "", "", fmt.Errorf("creating ssh public key: %w", err)
 	}
-	publicKeyPEM := &pem.Block{
-		Type:  "PUBLIC KEY",
-		Bytes: publicKeyBytes,
-	}
-	publicKeyString := string(pem.EncodeToMemory(publicKeyPEM))
+	publicKeyString := string(ssh.MarshalAuthorizedKey(publicKey))
+	// Remove any trailing newline that might be present
+	publicKeyString = strings.TrimSpace(publicKeyString)
 
 	// Save private key to file
 	if err := os.WriteFile(keyPath, []byte(privateKeyString), 0600); err != nil {
