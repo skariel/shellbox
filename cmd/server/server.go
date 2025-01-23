@@ -46,7 +46,7 @@ func main() {
 		log.Fatalf("failed to read infrastructure config: %v", err)
 	}
 
-	var infraConfig InfrastructureConfig
+	var infraConfig infra.InfrastructureConfig
 	if err := json.Unmarshal(configBytes, &infraConfig); err != nil {
 		log.Fatalf("failed to parse infrastructure config: %v", err)
 	}
