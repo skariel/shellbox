@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"shellbox/internal/infra"
-	"shellbox/internal/ssh"
+	"shellbox/internal/sshutil"
 )
 
 func waitForManagedIdentity(timeout time.Duration) (*infra.AzureClients, error) {
@@ -41,7 +41,7 @@ func main() {
 
 	keyPath := "/home/shellbox/.ssh/id_rsa"
 	// Generate SSH key pair
-	_, publicKey, err := ssh.GenerateKeyPair(keyPath)
+	_, publicKey, err := sshutil.GenerateKeyPair(keyPath)
 	if err != nil {
 		log.Fatalf("failed to generate SSH keys: %v", err)
 	}

@@ -1,9 +1,47 @@
 package sshutil
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"fmt"
+	"os"
 	"os/exec"
 )
+
+// GenerateKeyPair creates a new SSH key pair and saves the private key to the specified path
+func GenerateKeyPair(keyPath string) (privateKey string, publicKey string, err error) {
+	key, err := rsa.GenerateKey(rand.Reader, 4096)
+	if err != nil {
+		return "", "", fmt.Errorf("generating key pair: %w", err)
+	}
+
+	// Generate private key PEM
+	privateKeyPEM := &pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: x509.MarshalPKCS1PrivateKey(key),
+	}
+	privateKeyString := string(pem.EncodeToMemory(privateKeyPEM))
+
+	// Generate public key in authorized_keys format
+	publicKeyBytes, err := x509.MarshalPKIXPublicKey(&key.PublicKey)
+	if err != nil {
+		return "", "", fmt.Errorf("marshaling public key: %w", err)
+	}
+	publicKeyPEM := &pem.Block{
+		Type:  "PUBLIC KEY",
+		Bytes: publicKeyBytes,
+	}
+	publicKeyString := string(pem.EncodeToMemory(publicKeyPEM))
+
+	// Save private key to file
+	if err := os.WriteFile(keyPath, []byte(privateKeyString), 0600); err != nil {
+		return "", "", fmt.Errorf("writing private key file: %w", err)
+	}
+
+	return privateKeyString, publicKeyString, nil
+}
 
 // CopyFile copies a file to a remote host using scp
 func CopyFile(localPath, remotePath, username, hostname string) error {
