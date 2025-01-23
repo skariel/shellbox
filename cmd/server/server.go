@@ -5,8 +5,8 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"syscall"
 	"strings"
+	"syscall"
 	"time"
 
 	"shellbox/internal/infra"
