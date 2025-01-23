@@ -171,14 +171,25 @@ func createBastionVM(ctx context.Context, clients *AzureClients, config *Bastion
 	return &vm.VirtualMachine, nil
 }
 
-func copyServerBinary(ctx context.Context, config *BastionConfig, publicIPAddress string) error {
+func copyServerBinary(ctx context.Context, clients *AzureClients, config *BastionConfig, publicIPAddress string) error {
 	opts := DefaultRetryOptions()
 	opts.Operation = "copy server binary to bastion"
 	opts.Timeout = 5 * time.Minute // Longer timeout for file transfer
 
+	// Write resource group name to a file
+	if err := os.WriteFile("/tmp/rgname", []byte(clients.GetResourceGroupName()), 0644); err != nil {
+		return fmt.Errorf("failed to write resource group name: %w", err)
+	}
+
+	// Copy both the server binary and resource group name file
 	remotePath := fmt.Sprintf("/home/%s/server", config.AdminUsername)
+	rgPath := fmt.Sprintf("/home/%s/rgname", config.AdminUsername)
+	
 	_, err := RetryWithTimeout(ctx, opts, func(ctx context.Context) (bool, error) {
 		if err := sshutil.CopyFile(ctx, "/tmp/server", remotePath, config.AdminUsername, publicIPAddress); err != nil {
+			return false, err
+		}
+		if err := sshutil.CopyFile(ctx, "/tmp/rgname", rgPath, config.AdminUsername, publicIPAddress); err != nil {
 			return false, err
 		}
 		return true, nil
@@ -254,7 +265,7 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *BastionCo
 		return err
 	}
 
-	if err := copyServerBinary(ctx, config, *publicIP.Properties.IPAddress); err != nil {
+	if err := copyServerBinary(ctx, clients, config, *publicIP.Properties.IPAddress); err != nil {
 		return err
 	}
 

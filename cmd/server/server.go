@@ -39,6 +39,12 @@ func waitForManagedIdentity(timeout time.Duration) (*infra.AzureClients, error) 
 func main() {
 	log.Println("starting shellbox server")
 
+	// Read resource group name
+	rgName, err := os.ReadFile("/home/shellbox/rgname")
+	if err != nil {
+		log.Fatalf("failed to read resource group name: %v", err)
+	}
+
 	keyPath := "/home/shellbox/.ssh/id_rsa"
 	// Generate SSH key pair
 	_, publicKey, err := sshutil.GenerateKeyPair(keyPath)
@@ -52,6 +58,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed waiting for managed identity: %v", err)
 	}
+
+	// Set the resource group name from the file
+	clients.infraIDs.resourceGroupName = string(rgName)
 
 	config := &infra.BoxConfig{
 		AdminUsername: "shellbox",
