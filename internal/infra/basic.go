@@ -82,7 +82,7 @@ func NewAzureClients() (*AzureClients, error) {
 	if err != nil {
 		return nil, fmt.Errorf("creating subscription client: %w", err)
 	}
-	
+
 	page, err := client.NewListPager(nil).NextPage(context.Background())
 	if err != nil {
 		return nil, fmt.Errorf("listing subscriptions: %w", err)
