@@ -50,7 +50,7 @@ func main() {
 	}
 
 	log.Println("creating bastion")
-	if err := infra.DeployBastion(ctx, clients, &infra.BastionConfig{
+	if err := infra.DeployBastion(ctx, clients, &infra.VMConfig{
 		AdminUsername: "shellbox",
 		SSHPublicKey:  pubKey,
 		VMSize:        "Standard_B2ms",

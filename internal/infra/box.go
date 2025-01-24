@@ -12,13 +12,6 @@ import (
 	"github.com/google/uuid"
 )
 
-// BoxConfig holds the configuration parameters for creating a box VM.
-type BoxConfig struct {
-	VMSize        string
-	AdminUsername string
-	SSHPublicKey  string
-}
-
 // BoxTags represents searchable metadata for box VMs.
 // These tags are used to track VM status and lifecycle.
 type BoxTags struct {
@@ -29,7 +22,7 @@ type BoxTags struct {
 
 // CreateBox creates a new box VM with proper networking setup.
 // It returns the box ID and any error encountered.
-func CreateBox(ctx context.Context, clients *AzureClients, config *BoxConfig) (string, error) {
+func CreateBox(ctx context.Context, clients *AzureClients, config *VMConfig) (string, error) {
 	boxID := uuid.New().String()
 	vmName := fmt.Sprintf("box-%s", boxID)
 	nicName := fmt.Sprintf("box-nic-%s", boxID)
@@ -172,7 +165,7 @@ func createBoxNIC(ctx context.Context, clients *AzureClients, nicName string, ns
 	return &result.Interface, nil
 }
 
-func createBoxVM(ctx context.Context, clients *AzureClients, vmName string, nicID string, config *BoxConfig, tags BoxTags) (*armcompute.VirtualMachine, error) {
+func createBoxVM(ctx context.Context, clients *AzureClients, vmName string, nicID string, config *VMConfig, tags BoxTags) (*armcompute.VirtualMachine, error) {
 	tagsMap := map[string]*string{
 		"status":     to.Ptr(tags.Status),
 		"created_at": to.Ptr(tags.CreatedAt),

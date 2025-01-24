@@ -17,16 +17,9 @@ import (
 	"github.com/google/uuid"
 )
 
-// BastionConfig holds configuration for bastion deployment
-type BastionConfig struct {
-	AdminUsername string
-	SSHPublicKey  string
-	VMSize        string
-}
-
 // DefaultBastionConfig returns a default configuration for bastion deployment
-func DefaultBastionConfig() *BastionConfig {
-	return &BastionConfig{
+func DefaultBastionConfig() *VMConfig {
+	return &VMConfig{
 		AdminUsername: "shellbox",
 		VMSize:        string(armcompute.VirtualMachineSizeTypesStandardD2SV3),
 	}
@@ -99,7 +92,7 @@ func createBastionNIC(ctx context.Context, clients *AzureClients, publicIPID *st
 	return &res.Interface, nil
 }
 
-func createBastionVM(ctx context.Context, clients *AzureClients, config *BastionConfig, nicID string, customData string) (*armcompute.VirtualMachine, error) {
+func createBastionVM(ctx context.Context, clients *AzureClients, config *VMConfig, nicID string, customData string) (*armcompute.VirtualMachine, error) {
 	vmPoller, err := clients.ComputeClient.BeginCreateOrUpdate(ctx, clients.GetResourceGroupName(), bastionVMName, armcompute.VirtualMachine{
 		Location: to.Ptr(location),
 		Identity: &armcompute.VirtualMachineIdentity{
@@ -168,7 +161,7 @@ func createBastionVM(ctx context.Context, clients *AzureClients, config *Bastion
 	return &vm.VirtualMachine, nil
 }
 
-func copyServerBinary(ctx context.Context, clients *AzureClients, config *BastionConfig, publicIPAddress string) error {
+func copyServerBinary(ctx context.Context, clients *AzureClients, config *VMConfig, publicIPAddress string) error {
 	opts := DefaultRetryOptions()
 	opts.Operation = "copy server binary to bastion"
 	opts.Timeout = 5 * time.Minute // Longer timeout for file transfer
@@ -215,7 +208,7 @@ func copyServerBinary(ctx context.Context, clients *AzureClients, config *Bastio
 	return err
 }
 
-func startServerOnBastion(ctx context.Context, config *BastionConfig, publicIPAddress string) error {
+func startServerOnBastion(ctx context.Context, config *VMConfig, publicIPAddress string) error {
 	opts := DefaultRetryOptions()
 	opts.Operation = "start server on bastion"
 
@@ -257,7 +250,7 @@ func assignRoleToVM(ctx context.Context, clients *AzureClients, principalID *str
 }
 
 // DeployBastion creates a bastion host in the bastion subnet
-func DeployBastion(ctx context.Context, clients *AzureClients, config *BastionConfig) error {
+func DeployBastion(ctx context.Context, clients *AzureClients, config *VMConfig) error {
 	if err := compileBastionServer(); err != nil {
 		return err
 	}

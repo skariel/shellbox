@@ -71,10 +71,10 @@ func main() {
 	clients.SetBastionSubnetID(infraConfig.BastionSubnetID)
 	clients.SetBoxesSubnetID(infraConfig.BoxesSubnetID)
 
-	config := &infra.BoxConfig{
+	config := &infra.VMConfig{
 		AdminUsername: "shellbox",
 		SSHPublicKey:  publicKey,
-		VMSize:        "Standard_B2ms",
+		VMSize:        "Standard_D8s_v3",
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

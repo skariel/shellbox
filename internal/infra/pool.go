@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	targetPoolSize = 2
+	targetPoolSize = 12
 	checkInterval  = 1 * time.Minute
 )
 
@@ -16,10 +16,10 @@ type BoxPool struct {
 	mu      sync.RWMutex
 	boxes   map[string]string // boxID -> status
 	clients *AzureClients
-	config  *BoxConfig
+	config  *VMConfig
 }
 
-func NewBoxPool(clients *AzureClients, config *BoxConfig) *BoxPool {
+func NewBoxPool(clients *AzureClients, config *VMConfig) *BoxPool {
 	return &BoxPool{
 		boxes:   make(map[string]string),
 		clients: clients,
