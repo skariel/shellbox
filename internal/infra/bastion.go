@@ -275,13 +275,13 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *VMConfig)
 		return err
 	}
 
+	if err := assignRoleToVM(ctx, clients, vm.Identity.PrincipalID); err != nil {
+		return err
+	}
 	if err := copyServerBinary(ctx, clients, config, *publicIP.Properties.IPAddress); err != nil {
 		return err
 	}
 
-	if err := startServerOnBastion(ctx, config, *publicIP.Properties.IPAddress); err != nil {
-		return err
-	}
+	return startServerOnBastion(ctx, config, *publicIP.Properties.IPAddress)
 
-	return assignRoleToVM(ctx, clients, vm.Identity.PrincipalID)
 }
