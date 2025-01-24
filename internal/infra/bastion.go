@@ -17,11 +17,6 @@ import (
 	"github.com/google/uuid"
 )
 
-// NewGUID generates a new GUID string
-func NewGUID() string {
-	return uuid.New().String()
-}
-
 // BastionConfig holds configuration for bastion deployment
 type BastionConfig struct {
 	AdminUsername string
@@ -242,8 +237,7 @@ func getBastionRoleID(subscriptionID string) string {
 func assignRoleToVM(ctx context.Context, clients *AzureClients, principalID *string) error {
 	subscriptionID := clients.GetSubscriptionID()
 	roleDefID := getBastionRoleID(subscriptionID)
-	guid := NewGUID()
-
+	guid := uuid.New().String()
 	// Assign at subscription level to allow resource creation in any resource group
 	scope := fmt.Sprintf("/subscriptions/%s", subscriptionID)
 
