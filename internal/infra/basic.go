@@ -31,7 +31,7 @@ type VMConfig struct {
 
 // InfrastructureConfig holds runtime infrastructure details needed by the bastion server.
 // These are dynamic values generated during deployment and passed to the bastion
-// to allow it to work with existing infrastructure rather than creating new resources.
+// to allow it to work with existing infrastructure w/o querying Azure.
 type InfrastructureConfig struct {
 	ResourceGroupName string `json:"resource_group_name"`
 	BastionSubnetID   string `json:"bastion_subnet_id"`
