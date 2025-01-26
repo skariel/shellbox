@@ -28,22 +28,15 @@ type VMConfig struct {
 	VMSize        string
 }
 
-// InfrastructureConfig holds runtime infrastructure details needed by the bastion server.
-// These are dynamic values generated during deployment and passed to the bastion
-// to allow it to work with existing infrastructure w/o querying Azure.
-// inline this struct in the one below it (azureclients) AI!
-type InfrastructureConfig struct {
-	ResourceGroupName string `json:"resource_group_name"`
-	BastionSubnetID   string `json:"bastion_subnet_id"`
-	BoxesSubnetID     string `json:"boxes_subnet_id"`
-}
 
 // AzureClients holds all the Azure SDK clients needed for the application
 type AzureClients struct {
-	cred           *azidentity.ManagedIdentityCredential
-	subscriptionID string
-	infraIDs       *InfrastructureConfig
-	ResourceClient *armresources.ResourceGroupsClient
+	cred              *azidentity.ManagedIdentityCredential
+	subscriptionID    string
+	ResourceGroupName string
+	BastionSubnetID   string
+	BoxesSubnetID     string
+	ResourceClient    *armresources.ResourceGroupsClient
 	NetworkClient  *armnetwork.VirtualNetworksClient
 	NSGClient      *armnetwork.SecurityGroupsClient
 	ComputeClient  *armcompute.VirtualMachinesClient
@@ -147,10 +140,12 @@ func initializeAzureClients(subscriptionID string, cred *azidentity.ManagedIdent
 	}
 
 	return &AzureClients{
-		cred:           cred,
-		subscriptionID: subscriptionID,
-		infraIDs:       &InfrastructureConfig{},
-		ResourceClient: resourceClient,
+		cred:              cred,
+		subscriptionID:    subscriptionID,
+		ResourceGroupName: "",
+		BastionSubnetID:   "",
+		BoxesSubnetID:     "",
+		ResourceClient:    resourceClient,
 		NetworkClient:  networkClient,
 		NSGClient:      nsgClient,
 		ComputeClient:  computeClient,
@@ -324,15 +319,15 @@ func CreateNetworkInfrastructure(ctx context.Context, clients *AzureClients) err
 	for _, subnet := range vnetResult.VirtualNetwork.Properties.Subnets {
 		switch *subnet.Name {
 		case bastionSubnetName:
-			clients.infraIDs.bastionSubnetID = *subnet.ID
+			clients.BastionSubnetID = *subnet.ID
 		case boxesSubnetName:
-			clients.infraIDs.boxesSubnetID = *subnet.ID
+			clients.BoxesSubnetID = *subnet.ID
 		}
 	}
-	if clients.infraIDs.bastionSubnetID == "" {
+	if clients.BastionSubnetID == "" {
 		return fmt.Errorf("bastion subnet not found in VNet")
 	}
-	if clients.infraIDs.boxesSubnetID == "" {
+	if clients.BoxesSubnetID == "" {
 		return fmt.Errorf("boxes subnet not found in VNet")
 	}
 
