@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	targetPoolSize = 12
+	targetPoolSize = 30
 	checkInterval  = 1 * time.Minute
 )
 

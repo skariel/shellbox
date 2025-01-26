@@ -28,7 +28,6 @@ type VMConfig struct {
 	VMSize        string
 }
 
-
 // AzureClients holds all the Azure SDK clients needed for the application
 type AzureClients struct {
 	cred              *azidentity.ManagedIdentityCredential
@@ -37,15 +36,15 @@ type AzureClients struct {
 	BastionSubnetID   string
 	BoxesSubnetID     string
 	ResourceClient    *armresources.ResourceGroupsClient
-	NetworkClient  *armnetwork.VirtualNetworksClient
-	NSGClient      *armnetwork.SecurityGroupsClient
-	ComputeClient  *armcompute.VirtualMachinesClient
-	PublicIPClient *armnetwork.PublicIPAddressesClient
-	NICClient      *armnetwork.InterfacesClient
-	CosmosClient   *armcosmos.DatabaseAccountsClient
-	KeyVaultClient *armkeyvault.VaultsClient
-	SecretsClient  *armkeyvault.SecretsClient
-	RoleClient     *armauthorization.RoleAssignmentsClient
+	NetworkClient     *armnetwork.VirtualNetworksClient
+	NSGClient         *armnetwork.SecurityGroupsClient
+	ComputeClient     *armcompute.VirtualMachinesClient
+	PublicIPClient    *armnetwork.PublicIPAddressesClient
+	NICClient         *armnetwork.InterfacesClient
+	CosmosClient      *armcosmos.DatabaseAccountsClient
+	KeyVaultClient    *armkeyvault.VaultsClient
+	SecretsClient     *armkeyvault.SecretsClient
+	RoleClient        *armauthorization.RoleAssignmentsClient
 }
 
 func getSubscriptionIDFromMetadata() (string, error) {
@@ -146,15 +145,15 @@ func initializeAzureClients(subscriptionID string, cred *azidentity.ManagedIdent
 		BastionSubnetID:   "",
 		BoxesSubnetID:     "",
 		ResourceClient:    resourceClient,
-		NetworkClient:  networkClient,
-		NSGClient:      nsgClient,
-		ComputeClient:  computeClient,
-		PublicIPClient: publicIPClient,
-		NICClient:      nicClient,
-		CosmosClient:   cosmosClient,
-		KeyVaultClient: keyVaultClient,
-		SecretsClient:  secretsClient,
-		RoleClient:     roleClient,
+		NetworkClient:     networkClient,
+		NSGClient:         nsgClient,
+		ComputeClient:     computeClient,
+		PublicIPClient:    publicIPClient,
+		NICClient:         nicClient,
+		CosmosClient:      cosmosClient,
+		KeyVaultClient:    keyVaultClient,
+		SecretsClient:     secretsClient,
+		RoleClient:        roleClient,
 	}, nil
 }
 
