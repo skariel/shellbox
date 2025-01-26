@@ -2,9 +2,7 @@ package infra
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"os"
 	"os/exec"
 	"shellbox/internal/sshutil"
 	"time"
@@ -37,7 +35,7 @@ func compileBastionServer() error {
 }
 
 func createBastionPublicIP(ctx context.Context, clients *AzureClients) (*armnetwork.PublicIPAddress, error) {
-	ipPoller, err := clients.PublicIPClient.BeginCreateOrUpdate(ctx, clients.GetResourceGroupName(), bastionIPName, armnetwork.PublicIPAddress{
+	ipPoller, err := clients.PublicIPClient.BeginCreateOrUpdate(ctx, clients.ResourceGroupName, bastionIPName, armnetwork.PublicIPAddress{
 		Location: to.Ptr(location),
 		SKU: &armnetwork.PublicIPAddressSKU{
 			Name: to.Ptr(armnetwork.PublicIPAddressSKUNameStandard),
@@ -58,12 +56,7 @@ func createBastionPublicIP(ctx context.Context, clients *AzureClients) (*armnetw
 }
 
 func createBastionNIC(ctx context.Context, clients *AzureClients, publicIPID *string) (*armnetwork.Interface, error) {
-	bastionSubnetID, err := clients.GetBastionSubnetID()
-	if err != nil {
-		return nil, err
-	}
-
-	nicPoller, err := clients.NICClient.BeginCreateOrUpdate(ctx, clients.GetResourceGroupName(), bastionNICName, armnetwork.Interface{
+	nicPoller, err := clients.NICClient.BeginCreateOrUpdate(ctx, clients.ResourceGroupName, bastionNICName, armnetwork.Interface{
 		Location: to.Ptr(location),
 		Properties: &armnetwork.InterfacePropertiesFormat{
 			IPConfigurations: []*armnetwork.InterfaceIPConfiguration{
@@ -71,7 +64,7 @@ func createBastionNIC(ctx context.Context, clients *AzureClients, publicIPID *st
 					Name: to.Ptr("ipconfig1"),
 					Properties: &armnetwork.InterfaceIPConfigurationPropertiesFormat{
 						Subnet: &armnetwork.Subnet{
-							ID: to.Ptr(bastionSubnetID),
+							ID: to.Ptr(clients.BastionSubnetID),
 						},
 						PrivateIPAllocationMethod: to.Ptr(armnetwork.IPAllocationMethodDynamic),
 						PublicIPAddress: &armnetwork.PublicIPAddress{
@@ -93,7 +86,7 @@ func createBastionNIC(ctx context.Context, clients *AzureClients, publicIPID *st
 }
 
 func createBastionVM(ctx context.Context, clients *AzureClients, config *VMConfig, nicID string, customData string) (*armcompute.VirtualMachine, error) {
-	vmPoller, err := clients.ComputeClient.BeginCreateOrUpdate(ctx, clients.GetResourceGroupName(), bastionVMName, armcompute.VirtualMachine{
+	vmPoller, err := clients.ComputeClient.BeginCreateOrUpdate(ctx, clients.ResourceGroupName, bastionVMName, armcompute.VirtualMachine{
 		Location: to.Ptr(location),
 		Identity: &armcompute.VirtualMachineIdentity{
 			Type: to.Ptr(armcompute.ResourceIdentityTypeSystemAssigned),
@@ -166,41 +159,11 @@ func copyServerBinary(ctx context.Context, clients *AzureClients, config *VMConf
 	opts.Operation = "copy server binary to bastion"
 	opts.Timeout = 5 * time.Minute // Longer timeout for file transfer
 
-	// Create temporary file for infrastructure config
-	configFile, err := os.CreateTemp("", "infra-config-*.json")
-	if err != nil {
-		return fmt.Errorf("failed to create config file: %w", err)
-	}
-	defer os.Remove(configFile.Name())
-
-	// Prepare infrastructure config
-	infraConfig := InfrastructureConfig{
-		ResourceGroupName: clients.GetResourceGroupName(),
-		BastionSubnetID:   clients.infraIDs.bastionSubnetID,
-		BoxesSubnetID:     clients.infraIDs.boxesSubnetID,
-		VNetName:          vnetName,
-	}
-
-	// Marshal config to JSON
-	configJSON, err := json.MarshalIndent(infraConfig, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal config: %w", err)
-	}
-
-	// Write config to file
-	if err := os.WriteFile(configFile.Name(), configJSON, 0600); err != nil {
-		return fmt.Errorf("failed to write config file: %w", err)
-	}
-
-	// Copy files to bastion
+	// Copy file to bastion
 	remotePath := fmt.Sprintf("/home/%s/server", config.AdminUsername)
-	configPath := fmt.Sprintf("/home/%s/infra-config.json", config.AdminUsername)
 
-	_, err = RetryWithTimeout(ctx, opts, func(ctx context.Context) (bool, error) {
+	_, err := RetryWithTimeout(ctx, opts, func(ctx context.Context) (bool, error) {
 		if err := sshutil.CopyFile(ctx, "/tmp/server", remotePath, config.AdminUsername, publicIPAddress); err != nil {
-			return false, err
-		}
-		if err := sshutil.CopyFile(ctx, configFile.Name(), configPath, config.AdminUsername, publicIPAddress); err != nil {
 			return false, err
 		}
 		return true, nil
@@ -228,11 +191,10 @@ func getBastionRoleID(subscriptionID string) string {
 }
 
 func assignRoleToVM(ctx context.Context, clients *AzureClients, principalID *string) error {
-	subscriptionID := clients.GetSubscriptionID()
-	roleDefID := getBastionRoleID(subscriptionID)
+	roleDefID := getBastionRoleID(clients.SubscriptionID)
 	guid := uuid.New().String()
 	// Assign at subscription level to allow resource creation in any resource group
-	scope := fmt.Sprintf("/subscriptions/%s", subscriptionID)
+	scope := fmt.Sprintf("/subscriptions/%s", clients.SubscriptionID)
 
 	_, err := clients.RoleClient.Create(ctx,
 		scope,

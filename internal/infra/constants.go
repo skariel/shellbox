@@ -1,5 +1,10 @@
 package infra
 
+import (
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
+)
+
 // Resource group configuration
 const (
 	resourceGroupPrefix = "shellbox-infra"
@@ -34,3 +39,85 @@ const (
 	bastionNICName = "bastion-nic"
 	bastionIPName  = "bastion-ip"
 )
+
+// NSG Rules configuration
+var BastionNSGRules = []*armnetwork.SecurityRule{
+	{
+		Name: to.Ptr("AllowSSHFromInternet"),
+		Properties: &armnetwork.SecurityRulePropertiesFormat{
+			Protocol:                 to.Ptr(armnetwork.SecurityRuleProtocolTCP),
+			SourceAddressPrefix:      to.Ptr("Internet"),
+			SourcePortRange:          to.Ptr("*"),
+			DestinationAddressPrefix: to.Ptr("*"),
+			DestinationPortRange:     to.Ptr("22"),
+			Access:                   to.Ptr(armnetwork.SecurityRuleAccessAllow),
+			Priority:                 to.Ptr(int32(100)),
+			Direction:                to.Ptr(armnetwork.SecurityRuleDirectionInbound),
+		},
+	},
+	{
+		Name: to.Ptr("AllowHTTPSFromInternet"),
+		Properties: &armnetwork.SecurityRulePropertiesFormat{
+			Protocol:                 to.Ptr(armnetwork.SecurityRuleProtocolTCP),
+			SourceAddressPrefix:      to.Ptr("Internet"),
+			SourcePortRange:          to.Ptr("*"),
+			DestinationAddressPrefix: to.Ptr("*"),
+			DestinationPortRange:     to.Ptr("443"),
+			Access:                   to.Ptr(armnetwork.SecurityRuleAccessAllow),
+			Priority:                 to.Ptr(int32(110)),
+			Direction:                to.Ptr(armnetwork.SecurityRuleDirectionInbound),
+		},
+	},
+	{
+		Name: to.Ptr("DenyAllInbound"),
+		Properties: &armnetwork.SecurityRulePropertiesFormat{
+			Protocol:                 to.Ptr(armnetwork.SecurityRuleProtocolAsterisk),
+			SourceAddressPrefix:      to.Ptr("*"),
+			SourcePortRange:          to.Ptr("*"),
+			DestinationAddressPrefix: to.Ptr("*"),
+			DestinationPortRange:     to.Ptr("*"),
+			Access:                   to.Ptr(armnetwork.SecurityRuleAccessDeny),
+			Priority:                 to.Ptr(int32(4096)),
+			Direction:                to.Ptr(armnetwork.SecurityRuleDirectionInbound),
+		},
+	},
+	{
+		Name: to.Ptr("AllowToBoxesSubnet"),
+		Properties: &armnetwork.SecurityRulePropertiesFormat{
+			Protocol:                 to.Ptr(armnetwork.SecurityRuleProtocolAsterisk),
+			SourceAddressPrefix:      to.Ptr("*"),
+			SourcePortRange:          to.Ptr("*"),
+			DestinationAddressPrefix: to.Ptr(boxesSubnetCIDR),
+			DestinationPortRange:     to.Ptr("*"),
+			Access:                   to.Ptr(armnetwork.SecurityRuleAccessAllow),
+			Priority:                 to.Ptr(int32(100)),
+			Direction:                to.Ptr(armnetwork.SecurityRuleDirectionOutbound),
+		},
+	},
+	{
+		Name: to.Ptr("AllowToInternet"),
+		Properties: &armnetwork.SecurityRulePropertiesFormat{
+			Protocol:                 to.Ptr(armnetwork.SecurityRuleProtocolAsterisk),
+			SourceAddressPrefix:      to.Ptr("*"),
+			SourcePortRange:          to.Ptr("*"),
+			DestinationAddressPrefix: to.Ptr("Internet"),
+			DestinationPortRange:     to.Ptr("*"),
+			Access:                   to.Ptr(armnetwork.SecurityRuleAccessAllow),
+			Priority:                 to.Ptr(int32(110)),
+			Direction:                to.Ptr(armnetwork.SecurityRuleDirectionOutbound),
+		},
+	},
+	{
+		Name: to.Ptr("DenyAllOutbound"),
+		Properties: &armnetwork.SecurityRulePropertiesFormat{
+			Protocol:                 to.Ptr(armnetwork.SecurityRuleProtocolAsterisk),
+			SourceAddressPrefix:      to.Ptr("*"),
+			SourcePortRange:          to.Ptr("*"),
+			DestinationAddressPrefix: to.Ptr("*"),
+			DestinationPortRange:     to.Ptr("*"),
+			Access:                   to.Ptr(armnetwork.SecurityRuleAccessDeny),
+			Priority:                 to.Ptr(int32(4096)),
+			Direction:                to.Ptr(armnetwork.SecurityRuleDirectionOutbound),
+		},
+	},
+}
