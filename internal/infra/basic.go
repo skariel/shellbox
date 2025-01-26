@@ -2,11 +2,10 @@ package infra
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
-	"io"
-	"log"
-	"net/http"
-	"strconv"
+	"sort"
 	"strings"
 	"time"
 
@@ -19,6 +18,8 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/keyvault/armkeyvault"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armsubscriptions"
+	"golang.org/x/sync/errgroup"
 )
 
 // VMConfig holds common VM configuration fields
@@ -47,241 +48,315 @@ type AzureClients struct {
 	RoleClient        *armauthorization.RoleAssignmentsClient
 }
 
-func getSubscriptionIDFromMetadata() (string, error) {
-	opts := DefaultRetryOptions()
-	opts.Operation = "metadata service query"
-	opts.Timeout = 30 * time.Second
-	opts.Interval = 2 * time.Second
-
-	var subscriptionID string
-	_, err := RetryWithTimeout(context.Background(), opts, func(ctx context.Context) (bool, error) {
-		req, err := http.NewRequestWithContext(ctx, "GET",
-			"http://169.254.169.254/metadata/instance/compute/subscriptionId?api-version=2021-02-01&format=text", nil)
-		if err != nil {
-			return false, fmt.Errorf("creating metadata request: %w", err)
-		}
-		req.Header.Add("Metadata", "true")
-
-		client := &http.Client{Timeout: 5 * time.Second}
-		resp, err := client.Do(req)
-		if err != nil {
-			return false, fmt.Errorf("getting subscription ID from metadata: %w", err)
-		}
-		defer resp.Body.Close()
-
-		subscriptionIDBytes, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return false, fmt.Errorf("reading subscription ID: %w", err)
-		}
-		if len(subscriptionIDBytes) == 0 {
-			return false, fmt.Errorf("empty subscription ID from metadata service")
-		}
-
-		subscriptionID = string(subscriptionIDBytes)
-		return true, nil
-	})
-
+func __createResourceGroupClient(clients *AzureClients) error {
+	client, err := armresources.NewResourceGroupsClient(clients.subscriptionID, clients.cred, nil)
 	if err != nil {
-		return "", err
+		return fmt.Errorf("failed to create resource group client: %w", err)
 	}
-	return subscriptionID, nil
+	clients.ResourceClient = client
+	return nil
 }
 
-func initializeAzureClients(subscriptionID string, cred *azidentity.ManagedIdentityCredential) (*AzureClients, error) {
-	resourceClient, err := armresources.NewResourceGroupsClient(subscriptionID, cred, nil)
+func __createNetworkClient(clients *AzureClients) error {
+	client, err := armnetwork.NewVirtualNetworksClient(clients.subscriptionID, clients.cred, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create resource group client: %w", err)
+		return fmt.Errorf("failed to create network client: %w", err)
 	}
-
-	networkClient, err := armnetwork.NewVirtualNetworksClient(subscriptionID, cred, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create network client: %w", err)
-	}
-
-	nsgClient, err := armnetwork.NewSecurityGroupsClient(subscriptionID, cred, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create NSG client: %w", err)
-	}
-
-	publicIPClient, err := armnetwork.NewPublicIPAddressesClient(subscriptionID, cred, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create Public IP client: %w", err)
-	}
-
-	nicClient, err := armnetwork.NewInterfacesClient(subscriptionID, cred, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create interfaces client: %w", err)
-	}
-
-	computeClient, err := armcompute.NewVirtualMachinesClient(subscriptionID, cred, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create compute client: %w", err)
-	}
-
-	cosmosClient, err := armcosmos.NewDatabaseAccountsClient(subscriptionID, cred, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create cosmos client: %w", err)
-	}
-
-	keyVaultClient, err := armkeyvault.NewVaultsClient(subscriptionID, cred, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create key vault client: %w", err)
-	}
-
-	secretsClient, err := armkeyvault.NewSecretsClient(subscriptionID, cred, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create secrets client: %w", err)
-	}
-
-	roleClient, err := armauthorization.NewRoleAssignmentsClient(subscriptionID, cred, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create role assignments client: %w", err)
-	}
-
-	return &AzureClients{
-		cred:              cred,
-		subscriptionID:    subscriptionID,
-		ResourceGroupName: "",
-		BastionSubnetID:   "",
-		BoxesSubnetID:     "",
-		ResourceClient:    resourceClient,
-		NetworkClient:     networkClient,
-		NSGClient:         nsgClient,
-		ComputeClient:     computeClient,
-		PublicIPClient:    publicIPClient,
-		NICClient:         nicClient,
-		CosmosClient:      cosmosClient,
-		KeyVaultClient:    keyVaultClient,
-		SecretsClient:     secretsClient,
-		RoleClient:        roleClient,
-	}, nil
+	clients.NetworkClient = client
+	return nil
 }
 
-// NewAzureClients creates and returns all necessary Azure clients
+func __createNSGClient(clients *AzureClients) error {
+	client, err := armnetwork.NewSecurityGroupsClient(clients.subscriptionID, clients.cred, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create NSG client: %w", err)
+	}
+	clients.NSGClient = client
+	return nil
+}
+
+func __createPublicIPClient(clients *AzureClients) error {
+	client, err := armnetwork.NewPublicIPAddressesClient(clients.subscriptionID, clients.cred, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create Public IP client: %w", err)
+	}
+	clients.PublicIPClient = client
+	return nil
+}
+
+func __createNICClient(clients *AzureClients) error {
+	client, err := armnetwork.NewInterfacesClient(clients.subscriptionID, clients.cred, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create interfaces client: %w", err)
+	}
+	clients.NICClient = client
+	return nil
+}
+
+func __createComputeClient(clients *AzureClients) error {
+	client, err := armcompute.NewVirtualMachinesClient(clients.subscriptionID, clients.cred, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create compute client: %w", err)
+	}
+	clients.ComputeClient = client
+	return nil
+}
+
+func __createCosmosClient(clients *AzureClients) error {
+	client, err := armcosmos.NewDatabaseAccountsClient(clients.subscriptionID, clients.cred, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create cosmos client: %w", err)
+	}
+	clients.CosmosClient = client
+	return nil
+}
+
+func __createKeyVaultClient(clients *AzureClients) error {
+	client, err := armkeyvault.NewVaultsClient(clients.subscriptionID, clients.cred, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create key vault client: %w", err)
+	}
+	clients.KeyVaultClient = client
+	return nil
+}
+
+func __createSecretsClient(clients *AzureClients) error {
+	client, err := armkeyvault.NewSecretsClient(clients.subscriptionID, clients.cred, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create secrets client: %w", err)
+	}
+	clients.SecretsClient = client
+	return nil
+}
+
+func __createRoleClient(clients *AzureClients) error {
+	client, err := armauthorization.NewRoleAssignmentsClient(clients.subscriptionID, clients.cred, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create role assignments client: %w", err)
+	}
+	clients.RoleClient = client
+	return nil
+}
+
+// NewAzureClients creates all Azure clients using credential-based subscription ID discovery
 func NewAzureClients() (*AzureClients, error) {
 	cred, err := azidentity.NewManagedIdentityCredential(nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create credential: %w", err)
 	}
 
-	subscriptionID, err := getSubscriptionIDFromMetadata()
+	subsClient, err := armsubscriptions.NewClient(cred, nil)
 	if err != nil {
+		return nil, fmt.Errorf("failed to create subscriptions client: %w", err)
+	}
+
+	pager := subsClient.NewListPager(nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Get first subscription ID (assuming single subscription access)
+	var subscriptionID string
+	if pager.More() {
+		page, err := pager.NextPage(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list subscriptions: %w", err)
+		}
+		if len(page.Value) == 0 {
+			return nil, fmt.Errorf("no subscriptions found for managed identity")
+		}
+		subscriptionID = *page.Value[0].SubscriptionID
+	} else {
+		return nil, fmt.Errorf("no subscriptions available")
+	}
+
+	// Initialize clients with parallel client creation
+	clients := &AzureClients{
+		cred:              cred,
+		subscriptionID:    subscriptionID,
+		ResourceGroupName: "",
+		BastionSubnetID:   "",
+		BoxesSubnetID:     "",
+	}
+
+	g, _ := errgroup.WithContext(context.Background())
+
+	g.Go(func() error { return __createResourceGroupClient(clients) })
+	g.Go(func() error { return __createNetworkClient(clients) })
+	g.Go(func() error { return __createNSGClient(clients) })
+	g.Go(func() error { return __createPublicIPClient(clients) })
+	g.Go(func() error { return __createNICClient(clients) })
+	g.Go(func() error { return __createComputeClient(clients) })
+	g.Go(func() error { return __createCosmosClient(clients) })
+	g.Go(func() error { return __createKeyVaultClient(clients) })
+	g.Go(func() error { return __createSecretsClient(clients) })
+	g.Go(func() error { return __createRoleClient(clients) })
+
+	if err := g.Wait(); err != nil {
 		return nil, err
 	}
 
-	return initializeAzureClients(subscriptionID, cred)
+	return clients, nil
 }
 
-// CreateNetworkInfrastructure sets up the basic network infrastructure in Azure
-func CreateNetworkInfrastructure(ctx context.Context, clients *AzureClients) error {
-	pollUntilDoneOption := runtime.PollUntilDoneOptions{
+func __defaultPollOptions() *runtime.PollUntilDoneOptions {
+	return &runtime.PollUntilDoneOptions{
 		Frequency: 2 * time.Second,
 	}
+}
 
-	// Create resource group
-	_, err := clients.ResourceClient.CreateOrUpdate(ctx, ResourceGroup, armresources.ResourceGroup{
+func serializeNSGRules(rules []*armnetwork.SecurityRule) string {
+	var parts []string
+	for _, rule := range rules {
+		parts = append(parts,
+			fmt.Sprintf("%s-%d-%s-%s-%s",
+				*rule.Name,
+				*rule.Properties.Priority,
+				*rule.Properties.Direction,
+				*rule.Properties.Access,
+				*rule.Properties.DestinationPortRange,
+			))
+	}
+	sort.Strings(parts)
+	return strings.Join(parts, "|")
+}
+
+func __getNSGRules() []*armnetwork.SecurityRule {
+	return []*armnetwork.SecurityRule{
+		{
+			Name: to.Ptr("AllowSSHFromInternet"),
+			Properties: &armnetwork.SecurityRulePropertiesFormat{
+				Protocol:                 to.Ptr(armnetwork.SecurityRuleProtocolTCP),
+				SourceAddressPrefix:      to.Ptr("Internet"),
+				SourcePortRange:          to.Ptr("*"),
+				DestinationAddressPrefix: to.Ptr("*"),
+				DestinationPortRange:     to.Ptr("22"),
+				Access:                   to.Ptr(armnetwork.SecurityRuleAccessAllow),
+				Priority:                 to.Ptr(int32(100)),
+				Direction:                to.Ptr(armnetwork.SecurityRuleDirectionInbound),
+			},
+		},
+		{
+			Name: to.Ptr("AllowHTTPSFromInternet"),
+			Properties: &armnetwork.SecurityRulePropertiesFormat{
+				Protocol:                 to.Ptr(armnetwork.SecurityRuleProtocolTCP),
+				SourceAddressPrefix:      to.Ptr("Internet"),
+				SourcePortRange:          to.Ptr("*"),
+				DestinationAddressPrefix: to.Ptr("*"),
+				DestinationPortRange:     to.Ptr("443"),
+				Access:                   to.Ptr(armnetwork.SecurityRuleAccessAllow),
+				Priority:                 to.Ptr(int32(110)),
+				Direction:                to.Ptr(armnetwork.SecurityRuleDirectionInbound),
+			},
+		},
+		{
+			Name: to.Ptr("DenyAllInbound"),
+			Properties: &armnetwork.SecurityRulePropertiesFormat{
+				Protocol:                 to.Ptr(armnetwork.SecurityRuleProtocolAsterisk),
+				SourceAddressPrefix:      to.Ptr("*"),
+				SourcePortRange:          to.Ptr("*"),
+				DestinationAddressPrefix: to.Ptr("*"),
+				DestinationPortRange:     to.Ptr("*"),
+				Access:                   to.Ptr(armnetwork.SecurityRuleAccessDeny),
+				Priority:                 to.Ptr(int32(4096)),
+				Direction:                to.Ptr(armnetwork.SecurityRuleDirectionInbound),
+			},
+		},
+		{
+			Name: to.Ptr("AllowToBoxesSubnet"),
+			Properties: &armnetwork.SecurityRulePropertiesFormat{
+				Protocol:                 to.Ptr(armnetwork.SecurityRuleProtocolAsterisk),
+				SourceAddressPrefix:      to.Ptr("*"),
+				SourcePortRange:          to.Ptr("*"),
+				DestinationAddressPrefix: to.Ptr(boxesSubnetCIDR),
+				DestinationPortRange:     to.Ptr("*"),
+				Access:                   to.Ptr(armnetwork.SecurityRuleAccessAllow),
+				Priority:                 to.Ptr(int32(100)),
+				Direction:                to.Ptr(armnetwork.SecurityRuleDirectionOutbound),
+			},
+		},
+		{
+			Name: to.Ptr("AllowToInternet"),
+			Properties: &armnetwork.SecurityRulePropertiesFormat{
+				Protocol:                 to.Ptr(armnetwork.SecurityRuleProtocolAsterisk),
+				SourceAddressPrefix:      to.Ptr("*"),
+				SourcePortRange:          to.Ptr("*"),
+				DestinationAddressPrefix: to.Ptr("Internet"),
+				DestinationPortRange:     to.Ptr("*"),
+				Access:                   to.Ptr(armnetwork.SecurityRuleAccessAllow),
+				Priority:                 to.Ptr(int32(110)),
+				Direction:                to.Ptr(armnetwork.SecurityRuleDirectionOutbound),
+			},
+		},
+		{
+			Name: to.Ptr("DenyAllOutbound"),
+			Properties: &armnetwork.SecurityRulePropertiesFormat{
+				Protocol:                 to.Ptr(armnetwork.SecurityRuleProtocolAsterisk),
+				SourceAddressPrefix:      to.Ptr("*"),
+				SourcePortRange:          to.Ptr("*"),
+				DestinationAddressPrefix: to.Ptr("*"),
+				DestinationPortRange:     to.Ptr("*"),
+				Access:                   to.Ptr(armnetwork.SecurityRuleAccessDeny),
+				Priority:                 to.Ptr(int32(4096)),
+				Direction:                to.Ptr(armnetwork.SecurityRuleDirectionOutbound),
+			},
+		},
+	}
+}
+
+func GenerateConfigHash() (string, error) {
+	nsgRules := __getNSGRules()
+	hashInput := fmt.Sprintf("%s-%s-%s-%s",
+		bastionSubnetCIDR,
+		boxesSubnetCIDR,
+		vnetAddressSpace,
+		serializeNSGRules(nsgRules),
+	)
+
+	hasher := sha256.New()
+	hasher.Write([]byte(hashInput))
+	return hex.EncodeToString(hasher.Sum(nil))[:8], nil
+}
+
+func __createResourceGroup(ctx context.Context, clients *AzureClients) error {
+	hash, err := GenerateConfigHash()
+	if err != nil {
+		return fmt.Errorf("failed to generate config hash: %w", err)
+	}
+
+	_, err = clients.ResourceClient.CreateOrUpdate(ctx, ResourceGroup, armresources.ResourceGroup{
 		Location: to.Ptr(location),
+		Tags: map[string]*string{
+			"config": to.Ptr(fmt.Sprintf("sha256-%s", hash)),
+		},
 	}, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create resource group: %w", err)
 	}
+	return nil
+}
 
-	// Create Bastion NSG
-	bastionNSGPoller, err := clients.NSGClient.BeginCreateOrUpdate(ctx, rgName, bastionNSGName, armnetwork.SecurityGroup{
+func __createBastionNSG(ctx context.Context, clients *AzureClients) error {
+	nsgParams := armnetwork.SecurityGroup{
 		Location: to.Ptr(location),
 		Properties: &armnetwork.SecurityGroupPropertiesFormat{
-			SecurityRules: []*armnetwork.SecurityRule{
-				{
-					Name: to.Ptr("AllowSSHFromInternet"),
-					Properties: &armnetwork.SecurityRulePropertiesFormat{
-						Protocol:                 to.Ptr(armnetwork.SecurityRuleProtocolTCP),
-						SourceAddressPrefix:      to.Ptr("Internet"),
-						SourcePortRange:          to.Ptr("*"),
-						DestinationAddressPrefix: to.Ptr("*"),
-						DestinationPortRange:     to.Ptr("22"),
-						Access:                   to.Ptr(armnetwork.SecurityRuleAccessAllow),
-						Priority:                 to.Ptr(int32(100)),
-						Direction:                to.Ptr(armnetwork.SecurityRuleDirectionInbound),
-					},
-				},
-				{
-					Name: to.Ptr("AllowHTTPSFromInternet"),
-					Properties: &armnetwork.SecurityRulePropertiesFormat{
-						Protocol:                 to.Ptr(armnetwork.SecurityRuleProtocolTCP),
-						SourceAddressPrefix:      to.Ptr("Internet"),
-						SourcePortRange:          to.Ptr("*"),
-						DestinationAddressPrefix: to.Ptr("*"),
-						DestinationPortRange:     to.Ptr("443"),
-						Access:                   to.Ptr(armnetwork.SecurityRuleAccessAllow),
-						Priority:                 to.Ptr(int32(110)),
-						Direction:                to.Ptr(armnetwork.SecurityRuleDirectionInbound),
-					},
-				},
-				{
-					Name: to.Ptr("DenyAllInbound"),
-					Properties: &armnetwork.SecurityRulePropertiesFormat{
-						Protocol:                 to.Ptr(armnetwork.SecurityRuleProtocolAsterisk),
-						SourceAddressPrefix:      to.Ptr("*"),
-						SourcePortRange:          to.Ptr("*"),
-						DestinationAddressPrefix: to.Ptr("*"),
-						DestinationPortRange:     to.Ptr("*"),
-						Access:                   to.Ptr(armnetwork.SecurityRuleAccessDeny),
-						Priority:                 to.Ptr(int32(4096)),
-						Direction:                to.Ptr(armnetwork.SecurityRuleDirectionInbound),
-					},
-				},
-				{
-					Name: to.Ptr("AllowToBoxesSubnet"),
-					Properties: &armnetwork.SecurityRulePropertiesFormat{
-						Protocol:                 to.Ptr(armnetwork.SecurityRuleProtocolAsterisk),
-						SourceAddressPrefix:      to.Ptr("*"),
-						SourcePortRange:          to.Ptr("*"),
-						DestinationAddressPrefix: to.Ptr(boxesSubnetCIDR),
-						DestinationPortRange:     to.Ptr("*"),
-						Access:                   to.Ptr(armnetwork.SecurityRuleAccessAllow),
-						Priority:                 to.Ptr(int32(100)),
-						Direction:                to.Ptr(armnetwork.SecurityRuleDirectionOutbound),
-					},
-				},
-				{
-					Name: to.Ptr("AllowToInternet"),
-					Properties: &armnetwork.SecurityRulePropertiesFormat{
-						Protocol:                 to.Ptr(armnetwork.SecurityRuleProtocolAsterisk),
-						SourceAddressPrefix:      to.Ptr("*"),
-						SourcePortRange:          to.Ptr("*"),
-						DestinationAddressPrefix: to.Ptr("Internet"),
-						DestinationPortRange:     to.Ptr("*"),
-						Access:                   to.Ptr(armnetwork.SecurityRuleAccessAllow),
-						Priority:                 to.Ptr(int32(110)),
-						Direction:                to.Ptr(armnetwork.SecurityRuleDirectionOutbound),
-					},
-				},
-				{
-					Name: to.Ptr("DenyAllOutbound"),
-					Properties: &armnetwork.SecurityRulePropertiesFormat{
-						Protocol:                 to.Ptr(armnetwork.SecurityRuleProtocolAsterisk),
-						SourceAddressPrefix:      to.Ptr("*"),
-						SourcePortRange:          to.Ptr("*"),
-						DestinationAddressPrefix: to.Ptr("*"),
-						DestinationPortRange:     to.Ptr("*"),
-						Access:                   to.Ptr(armnetwork.SecurityRuleAccessDeny),
-						Priority:                 to.Ptr(int32(4096)),
-						Direction:                to.Ptr(armnetwork.SecurityRuleDirectionOutbound),
-					},
-				},
-			},
+			// these securitygroups are duplicated in the function GenerateConfigHas above.
+			// can these instead be refactored into a function that returns the security groups and is
+			// use in both places? AI?
+			SecurityRules: __getNSGRules(),
 		},
-	}, nil)
+	}
+
+	poller, err := clients.NSGClient.BeginCreateOrUpdate(ctx, rgName, bastionNSGName, nsgParams, nil)
 	if err != nil {
 		return fmt.Errorf("failed to start bastion NSG creation: %w", err)
 	}
-	bastionNSG, err := bastionNSGPoller.PollUntilDone(ctx, &pollUntilDoneOption)
-	if err != nil {
-		return fmt.Errorf("failed to create bastion NSG: %w", err)
-	}
 
-	// Create Virtual Network with subnets
-	vnetPoller, err := clients.NetworkClient.BeginCreateOrUpdate(ctx, rgName, vnetName, armnetwork.VirtualNetwork{
+	_, err = poller.PollUntilDone(ctx, __defaultPollOptions())
+	return err
+}
+
+func __createVirtualNetwork(ctx context.Context, clients *AzureClients) error {
+	vnetParams := armnetwork.VirtualNetwork{
 		Location: to.Ptr(location),
 		Properties: &armnetwork.VirtualNetworkPropertiesFormat{
 			AddressSpace: &armnetwork.AddressSpace{
@@ -292,9 +367,6 @@ func CreateNetworkInfrastructure(ctx context.Context, clients *AzureClients) err
 					Name: to.Ptr(bastionSubnetName),
 					Properties: &armnetwork.SubnetPropertiesFormat{
 						AddressPrefix: to.Ptr(bastionSubnetCIDR),
-						NetworkSecurityGroup: &armnetwork.SecurityGroup{
-							ID: bastionNSG.ID,
-						},
 					},
 				},
 				{
@@ -305,16 +377,22 @@ func CreateNetworkInfrastructure(ctx context.Context, clients *AzureClients) err
 				},
 			},
 		},
-	}, nil)
+	}
+
+	poller, err := clients.NetworkClient.BeginCreateOrUpdate(ctx, rgName, vnetName, vnetParams, nil)
 	if err != nil {
 		return fmt.Errorf("failed to start virtual network creation: %w", err)
 	}
-	vnetResult, err := vnetPoller.PollUntilDone(ctx, &pollUntilDoneOption)
+
+	vnetResult, err := poller.PollUntilDone(ctx, __defaultPollOptions())
 	if err != nil {
-		return fmt.Errorf("failed to create virtual network: %w", err)
+		return err
 	}
 
-	// Find bastion and boxes subnets
+	return __setSubnetIDsFromVNet(clients, vnetResult)
+}
+
+func __setSubnetIDsFromVNet(clients *AzureClients, vnetResult armnetwork.VirtualNetworksClientCreateOrUpdateResponse) error {
 	for _, subnet := range vnetResult.VirtualNetwork.Properties.Subnets {
 		switch *subnet.Name {
 		case bastionSubnetName:
@@ -323,65 +401,26 @@ func CreateNetworkInfrastructure(ctx context.Context, clients *AzureClients) err
 			clients.BoxesSubnetID = *subnet.ID
 		}
 	}
-	if clients.BastionSubnetID == "" {
-		return fmt.Errorf("bastion subnet not found in VNet")
-	}
-	if clients.BoxesSubnetID == "" {
-		return fmt.Errorf("boxes subnet not found in VNet")
-	}
 
+	if clients.BastionSubnetID == "" || clients.BoxesSubnetID == "" {
+		return fmt.Errorf("missing subnets in VNet")
+	}
 	return nil
 }
 
-// GetSubscriptionID returns the stored subscription ID
-func (c *AzureClients) GetSubscriptionID() string {
-	return c.subscriptionID
-}
+func CreateNetworkInfrastructure(ctx context.Context, clients *AzureClients) error {
+	g, _ := errgroup.WithContext(ctx)
 
-// CleanupOldResourceGroups deletes resource groups older than 5 minutes
-func CleanupOldResourceGroups(ctx context.Context, clients *AzureClients) error {
-	pager := clients.ResourceClient.NewListPager(nil)
-	now := time.Now()
-	cutoff := now.Add(-5 * time.Minute)
+	g.Go(func() error { return __createResourceGroup(ctx, clients) })
+	g.Go(func() error { return __createBastionNSG(ctx, clients) })
 
-	for pager.More() {
-		page, err := pager.NextPage(ctx)
-		if err != nil {
-			return fmt.Errorf("listing resource groups: %w", err)
-		}
-
-		for _, group := range page.Value {
-			// Only process groups with our prefix
-			if !strings.HasPrefix(*group.Name, resourceGroupPrefix) {
-				continue
-			}
-
-			// Parse timestamp from group name
-			parts := strings.Split(*group.Name, "-")
-			if len(parts) != 3 {
-				continue
-			}
-
-			timestamp, err := strconv.ParseInt(parts[2], 10, 64)
-			if err != nil {
-				log.Printf("Invalid timestamp in resource group name %s: %v", *group.Name, err)
-				continue
-			}
-
-			createTime := time.Unix(timestamp, 0)
-			if createTime.Before(cutoff) {
-				log.Printf("Deleting old resource group: %s", *group.Name)
-				poller, err := clients.ResourceClient.BeginDelete(ctx, *group.Name, nil)
-				if err != nil {
-					log.Printf("Failed to delete resource group %s: %v", *group.Name, err)
-					continue
-				}
-				_, err = poller.PollUntilDone(ctx, nil)
-				if err != nil {
-					log.Printf("Failed to complete deletion of resource group %s: %v", *group.Name, err)
-				}
-			}
-		}
+	if err := g.Wait(); err != nil {
+		return err
 	}
+
+	if err := __createVirtualNetwork(ctx, clients); err != nil {
+		return err
+	}
+
 	return nil
 }
