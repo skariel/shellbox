@@ -2,7 +2,6 @@ package infra
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -32,30 +31,18 @@ type VMConfig struct {
 // InfrastructureConfig holds runtime infrastructure details needed by the bastion server.
 // These are dynamic values generated during deployment and passed to the bastion
 // to allow it to work with existing infrastructure w/o querying Azure.
+// inline this struct in the one below it (azureclients) AI!
 type InfrastructureConfig struct {
 	ResourceGroupName string `json:"resource_group_name"`
 	BastionSubnetID   string `json:"bastion_subnet_id"`
 	BoxesSubnetID     string `json:"boxes_subnet_id"`
-	VNetName          string `json:"vnet_name"`
-}
-
-// InfrastructureIDs holds infrastructure resource identifiers
-type InfrastructureIDs struct {
-	resourceGroupName string
-	bastionSubnetID   string
-	boxesSubnetID     string
-}
-
-// NewInfrastructureIDs creates a new infrastructure IDs instance
-func NewInfrastructureIDs() *InfrastructureIDs {
-	return &InfrastructureIDs{}
 }
 
 // AzureClients holds all the Azure SDK clients needed for the application
 type AzureClients struct {
 	cred           *azidentity.ManagedIdentityCredential
 	subscriptionID string
-	infraIDs       *InfrastructureIDs
+	infraIDs       *InfrastructureConfig
 	ResourceClient *armresources.ResourceGroupsClient
 	NetworkClient  *armnetwork.VirtualNetworksClient
 	NSGClient      *armnetwork.SecurityGroupsClient
@@ -66,19 +53,6 @@ type AzureClients struct {
 	KeyVaultClient *armkeyvault.VaultsClient
 	SecretsClient  *armkeyvault.SecretsClient
 	RoleClient     *armauthorization.RoleAssignmentsClient
-}
-
-// GetResourceGroupName returns a resource group name with timestamp
-func (c *AzureClients) GetResourceGroupName() string {
-	if c.infraIDs.resourceGroupName == "" {
-		c.infraIDs.resourceGroupName = fmt.Sprintf("%s-%d", resourceGroupPrefix, time.Now().Unix())
-	}
-	return c.infraIDs.resourceGroupName
-}
-
-// SetResourceGroupName sets the resource group name
-func (c *AzureClients) SetResourceGroupName(name string) {
-	c.infraIDs.resourceGroupName = name
 }
 
 func getSubscriptionIDFromMetadata() (string, error) {
@@ -175,7 +149,7 @@ func initializeAzureClients(subscriptionID string, cred *azidentity.ManagedIdent
 	return &AzureClients{
 		cred:           cred,
 		subscriptionID: subscriptionID,
-		infraIDs:       NewInfrastructureIDs(),
+		infraIDs:       &InfrastructureConfig{},
 		ResourceClient: resourceClient,
 		NetworkClient:  networkClient,
 		NSGClient:      nsgClient,
@@ -204,41 +178,14 @@ func NewAzureClients() (*AzureClients, error) {
 	return initializeAzureClients(subscriptionID, cred)
 }
 
-// GetBastionSubnetID returns the ID of the bastion subnet
-func (c *AzureClients) GetBastionSubnetID() (string, error) {
-	if c.infraIDs.bastionSubnetID != "" {
-		return c.infraIDs.bastionSubnetID, nil
-	}
-	return "", errors.New("could not find BastionSubnetID")
-}
-
-// GetBoxesSubnetID returns the ID of the boxes subnet
-func (c *AzureClients) GetBoxesSubnetID() (string, error) {
-	if c.infraIDs.boxesSubnetID != "" {
-		return c.infraIDs.boxesSubnetID, nil
-	}
-	return "", errors.New("could not find BoxesSubnetID")
-}
-
-// SetBastionSubnetID sets the bastion subnet ID
-func (c *AzureClients) SetBastionSubnetID(id string) {
-	c.infraIDs.bastionSubnetID = id
-}
-
-// SetBoxesSubnetID sets the boxes subnet ID
-func (c *AzureClients) SetBoxesSubnetID(id string) {
-	c.infraIDs.boxesSubnetID = id
-}
-
 // CreateNetworkInfrastructure sets up the basic network infrastructure in Azure
 func CreateNetworkInfrastructure(ctx context.Context, clients *AzureClients) error {
 	pollUntilDoneOption := runtime.PollUntilDoneOptions{
 		Frequency: 2 * time.Second,
 	}
 
-	rgName := clients.GetResourceGroupName()
 	// Create resource group
-	_, err := clients.ResourceClient.CreateOrUpdate(ctx, rgName, armresources.ResourceGroup{
+	_, err := clients.ResourceClient.CreateOrUpdate(ctx, ResourceGroup, armresources.ResourceGroup{
 		Location: to.Ptr(location),
 	}, nil)
 	if err != nil {
