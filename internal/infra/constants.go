@@ -1,6 +1,10 @@
 package infra
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
 )
@@ -120,4 +124,40 @@ var BastionNSGRules = []*armnetwork.SecurityRule{
 			Direction:                to.Ptr(armnetwork.SecurityRuleDirectionOutbound),
 		},
 	},
+}
+
+func FormatConfig(suffix string) string {
+	return fmt.Sprintf(`Network Configuration:
+  VNet: %s (%s)
+  Bastion Subnet: %s (%s)
+  Boxes Subnet: %s (%s)
+  NSG Rules:
+%s
+  Resource Group Suffix: %s`,
+		vnetName, vnetAddressSpace,
+		bastionSubnetName, bastionSubnetCIDR,
+		boxesSubnetName, boxesSubnetCIDR,
+		formatNSGRules(BastionNSGRules),
+		suffix)
+}
+
+func formatNSGRules(rules []*armnetwork.SecurityRule) string {
+	var result string
+	for _, rule := range rules {
+		result += fmt.Sprintf("    - %s: %s %s->%s (%s)\n",
+			*rule.Name,
+			*rule.Properties.Access,
+			*rule.Properties.SourceAddressPrefix,
+			*rule.Properties.DestinationAddressPrefix,
+			*rule.Properties.Direction)
+	}
+	return result
+}
+
+func generateConfigHash(suffix string) (string, error) {
+	hashInput := FormatConfig(suffix)
+
+	hasher := sha256.New()
+	hasher.Write([]byte(hashInput))
+	return hex.EncodeToString(hasher.Sum(nil))[:8], nil
 }

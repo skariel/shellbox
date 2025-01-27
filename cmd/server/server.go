@@ -2,74 +2,39 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"fmt"
 	"log"
 	"os"
-	"os/signal"
-	"syscall"
-	"time"
 
 	"shellbox/internal/infra"
 	"shellbox/internal/sshutil"
 )
 
-func waitForManagedIdentity(timeout time.Duration) (*infra.AzureClients, error) {
-	opts := &infra.RetryOptions{
-		Timeout:   timeout,
-		Interval:  5 * time.Second,
-		Operation: "managed identity initialization",
-	}
-
-	return infra.RetryWithTimeout(context.Background(), opts, func(ctx context.Context) (*infra.AzureClients, error) {
-		clients, err := infra.NewAzureClients()
-		if err != nil {
-			return nil, err
-		}
-
-		// Test the clients by trying to list resource groups
-		pager := clients.ResourceClient.NewListPager(nil)
-		_, err = pager.NextPage(ctx)
-		if err != nil {
-			return nil, err
-		}
-
-		return clients, nil
-	})
-}
-
 func main() {
 	log.Println("starting shellbox server")
 
-	// Read and parse infrastructure config
-	configBytes, err := os.ReadFile("/home/shellbox/infra-config.json")
+	// Check required arguments
+	if len(os.Args) < 2 {
+		log.Fatal("resource group suffix argument is required")
+	}
+	suffix := os.Args[1]
+
+	log.Println("Current configuration:")
+	fmt.Println(infra.FormatConfig(suffix))
+
+	clients, err := infra.NewAzureClients(suffix)
 	if err != nil {
-		log.Fatalf("failed to read infrastructure config: %v", err)
+		log.Fatal(err)
 	}
 
-	var infraConfig infra.InfrastructureConfig
-	if err := json.Unmarshal(configBytes, &infraConfig); err != nil {
-		log.Fatalf("failed to parse infrastructure config: %v", err)
-	}
-
-	keyPath := "/home/shellbox/.ssh/id_rsa"
 	// Generate SSH key pair
+	keyPath := "/home/shellbox/.ssh/id_rsa"
 	_, publicKey, err := sshutil.GenerateKeyPair(keyPath)
 	if err != nil {
 		log.Fatalf("failed to generate SSH keys: %v", err)
 	}
 	log.Printf("generated SSH key pair and saved private key to: %s", keyPath)
 	log.Printf("public key: %q", publicKey)
-
-	// Wait for managed identity to be fully ready before proceeding
-	clients, err := waitForManagedIdentity(2 * time.Minute)
-	if err != nil {
-		log.Fatalf("failed waiting for managed identity: %v", err)
-	}
-
-	// Set infrastructure details from config
-	clients.SetResourceGroupName(infraConfig.ResourceGroupName)
-	clients.SetBastionSubnetID(infraConfig.BastionSubnetID)
-	clients.SetBoxesSubnetID(infraConfig.BoxesSubnetID)
 
 	config := &infra.VMConfig{
 		AdminUsername: "shellbox",
@@ -81,16 +46,5 @@ func main() {
 	defer cancel()
 
 	pool := infra.NewBoxPool(clients, config)
-
-	// Handle graceful shutdown
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
-	go func() {
-		sig := <-sigChan
-		log.Printf("received signal %v, initiating shutdown", sig)
-		cancel()
-	}()
-
 	pool.MaintainPool(ctx)
 }

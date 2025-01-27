@@ -22,21 +22,21 @@ func readSSHKey(path string) (string, error) {
 func main() {
 	ctx := context.Background()
 
-	clients, err := infra.NewAzureClients()
+	if len(os.Args) < 2 {
+		log.Fatal("resource group suffix argument is required")
+	}
+	suffix := os.Args[1]
+
+	clients, err := infra.NewAzureClients(suffix)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// Run cleanup in background
-	go func() {
-		log.Println("cleaning up old resource groups")
-		if err := infra.CleanupOldResourceGroups(context.Background(), clients); err != nil {
-			log.Printf("cleanup failed: %v", err)
-		}
-	}()
-
-	rgName := clients.GetResourceGroupName()
+	rgName := clients.ResourceGroupName
 	log.Printf("using resource group: %s", rgName)
+
+	log.Println("Current configuration:")
+	fmt.Println(infra.FormatConfig(suffix))
 
 	log.Println("upserting networking infra")
 	if err := infra.CreateNetworkInfrastructure(ctx, clients); err != nil {

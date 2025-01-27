@@ -154,7 +154,7 @@ func createBastionVM(ctx context.Context, clients *AzureClients, config *VMConfi
 	return &vm.VirtualMachine, nil
 }
 
-func copyServerBinary(ctx context.Context, clients *AzureClients, config *VMConfig, publicIPAddress string) error {
+func copyServerBinary(ctx context.Context, config *VMConfig, publicIPAddress string) error {
 	opts := DefaultRetryOptions()
 	opts.Operation = "copy server binary to bastion"
 	opts.Timeout = 5 * time.Minute // Longer timeout for file transfer
@@ -171,11 +171,10 @@ func copyServerBinary(ctx context.Context, clients *AzureClients, config *VMConf
 	return err
 }
 
-func startServerOnBastion(ctx context.Context, config *VMConfig, publicIPAddress string) error {
+func startServerOnBastion(ctx context.Context, config *VMConfig, publicIPAddress string, resourceGroupSuffix string) error {
 	opts := DefaultRetryOptions()
 	opts.Operation = "start server on bastion"
-
-	command := fmt.Sprintf("nohup /home/%s/server > /home/%s/server.log 2>&1 &", config.AdminUsername, config.AdminUsername)
+	command := fmt.Sprintf("nohup /home/%s/server %s > /home/%s/server.log 2>&1 &", config.AdminUsername, resourceGroupSuffix, config.AdminUsername)
 	_, err := RetryWithTimeout(ctx, opts, func(ctx context.Context) (bool, error) {
 		if err := sshutil.ExecuteCommand(ctx, command, config.AdminUsername, publicIPAddress); err != nil {
 			return false, err
@@ -240,10 +239,10 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *VMConfig)
 	if err := assignRoleToVM(ctx, clients, vm.Identity.PrincipalID); err != nil {
 		return err
 	}
-	if err := copyServerBinary(ctx, clients, config, *publicIP.Properties.IPAddress); err != nil {
+	if err := copyServerBinary(ctx, config, *publicIP.Properties.IPAddress); err != nil {
 		return err
 	}
 
-	return startServerOnBastion(ctx, config, *publicIP.Properties.IPAddress)
+	return startServerOnBastion(ctx, config, *publicIP.Properties.IPAddress, clients.ResourceGroupSuffix)
 
 }

@@ -2,11 +2,7 @@ package infra
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
-	"sort"
-	"strings"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
@@ -31,21 +27,22 @@ type VMConfig struct {
 
 // AzureClients holds all the Azure SDK clients needed for the application
 type AzureClients struct {
-	Cred              *azidentity.ManagedIdentityCredential
-	SubscriptionID    string
-	ResourceGroupName string
-	BastionSubnetID   string
-	BoxesSubnetID     string
-	ResourceClient    *armresources.ResourceGroupsClient
-	NetworkClient     *armnetwork.VirtualNetworksClient
-	NSGClient         *armnetwork.SecurityGroupsClient
-	ComputeClient     *armcompute.VirtualMachinesClient
-	PublicIPClient    *armnetwork.PublicIPAddressesClient
-	NICClient         *armnetwork.InterfacesClient
-	CosmosClient      *armcosmos.DatabaseAccountsClient
-	KeyVaultClient    *armkeyvault.VaultsClient
-	SecretsClient     *armkeyvault.SecretsClient
-	RoleClient        *armauthorization.RoleAssignmentsClient
+	Cred                *azidentity.ManagedIdentityCredential
+	SubscriptionID      string
+	ResourceGroupSuffix string
+	ResourceGroupName   string
+	BastionSubnetID     string
+	BoxesSubnetID       string
+	ResourceClient      *armresources.ResourceGroupsClient
+	NetworkClient       *armnetwork.VirtualNetworksClient
+	NSGClient           *armnetwork.SecurityGroupsClient
+	ComputeClient       *armcompute.VirtualMachinesClient
+	PublicIPClient      *armnetwork.PublicIPAddressesClient
+	NICClient           *armnetwork.InterfacesClient
+	CosmosClient        *armcosmos.DatabaseAccountsClient
+	KeyVaultClient      *armkeyvault.VaultsClient
+	SecretsClient       *armkeyvault.SecretsClient
+	RoleClient          *armauthorization.RoleAssignmentsClient
 }
 
 func __createResourceGroupClient(clients *AzureClients) error {
@@ -171,11 +168,12 @@ func NewAzureClients(suffix string) (*AzureClients, error) {
 
 	// Initialize clients with parallel client creation
 	clients := &AzureClients{
-		Cred:              cred,
-		SubscriptionID:    subscriptionID,
-		ResourceGroupName: resourceGroupPrefix + "-" + suffix,
-		BastionSubnetID:   "",
-		BoxesSubnetID:     "",
+		Cred:                cred,
+		SubscriptionID:      subscriptionID,
+		ResourceGroupSuffix: suffix,
+		ResourceGroupName:   resourceGroupPrefix + "-" + suffix,
+		BastionSubnetID:     "",
+		BoxesSubnetID:       "",
 	}
 
 	g, _ := errgroup.WithContext(context.Background())
@@ -204,38 +202,8 @@ func __defaultPollOptions() *runtime.PollUntilDoneOptions {
 	}
 }
 
-func serializeNSGRules(rules []*armnetwork.SecurityRule) string {
-	var parts []string
-	for _, rule := range rules {
-		parts = append(parts,
-			fmt.Sprintf("%s-%d-%s-%s-%s",
-				*rule.Name,
-				*rule.Properties.Priority,
-				*rule.Properties.Direction,
-				*rule.Properties.Access,
-				*rule.Properties.DestinationPortRange,
-			))
-	}
-	sort.Strings(parts)
-	return strings.Join(parts, "|")
-}
-
-func generateConfigHash() (string, error) {
-	nsgRules := BastionNSGRules
-	hashInput := fmt.Sprintf("%s-%s-%s-%s",
-		bastionSubnetCIDR,
-		boxesSubnetCIDR,
-		vnetAddressSpace,
-		serializeNSGRules(nsgRules),
-	)
-
-	hasher := sha256.New()
-	hasher.Write([]byte(hashInput))
-	return hex.EncodeToString(hasher.Sum(nil))[:8], nil
-}
-
 func __createResourceGroup(ctx context.Context, clients *AzureClients) error {
-	hash, err := generateConfigHash()
+	hash, err := generateConfigHash(clients.ResourceGroupName)
 	if err != nil {
 		return fmt.Errorf("failed to generate config hash: %w", err)
 	}

@@ -109,7 +109,7 @@ func createBoxNSG(ctx context.Context, clients *AzureClients, nsgName string) (*
 		Frequency: 2 * time.Second,
 	}
 
-	poller, err := clients.NSGClient.BeginCreateOrUpdate(ctx, clients.GetResourceGroupName(), nsgName, nsgParams, nil)
+	poller, err := clients.NSGClient.BeginCreateOrUpdate(ctx, clients.ResourceGroupName, nsgName, nsgParams, nil)
 	if err != nil {
 		return nil, fmt.Errorf("starting NSG creation: %w", err)
 	}
@@ -123,11 +123,6 @@ func createBoxNSG(ctx context.Context, clients *AzureClients, nsgName string) (*
 }
 
 func createBoxNIC(ctx context.Context, clients *AzureClients, nicName string, nsgID *string) (*armnetwork.Interface, error) {
-	boxesSubnetID, err := clients.GetBoxesSubnetID()
-	if err != nil {
-		return nil, fmt.Errorf("getting boxes subnet ID: %w", err)
-	}
-
 	nicParams := armnetwork.Interface{
 		Location: to.Ptr(location),
 		Properties: &armnetwork.InterfacePropertiesFormat{
@@ -139,7 +134,7 @@ func createBoxNIC(ctx context.Context, clients *AzureClients, nicName string, ns
 					Name: to.Ptr("ipconfig1"),
 					Properties: &armnetwork.InterfaceIPConfigurationPropertiesFormat{
 						Subnet: &armnetwork.Subnet{
-							ID: to.Ptr(boxesSubnetID),
+							ID: to.Ptr(clients.BoxesSubnetID),
 						},
 						PrivateIPAllocationMethod: to.Ptr(armnetwork.IPAllocationMethodDynamic),
 					},
@@ -152,7 +147,7 @@ func createBoxNIC(ctx context.Context, clients *AzureClients, nicName string, ns
 		Frequency: 2 * time.Second,
 	}
 
-	poller, err := clients.NICClient.BeginCreateOrUpdate(ctx, clients.GetResourceGroupName(), nicName, nicParams, nil)
+	poller, err := clients.NICClient.BeginCreateOrUpdate(ctx, clients.ResourceGroupName, nicName, nicParams, nil)
 	if err != nil {
 		return nil, fmt.Errorf("starting NIC creation: %w", err)
 	}
@@ -229,7 +224,7 @@ func createBoxVM(ctx context.Context, clients *AzureClients, vmName string, nicI
 		Frequency: 2 * time.Second,
 	}
 
-	poller, err := clients.ComputeClient.BeginCreateOrUpdate(ctx, clients.GetResourceGroupName(), vmName, vmParams, nil)
+	poller, err := clients.ComputeClient.BeginCreateOrUpdate(ctx, clients.ResourceGroupName, vmName, vmParams, nil)
 	if err != nil {
 		return nil, fmt.Errorf("starting VM creation: %w", err)
 	}
@@ -249,7 +244,7 @@ func DeallocateBox(ctx context.Context, clients *AzureClients, vmID string) erro
 		Frequency: 2 * time.Second,
 	}
 
-	poller, err := clients.ComputeClient.BeginDeallocate(ctx, clients.GetResourceGroupName(), vmID, nil)
+	poller, err := clients.ComputeClient.BeginDeallocate(ctx, clients.ResourceGroupName, vmID, nil)
 	if err != nil {
 		return fmt.Errorf("starting VM deallocation: %w", err)
 	}
@@ -266,7 +261,7 @@ func DeallocateBox(ctx context.Context, clients *AzureClients, vmID string) erro
 func FindBoxesByStatus(ctx context.Context, clients *AzureClients, status string) ([]string, error) {
 	filter := fmt.Sprintf("tagName eq 'status' and tagValue eq '%s'", status)
 
-	pager := clients.ComputeClient.NewListPager(clients.GetResourceGroupName(), &armcompute.VirtualMachinesClientListOptions{
+	pager := clients.ComputeClient.NewListPager(clients.ResourceGroupName, &armcompute.VirtualMachinesClientListOptions{
 		Filter: &filter,
 	})
 	var boxes []string
