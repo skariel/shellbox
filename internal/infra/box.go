@@ -190,7 +190,7 @@ func createBoxVM(ctx context.Context, clients *AzureClients, vmName string, nicI
 				OSDisk: &armcompute.OSDisk{
 					CreateOption: to.Ptr(armcompute.DiskCreateOptionTypesFromImage),
 					ManagedDisk: &armcompute.ManagedDiskParameters{
-						StorageAccountType: to.Ptr(armcompute.StorageAccountTypesStandardLRS),
+						StorageAccountType: to.Ptr(armcompute.StorageAccountTypesPremiumLRS), // Using Premium SSD for better nested VM performance
 					},
 				},
 			},

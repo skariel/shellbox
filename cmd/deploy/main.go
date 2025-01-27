@@ -32,7 +32,7 @@ func main() {
 	rgName := clients.ResourceGroupName
 	log.Printf("using resource group: %s", rgName)
 
-	log.Println("Current configuration:")
+	log.Println("current configuration:")
 	fmt.Println(infra.FormatConfig(suffix))
 
 	log.Println("upserting networking infra")
@@ -45,13 +45,12 @@ func main() {
 	}
 
 	log.Println("creating bastion")
-	if err := infra.DeployBastion(ctx, clients, &infra.VMConfig{
+	bastionIP := infra.DeployBastion(ctx, clients, &infra.VMConfig{
 		AdminUsername: "shellbox",
 		SSHPublicKey:  pubKey,
 		VMSize:        "Standard_B2ms",
-	}); err != nil {
-		log.Fatal(err)
-	}
+	})
 
 	log.Println("infrastructure deployment complete")
+	log.Printf("bastion IP: %s", bastionIP)
 }

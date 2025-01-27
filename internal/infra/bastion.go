@@ -3,8 +3,10 @@ package infra
 import (
 	"context"
 	"fmt"
+	"log"
 	"os/exec"
 	"shellbox/internal/sshutil"
+	"strings"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
@@ -195,54 +197,72 @@ func assignRoleToVM(ctx context.Context, clients *AzureClients, principalID *str
 	// Assign at subscription level to allow resource creation in any resource group
 	scope := fmt.Sprintf("/subscriptions/%s", clients.SubscriptionID)
 
-	_, err := clients.RoleClient.Create(ctx,
-		scope,
-		guid,
-		armauthorization.RoleAssignmentCreateParameters{
-			Properties: &armauthorization.RoleAssignmentProperties{
-				PrincipalID:      principalID,
-				RoleDefinitionID: to.Ptr(roleDefID),
-			},
-		}, nil)
-	if err != nil {
-		return fmt.Errorf("creating role assignment: %w", err)
-	}
-	return nil
+	opts := DefaultRetryOptions()
+	opts.Operation = "assign role to bastion VM"
+	opts.Timeout = 2 * time.Minute   // Longer timeout for AAD propagation
+	opts.Interval = 10 * time.Second // Longer interval between retries
+
+	_, err := RetryWithTimeout(ctx, opts, func(ctx context.Context) (bool, error) {
+		_, err := clients.RoleClient.Create(ctx,
+			scope,
+			guid,
+			armauthorization.RoleAssignmentCreateParameters{
+				Properties: &armauthorization.RoleAssignmentProperties{
+					PrincipalID:      principalID,
+					RoleDefinitionID: to.Ptr(roleDefID),
+				},
+			}, nil)
+		if err != nil {
+			// Return false without error to trigger retry for PrincipalNotFound
+			if strings.Contains(err.Error(), "PrincipalNotFound") {
+				return false, nil
+			}
+			// Return actual error for other cases
+			return false, fmt.Errorf("creating role assignment: %w", err)
+		}
+		return true, nil
+	})
+
+	return err
 }
 
-// DeployBastion creates a bastion host in the bastion subnet
-func DeployBastion(ctx context.Context, clients *AzureClients, config *VMConfig) error {
+// DeployBastion creates a bastion host in the bastion subnet and returns its public IP
+func DeployBastion(ctx context.Context, clients *AzureClients, config *VMConfig) string {
 	if err := compileBastionServer(); err != nil {
-		return err
+		log.Fatalf("failed to compile server binary: %v", err)
 	}
 
 	publicIP, err := createBastionPublicIP(ctx, clients)
 	if err != nil {
-		return fmt.Errorf("failed to create public IP: %w", err)
+		log.Fatalf("failed to create public IP: %v", err)
 	}
 
 	nic, err := createBastionNIC(ctx, clients, publicIP.ID)
 	if err != nil {
-		return fmt.Errorf("failed to create NIC: %w", err)
+		log.Fatalf("failed to create NIC: %v", err)
 	}
 
 	customData, err := GenerateBastionInitScript(config.SSHPublicKey)
 	if err != nil {
-		return fmt.Errorf("failed to generate init script: %w", err)
+		log.Fatalf("failed to generate init script: %v", err)
 	}
 
 	vm, err := createBastionVM(ctx, clients, config, *nic.ID, customData)
 	if err != nil {
-		return err
+		log.Fatalf("failed to create bastion VM: %v", err)
 	}
 
 	if err := assignRoleToVM(ctx, clients, vm.Identity.PrincipalID); err != nil {
-		return err
+		log.Fatalf("failed to assign role to VM: %v", err)
 	}
 	if err := copyServerBinary(ctx, config, *publicIP.Properties.IPAddress); err != nil {
-		return err
+		log.Fatalf("failed to copy server binary: %v", err)
 	}
 
-	return startServerOnBastion(ctx, config, *publicIP.Properties.IPAddress, clients.ResourceGroupSuffix)
+	if err := startServerOnBastion(ctx, config, *publicIP.Properties.IPAddress, clients.ResourceGroupSuffix); err != nil {
+		log.Fatalf("failed to start server on bastion: %v", err)
+	}
+
+	return *publicIP.Properties.IPAddress
 
 }

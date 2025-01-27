@@ -221,6 +221,11 @@ func createBastionNSG(ctx context.Context, clients *AzureClients) {
 }
 
 func createVirtualNetwork(ctx context.Context, clients *AzureClients) {
+	nsg, err := clients.NSGClient.Get(ctx, clients.ResourceGroupName, bastionNSGName, nil)
+	if err != nil {
+		log.Fatalf("failed to get bastion NSG: %v", err)
+	}
+
 	vnetParams := armnetwork.VirtualNetwork{
 		Location: to.Ptr(location),
 		Properties: &armnetwork.VirtualNetworkPropertiesFormat{
@@ -232,6 +237,9 @@ func createVirtualNetwork(ctx context.Context, clients *AzureClients) {
 					Name: to.Ptr(bastionSubnetName),
 					Properties: &armnetwork.SubnetPropertiesFormat{
 						AddressPrefix: to.Ptr(bastionSubnetCIDR),
+						NetworkSecurityGroup: &armnetwork.SecurityGroup{
+							ID: nsg.ID,
+						},
 					},
 				},
 				{
@@ -273,14 +281,12 @@ func setSubnetIDsFromVNet(clients *AzureClients, vnetResult armnetwork.VirtualNe
 }
 
 func CreateNetworkInfrastructure(ctx context.Context, clients *AzureClients) {
-	g, _ := errgroup.WithContext(ctx)
+	// 1. Create resource group first and wait for it to be ready
+	createResourceGroup(ctx, clients)
 
-	g.Go(func() error { createResourceGroup(ctx, clients); return nil })
-	g.Go(func() error { createBastionNSG(ctx, clients); return nil })
+	// 2. Create NSG first since VNet depends on it
+	createBastionNSG(ctx, clients)
 
-	if err := g.Wait(); err != nil {
-		log.Fatalf("failed to create network infrastructure: %v", err)
-	}
-
+	// 3. Create VNet after NSG is ready
 	createVirtualNetwork(ctx, clients)
 }
