@@ -22,10 +22,7 @@ func main() {
 	log.Println("Current configuration:")
 	fmt.Println(infra.FormatConfig(suffix))
 
-	clients, err := infra.NewAzureClients(suffix)
-	if err != nil {
-		log.Fatal(err)
-	}
+	clients := infra.NewAzureClients(suffix)
 
 	// Generate SSH key pair
 	keyPath := "/home/shellbox/.ssh/id_rsa"

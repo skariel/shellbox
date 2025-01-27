@@ -3,6 +3,7 @@ package infra
 import (
 	"context"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
@@ -45,106 +46,96 @@ type AzureClients struct {
 	RoleClient          *armauthorization.RoleAssignmentsClient
 }
 
-func __createResourceGroupClient(clients *AzureClients) error {
+func __createResourceGroupClient(clients *AzureClients) {
 	client, err := armresources.NewResourceGroupsClient(clients.SubscriptionID, clients.Cred, nil)
 	if err != nil {
-		return fmt.Errorf("failed to create resource group client: %w", err)
+		log.Fatalf("failed to create resource group client: %v", err)
 	}
 	clients.ResourceClient = client
-	return nil
 }
 
-func __createNetworkClient(clients *AzureClients) error {
+func __createNetworkClient(clients *AzureClients) {
 	client, err := armnetwork.NewVirtualNetworksClient(clients.SubscriptionID, clients.Cred, nil)
 	if err != nil {
-		return fmt.Errorf("failed to create network client: %w", err)
+		log.Fatalf("failed to create network client: %v", err)
 	}
 	clients.NetworkClient = client
-	return nil
 }
 
-func __createNSGClient(clients *AzureClients) error {
+func __createNSGClient(clients *AzureClients) {
 	client, err := armnetwork.NewSecurityGroupsClient(clients.SubscriptionID, clients.Cred, nil)
 	if err != nil {
-		return fmt.Errorf("failed to create NSG client: %w", err)
+		log.Fatalf("failed to create NSG client: %v", err)
 	}
 	clients.NSGClient = client
-	return nil
 }
 
-func __createPublicIPClient(clients *AzureClients) error {
+func __createPublicIPClient(clients *AzureClients) {
 	client, err := armnetwork.NewPublicIPAddressesClient(clients.SubscriptionID, clients.Cred, nil)
 	if err != nil {
-		return fmt.Errorf("failed to create Public IP client: %w", err)
+		log.Fatalf("failed to create Public IP client: %v", err)
 	}
 	clients.PublicIPClient = client
-	return nil
 }
 
-func __createNICClient(clients *AzureClients) error {
+func __createNICClient(clients *AzureClients) {
 	client, err := armnetwork.NewInterfacesClient(clients.SubscriptionID, clients.Cred, nil)
 	if err != nil {
-		return fmt.Errorf("failed to create interfaces client: %w", err)
+		log.Fatalf("failed to create interfaces client: %v", err)
 	}
 	clients.NICClient = client
-	return nil
 }
 
-func __createComputeClient(clients *AzureClients) error {
+func __createComputeClient(clients *AzureClients) {
 	client, err := armcompute.NewVirtualMachinesClient(clients.SubscriptionID, clients.Cred, nil)
 	if err != nil {
-		return fmt.Errorf("failed to create compute client: %w", err)
+		log.Fatalf("failed to create compute client: %v", err)
 	}
 	clients.ComputeClient = client
-	return nil
 }
 
-func __createCosmosClient(clients *AzureClients) error {
+func __createCosmosClient(clients *AzureClients) {
 	client, err := armcosmos.NewDatabaseAccountsClient(clients.SubscriptionID, clients.Cred, nil)
 	if err != nil {
-		return fmt.Errorf("failed to create cosmos client: %w", err)
+		log.Fatalf("failed to create cosmos client: %v", err)
 	}
 	clients.CosmosClient = client
-	return nil
 }
 
-func __createKeyVaultClient(clients *AzureClients) error {
+func __createKeyVaultClient(clients *AzureClients) {
 	client, err := armkeyvault.NewVaultsClient(clients.SubscriptionID, clients.Cred, nil)
 	if err != nil {
-		return fmt.Errorf("failed to create key vault client: %w", err)
+		log.Fatalf("failed to create key vault client: %v", err)
 	}
 	clients.KeyVaultClient = client
-	return nil
 }
 
-func __createSecretsClient(clients *AzureClients) error {
+func __createSecretsClient(clients *AzureClients) {
 	client, err := armkeyvault.NewSecretsClient(clients.SubscriptionID, clients.Cred, nil)
 	if err != nil {
-		return fmt.Errorf("failed to create secrets client: %w", err)
+		log.Fatalf("failed to create secrets client: %v", err)
 	}
 	clients.SecretsClient = client
-	return nil
 }
 
-func __createRoleClient(clients *AzureClients) error {
+func __createRoleClient(clients *AzureClients) {
 	client, err := armauthorization.NewRoleAssignmentsClient(clients.SubscriptionID, clients.Cred, nil)
 	if err != nil {
-		return fmt.Errorf("failed to create role assignments client: %w", err)
+		log.Fatalf("failed to create role assignments client: %v", err)
 	}
 	clients.RoleClient = client
-	return nil
 }
 
 // NewAzureClients creates all Azure clients using credential-based subscription ID discovery
-func NewAzureClients(suffix string) (*AzureClients, error) {
+func NewAzureClients(suffix string) *AzureClients {
 	cred, err := azidentity.NewManagedIdentityCredential(nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create credential: %w", err)
+		log.Fatalf("failed to create credential: %v", err)
 	}
 
 	subsClient, err := armsubscriptions.NewClient(cred, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create subscriptions client: %w", err)
+		log.Fatalf("failed to create subscriptions client: %v", err)
 	}
 
 	pager := subsClient.NewListPager(nil)
@@ -156,14 +147,14 @@ func NewAzureClients(suffix string) (*AzureClients, error) {
 	if pager.More() {
 		page, err := pager.NextPage(ctx)
 		if err != nil {
-			return nil, fmt.Errorf("failed to list subscriptions: %w", err)
+			log.Fatalf("failed to list subscriptions: %v", err)
 		}
 		if len(page.Value) == 0 {
-			return nil, fmt.Errorf("no subscriptions found for managed identity")
+			log.Fatal("no subscriptions found for managed identity")
 		}
 		subscriptionID = *page.Value[0].SubscriptionID
 	} else {
-		return nil, fmt.Errorf("no subscriptions available")
+		log.Fatal("no subscriptions available")
 	}
 
 	// Initialize clients with parallel client creation
@@ -176,24 +167,22 @@ func NewAzureClients(suffix string) (*AzureClients, error) {
 		BoxesSubnetID:       "",
 	}
 
-	g, _ := errgroup.WithContext(context.Background())
+	g := new(errgroup.Group)
 
-	g.Go(func() error { return __createResourceGroupClient(clients) })
-	g.Go(func() error { return __createNetworkClient(clients) })
-	g.Go(func() error { return __createNSGClient(clients) })
-	g.Go(func() error { return __createPublicIPClient(clients) })
-	g.Go(func() error { return __createNICClient(clients) })
-	g.Go(func() error { return __createComputeClient(clients) })
-	g.Go(func() error { return __createCosmosClient(clients) })
-	g.Go(func() error { return __createKeyVaultClient(clients) })
-	g.Go(func() error { return __createSecretsClient(clients) })
-	g.Go(func() error { return __createRoleClient(clients) })
+	g.Go(func() error { __createResourceGroupClient(clients); return nil })
+	g.Go(func() error { __createNetworkClient(clients); return nil })
+	g.Go(func() error { __createNSGClient(clients); return nil })
+	g.Go(func() error { __createPublicIPClient(clients); return nil })
+	g.Go(func() error { __createNICClient(clients); return nil })
+	g.Go(func() error { __createComputeClient(clients); return nil })
+	g.Go(func() error { __createCosmosClient(clients); return nil })
+	g.Go(func() error { __createKeyVaultClient(clients); return nil })
+	g.Go(func() error { __createSecretsClient(clients); return nil })
+	g.Go(func() error { __createRoleClient(clients); return nil })
 
-	if err := g.Wait(); err != nil {
-		return nil, err
-	}
+	_ = g.Wait() // We can ignore the error since the functions use log.Fatal
 
-	return clients, nil
+	return clients
 }
 
 func __defaultPollOptions() *runtime.PollUntilDoneOptions {
@@ -202,10 +191,10 @@ func __defaultPollOptions() *runtime.PollUntilDoneOptions {
 	}
 }
 
-func __createResourceGroup(ctx context.Context, clients *AzureClients) error {
+func __createResourceGroup(ctx context.Context, clients *AzureClients) {
 	hash, err := generateConfigHash(clients.ResourceGroupName)
 	if err != nil {
-		return fmt.Errorf("failed to generate config hash: %w", err)
+		log.Fatalf("failed to generate config hash: %v", err)
 	}
 
 	_, err = clients.ResourceClient.CreateOrUpdate(ctx, clients.ResourceGroupName, armresources.ResourceGroup{
@@ -215,12 +204,11 @@ func __createResourceGroup(ctx context.Context, clients *AzureClients) error {
 		},
 	}, nil)
 	if err != nil {
-		return fmt.Errorf("failed to create resource group: %w", err)
+		log.Fatalf("failed to create resource group: %v", err)
 	}
-	return nil
 }
 
-func __createBastionNSG(ctx context.Context, clients *AzureClients) error {
+func __createBastionNSG(ctx context.Context, clients *AzureClients) {
 	nsgParams := armnetwork.SecurityGroup{
 		Location: to.Ptr(location),
 		Properties: &armnetwork.SecurityGroupPropertiesFormat{
@@ -230,14 +218,16 @@ func __createBastionNSG(ctx context.Context, clients *AzureClients) error {
 
 	poller, err := clients.NSGClient.BeginCreateOrUpdate(ctx, clients.ResourceGroupName, bastionNSGName, nsgParams, nil)
 	if err != nil {
-		return fmt.Errorf("failed to start bastion NSG creation: %w", err)
+		log.Fatalf("failed to start bastion NSG creation: %v", err)
 	}
 
 	_, err = poller.PollUntilDone(ctx, __defaultPollOptions())
-	return err
+	if err != nil {
+		log.Fatalf("failed to complete bastion NSG creation: %v", err)
+	}
 }
 
-func __createVirtualNetwork(ctx context.Context, clients *AzureClients) error {
+func __createVirtualNetwork(ctx context.Context, clients *AzureClients) {
 	vnetParams := armnetwork.VirtualNetwork{
 		Location: to.Ptr(location),
 		Properties: &armnetwork.VirtualNetworkPropertiesFormat{
@@ -263,18 +253,18 @@ func __createVirtualNetwork(ctx context.Context, clients *AzureClients) error {
 
 	poller, err := clients.NetworkClient.BeginCreateOrUpdate(ctx, clients.ResourceGroupName, vnetName, vnetParams, nil)
 	if err != nil {
-		return fmt.Errorf("failed to start virtual network creation: %w", err)
+		log.Fatalf("failed to start virtual network creation: %v", err)
 	}
 
 	vnetResult, err := poller.PollUntilDone(ctx, __defaultPollOptions())
 	if err != nil {
-		return err
+		log.Fatalf("failed to complete virtual network creation: %v", err)
 	}
 
-	return __setSubnetIDsFromVNet(clients, vnetResult)
+	__setSubnetIDsFromVNet(clients, vnetResult)
 }
 
-func __setSubnetIDsFromVNet(clients *AzureClients, vnetResult armnetwork.VirtualNetworksClientCreateOrUpdateResponse) error {
+func __setSubnetIDsFromVNet(clients *AzureClients, vnetResult armnetwork.VirtualNetworksClientCreateOrUpdateResponse) {
 	for _, subnet := range vnetResult.VirtualNetwork.Properties.Subnets {
 		switch *subnet.Name {
 		case bastionSubnetName:
@@ -285,24 +275,19 @@ func __setSubnetIDsFromVNet(clients *AzureClients, vnetResult armnetwork.Virtual
 	}
 
 	if clients.BastionSubnetID == "" || clients.BoxesSubnetID == "" {
-		return fmt.Errorf("missing subnets in VNet")
+		log.Fatal("missing subnets in VNet")
 	}
-	return nil
 }
 
-func CreateNetworkInfrastructure(ctx context.Context, clients *AzureClients) error {
+func CreateNetworkInfrastructure(ctx context.Context, clients *AzureClients) {
 	g, _ := errgroup.WithContext(ctx)
 
-	g.Go(func() error { return __createResourceGroup(ctx, clients) })
-	g.Go(func() error { return __createBastionNSG(ctx, clients) })
+	g.Go(func() error { __createResourceGroup(ctx, clients); return nil })
+	g.Go(func() error { __createBastionNSG(ctx, clients); return nil })
 
 	if err := g.Wait(); err != nil {
-		return err
+		log.Fatalf("failed to create network infrastructure: %v", err)
 	}
 
-	if err := __createVirtualNetwork(ctx, clients); err != nil {
-		return err
-	}
-
-	return nil
+	__createVirtualNetwork(ctx, clients)
 }

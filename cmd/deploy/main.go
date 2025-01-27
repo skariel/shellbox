@@ -27,10 +27,7 @@ func main() {
 	}
 	suffix := os.Args[1]
 
-	clients, err := infra.NewAzureClients(suffix)
-	if err != nil {
-		log.Fatal(err)
-	}
+	clients := infra.NewAzureClients(suffix)
 
 	rgName := clients.ResourceGroupName
 	log.Printf("using resource group: %s", rgName)
@@ -39,9 +36,7 @@ func main() {
 	fmt.Println(infra.FormatConfig(suffix))
 
 	log.Println("upserting networking infra")
-	if err := infra.CreateNetworkInfrastructure(ctx, clients); err != nil {
-		log.Fatal(err)
-	}
+	infra.CreateNetworkInfrastructure(ctx, clients)
 
 	log.Println("done upserting")
 	pubKey, err := readSSHKey("$HOME/.ssh/id_ed25519.pub")
