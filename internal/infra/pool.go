@@ -44,19 +44,25 @@ func (p *BoxPool) MaintainPool(ctx context.Context) {
 				boxesToCreate := targetPoolSize - currentSize
 				log.Printf("creating %d boxes to maintain pool size", boxesToCreate)
 
+				var wg sync.WaitGroup
 				for i := 0; i < boxesToCreate; i++ {
-					boxID, err := CreateBox(ctx, p.clients, p.config)
-					if err != nil {
-						log.Printf("failed to create box: %v", err)
-						continue
-					}
+					wg.Add(1)
+					go func() {
+						defer wg.Done()
+						boxID, err := CreateBox(ctx, p.clients, p.config)
+						if err != nil {
+							log.Printf("failed to create box: %v", err)
+							return
+						}
 
-					p.mu.Lock()
-					p.boxes[boxID] = "ready"
-					p.mu.Unlock()
+						p.mu.Lock()
+						p.boxes[boxID] = "ready"
+						p.mu.Unlock()
 
-					log.Printf("created box with ID: %s", boxID)
+						log.Printf("created box with ID: %s", boxID)
+					}()
 				}
+				wg.Wait()
 			}
 		}
 	}

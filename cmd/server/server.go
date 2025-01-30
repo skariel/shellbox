@@ -14,7 +14,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armsubscriptions"
 )
 
-func waitForRoleAssignment(ctx context.Context, cred *azidentity.ManagedIdentityCredential) error {
+func waitForRoleAssignment(ctx context.Context, cred *azidentity.ManagedIdentityCredential) {
 	opts := infra.DefaultRetryOptions()
 	opts.Operation = "verify role assignment"
 	opts.Timeout = 5 * time.Minute
@@ -35,7 +35,9 @@ func waitForRoleAssignment(ctx context.Context, cred *azidentity.ManagedIdentity
 		}
 		return true, nil
 	})
-	return err
+	if err != nil {
+		log.Fatalf("role assignment verification failed: %v", err)
+	}
 }
 
 func main() {
@@ -60,23 +62,34 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	if err := waitForRoleAssignment(ctx, cred); err != nil {
-		log.Fatalf("role assignment not ready after timeout: %v", err)
-	}
+	waitForRoleAssignment(ctx, cred)
 	clients := infra.NewAzureClients(suffix)
 	log.Println("role assignment active")
 
 	// Create network infrastructure first
 	infra.CreateNetworkInfrastructure(context.Background(), clients)
 
-	// Generate SSH key pair
-	// TODO: generate only if not existing
+	// Generate or load SSH key pair
 	keyPath := "/home/shellbox/.ssh/id_rsa"
-	_, publicKey, err := sshutil.GenerateKeyPair(keyPath)
-	if err != nil {
-		log.Fatalf("failed to generate SSH keys: %v", err)
+	publicKey := ""
+
+	// Check if key already exists
+	if _, err := os.Stat(keyPath); os.IsNotExist(err) {
+		var err error
+		_, publicKey, err = sshutil.GenerateKeyPair(keyPath)
+		if err != nil {
+			log.Fatalf("failed to generate SSH keys: %v", err)
+		}
+		log.Printf("generated new SSH key pair and saved private key to: %s", keyPath)
+	} else {
+		// Load existing public key
+		pubKeyBytes, err := os.ReadFile(keyPath + ".pub")
+		if err != nil {
+			log.Fatalf("failed to read existing public key: %v", err)
+		}
+		publicKey = string(pubKeyBytes)
+		log.Printf("using existing SSH key pair from: %s", keyPath)
 	}
-	log.Printf("generated SSH key pair and saved private key to: %s", keyPath)
 	log.Printf("public key: %q", publicKey)
 
 	config := &infra.VMConfig{
