@@ -9,10 +9,34 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"golang.org/x/crypto/ssh"
 )
+
+// EnsureKeyPair ensures an SSH key pair exists at the specified path
+// If the key doesn't exist, it generates a new one
+// Returns the public key string in either case
+func EnsureKeyPair(keyPath string) (string, error) {
+	expandedPath := filepath.Clean(os.ExpandEnv(keyPath))
+
+	// Check if key already exists
+	if _, err := os.Stat(expandedPath); os.IsNotExist(err) {
+		_, publicKey, err := GenerateKeyPair(expandedPath)
+		if err != nil {
+			return "", fmt.Errorf("generating new SSH key pair: %w", err)
+		}
+		return publicKey, nil
+	}
+
+	// Load existing public key
+	pubKeyBytes, err := os.ReadFile(expandedPath + ".pub")
+	if err != nil {
+		return "", fmt.Errorf("reading existing public key: %w", err)
+	}
+	return strings.TrimSpace(string(pubKeyBytes)), nil
+}
 
 // GenerateKeyPair creates a new SSH key pair and saves the private key to the specified path
 func GenerateKeyPair(keyPath string) (privateKey string, publicKey string, err error) {

@@ -69,27 +69,13 @@ func main() {
 	// Create network infrastructure first
 	infra.CreateNetworkInfrastructure(context.Background(), clients)
 
-	// Generate or load SSH key pair
+	// Ensure SSH key pair exists
 	keyPath := "/home/shellbox/.ssh/id_rsa"
-	publicKey := ""
-
-	// Check if key already exists
-	if _, err := os.Stat(keyPath); os.IsNotExist(err) {
-		var err error
-		_, publicKey, err = sshutil.GenerateKeyPair(keyPath)
-		if err != nil {
-			log.Fatalf("failed to generate SSH keys: %v", err)
-		}
-		log.Printf("generated new SSH key pair and saved private key to: %s", keyPath)
-	} else {
-		// Load existing public key
-		pubKeyBytes, err := os.ReadFile(keyPath + ".pub")
-		if err != nil {
-			log.Fatalf("failed to read existing public key: %v", err)
-		}
-		publicKey = string(pubKeyBytes)
-		log.Printf("using existing SSH key pair from: %s", keyPath)
+	publicKey, err := sshutil.EnsureKeyPair(keyPath)
+	if err != nil {
+		log.Fatalf("failed to ensure SSH key pair: %v", err)
 	}
+	log.Printf("using SSH key pair at: %s", keyPath)
 	log.Printf("public key: %q", publicKey)
 
 	config := &infra.VMConfig{

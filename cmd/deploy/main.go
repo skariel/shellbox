@@ -5,19 +5,10 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 
 	"shellbox/internal/infra"
+	"shellbox/internal/sshutil"
 )
-
-func readSSHKey(path string) (string, error) {
-	expandedPath := filepath.Clean(os.ExpandEnv(path))
-	key, err := os.ReadFile(expandedPath)
-	if err != nil {
-		return "", fmt.Errorf("reading SSH key: %w", err)
-	}
-	return string(key), nil
-}
 
 func main() {
 	ctx := context.Background()
@@ -39,7 +30,7 @@ func main() {
 	infra.CreateNetworkInfrastructure(ctx, clients)
 
 	log.Println("done upserting")
-	pubKey, err := readSSHKey("$HOME/.ssh/id_ed25519.pub")
+	pubKey, err := sshutil.EnsureKeyPair("$HOME/.ssh/id_ed25519")
 	if err != nil {
 		log.Fatalf("could not load ssh pub key: %s", err)
 	}
