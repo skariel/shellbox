@@ -19,7 +19,7 @@ func waitForRoleAssignment(ctx context.Context, cred *azidentity.ManagedIdentity
 	opts := infra.DefaultRetryOptions()
 	opts.Operation = "verify role assignment"
 	opts.Timeout = 5 * time.Minute
-	opts.Interval = 100 * time.Second
+	opts.Interval = 5 * time.Second
 
 	_, err := infra.RetryWithTimeout(ctx, opts, func(ctx context.Context) (bool, error) {
 		client, err := armsubscriptions.NewClient(cred, nil)
@@ -72,9 +72,9 @@ func main() {
 
 	// Ensure SSH key pair exists
 	keyPath := "/home/shellbox/.ssh/id_rsa"
-	publicKey, err := sshutil.EnsureKeyPair(keyPath)
+	_, publicKey, err := sshutil.LoadKeyPair(keyPath)
 	if err != nil {
-		log.Fatalf("failed to ensure SSH key pair: %v", err)
+		log.Fatalf("failed to load SSH key pair: %v", err)
 	}
 	log.Printf("using SSH key pair at: %s", keyPath)
 	log.Printf("public key: %q", publicKey)

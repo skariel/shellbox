@@ -3,9 +3,9 @@ package sshserver
 import (
 	"fmt"
 	"log"
+	"os/exec"
 
 	"github.com/gliderlabs/ssh"
-	gossh "golang.org/x/crypto/ssh"
 )
 
 // Server represents the SSH server configuration
@@ -27,9 +27,22 @@ func (s *Server) Run() error {
 			return true
 		},
 		Handler: func(s ssh.Session) {
-			// Print fingerprint and disconnect
-			fmt.Fprintf(s, "Your key fingerprint: %s\n", gossh.FingerprintSHA256(s.PublicKey()))
-			s.Close()
+			// Forward to box instead
+			cmd := exec.Command("ssh",
+				"-tt",
+				"-o", "StrictHostKeyChecking=no",
+				"-o", "PreferredAuthentications=password", // Add this
+				"-o", "PubkeyAuthentication=no", // Add this
+				"-p", "2222",
+				"ubuntu@10.1.0.4")
+
+			cmd.Stdin = s
+			cmd.Stdout = s
+			cmd.Stderr = s
+
+			if err := cmd.Run(); err != nil {
+				fmt.Fprintf(s.Stderr(), "Error connecting to box: %v\n", err)
+			}
 		},
 	}
 

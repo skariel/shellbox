@@ -30,7 +30,7 @@ func main() {
 	infra.CreateNetworkInfrastructure(ctx, clients)
 
 	log.Println("done upserting")
-	pubKey, err := sshutil.EnsureKeyPair("$HOME/.ssh/id_ed25519")
+	_, pubKey, err := sshutil.LoadKeyPair("$HOME/.ssh/id_ed25519")
 	if err != nil {
 		log.Fatalf("could not load ssh pub key: %s", err)
 	}

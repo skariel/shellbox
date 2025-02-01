@@ -1,35 +1,27 @@
-# shellbox
+# script to prepare image and run qemu:
 
-## bastion stuff:
-- check kvm support: 
 ```
-egrep -c '(vmx|svm)' /proc/cpuinfo
-```
+# install qemu
 
-- install qemu
-```
 echo "\$nrconf{restart} = 'a';" | sudo tee /etc/needrestart/conf.d/50-autorestart.conf
 sudo apt update
-sudo apt install qemu-kvm qemu-system libvirt-daemon-system libvirt-clients bridge-utils -y
+sudo apt install qemu-kvm qemu-system libvirt-daemon-system libvirt-clients bridge-utils genisoimage whois -y
 
 sudo usermod -aG kvm,libvirt $USER
 sudo systemctl enable --now libvirtd
-```
 
-#######################################################
-cloudinit:
 
-```
+# ---
+
 mkdir -p ~/qemu-disks ~/qemu-memory
-```
 
 wget https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-amd64.img
 cp ubuntu-24.04-server-cloudimg-amd64.img ~/qemu-disks/ubuntu-base.qcow2
 qemu-img resize ~/qemu-disks/ubuntu-base.qcow2 16G
 
 
-user-data:
-```
+# user-data. Current hash pssw stands for "ubuntu":
+cat << 'EOF' > user-data 
 #cloud-config
 hostname: ubuntu
 users:
@@ -46,32 +38,33 @@ ssh:
   install-server: yes
   permit_root_login: false
   password_authentication: true
-```
-sudo apt-get install whois
-pssw hash:
-mkpasswd --method=SHA-512 --rounds=4096 'ubuntu'
+EOF
 
-meta-data:
-```
+# this is how to obtain pssw hash:
+# mkpasswd --method=SHA-512 --rounds=4096 'ubuntu'
+
+cat << 'EOF' > meta-data
 instance-id: ubuntu-inst-1
 local-hostname: ubuntu
-```
+EOF
 
 genisoimage -output ~/qemu-disks/cloud-init.iso -volid cidata -joliet -rock user-data meta-data
 
+# run qemu:
+sudo qemu-system-x86_64 \
+   -enable-kvm \
+   -m 4G \
+   -mem-prealloc \
+   -mem-path ~/qemu-memory/ubuntu-mem \
+   -smp 4 \
+   -cpu host \
+   -drive file=~/qemu-disks/ubuntu-base.qcow2,format=qcow2 \
+   -drive file=~/qemu-disks/cloud-init.iso,format=raw \
+   -nographic \
+   -nic user,model=virtio,hostfwd=tcp::2222-:22,dns=8.8.8.8
 ```
-qemu-system-x86_64 \
-  -enable-kvm \
-  -m 4G \
-  -mem-prealloc \
-  -mem-path ~/qemu-memory/ubuntu-mem \
-  -smp 4 \
-  -cpu host \
-  -drive file=~/qemu-disks/ubuntu-base.qcow2,format=qcow2 \
-  -drive file=~/qemu-disks/cloud-init.iso,format=raw \
-  -nographic \
-  -nic user,model=virtio,hostfwd=tcp::2222-:22
-```
+
+# other info:
 
 ssh -p 2222 ubuntu@localhost
 
@@ -93,3 +86,5 @@ ssh:
   install-server: yes
   permit_root_login: false
 ```
+kill qemu:
+ sudo killall qemu-system-x86_64

@@ -15,58 +15,55 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-// EnsureKeyPair ensures an SSH key pair exists at the specified path
-// If the key doesn't exist, it generates a new one
-// Returns the public key string in either case
-func EnsureKeyPair(keyPath string) (string, error) {
+// LoadKeyPair loads or creates an SSH key pair, using the private key as the source of truth.
+func LoadKeyPair(keyPath string) (privateKey, publicKey string, err error) {
 	expandedPath := filepath.Clean(os.ExpandEnv(keyPath))
 
-	// Check if key already exists
-	if _, err := os.Stat(expandedPath); os.IsNotExist(err) {
-		_, publicKey, err := GenerateKeyPair(expandedPath)
+	// Try to read private key
+	privKeyData, err := os.ReadFile(expandedPath)
+	if os.IsNotExist(err) {
+		// Generate new RSA key pair
+		key, err := rsa.GenerateKey(rand.Reader, 4096)
 		if err != nil {
-			return "", fmt.Errorf("generating new SSH key pair: %w", err)
+			return "", "", fmt.Errorf("generating key pair: %w", err)
 		}
-		return publicKey, nil
+
+		// Create private key PEM
+		privateKeyPEM := &pem.Block{
+			Type:  "RSA PRIVATE KEY",
+			Bytes: x509.MarshalPKCS1PrivateKey(key),
+		}
+		privateKey = string(pem.EncodeToMemory(privateKeyPEM))
+
+		// Save private key
+		if err := os.WriteFile(expandedPath, []byte(privateKey), 0600); err != nil {
+			return "", "", fmt.Errorf("writing private key file: %w", err)
+		}
+
+		privKeyData = []byte(privateKey)
+	} else if err != nil {
+		return "", "", fmt.Errorf("reading private key: %w", err)
 	}
 
-	// Load existing public key
-	pubKeyBytes, err := os.ReadFile(expandedPath + ".pub")
-	if err != nil {
-		return "", fmt.Errorf("reading existing public key: %w", err)
-	}
-	return strings.TrimSpace(string(pubKeyBytes)), nil
-}
-
-// GenerateKeyPair creates a new SSH key pair and saves the private key to the specified path
-func GenerateKeyPair(keyPath string) (privateKey string, publicKey string, err error) {
-	key, err := rsa.GenerateKey(rand.Reader, 4096)
-	if err != nil {
-		return "", "", fmt.Errorf("generating key pair: %w", err)
+	// Parse private key
+	block, _ := pem.Decode(privKeyData)
+	if block == nil {
+		return "", "", fmt.Errorf("failed to decode PEM block from private key")
 	}
 
-	// Generate private key PEM
-	privateKeyPEM := &pem.Block{
-		Type:  "RSA PRIVATE KEY",
-		Bytes: x509.MarshalPKCS1PrivateKey(key),
-	}
-	privateKeyString := string(pem.EncodeToMemory(privateKeyPEM))
+	var signer ssh.Signer
+	var parseErr error
 
-	// Generate public key in SSH format
-	sshPublicKey, err := ssh.NewPublicKey(&key.PublicKey)
-	if err != nil {
-		return "", "", fmt.Errorf("creating ssh public key: %w", err)
-	}
-	publicKeyString := string(ssh.MarshalAuthorizedKey(sshPublicKey))
-	// Remove any trailing newline that might be present
-	publicKeyString = strings.TrimSpace(publicKeyString)
-
-	// Save private key to file
-	if err := os.WriteFile(keyPath, []byte(privateKeyString), 0600); err != nil {
-		return "", "", fmt.Errorf("writing private key file: %w", err)
+	// Try parsing with different formats
+	signer, parseErr = ssh.ParsePrivateKey(privKeyData)
+	if parseErr != nil {
+		return "", "", fmt.Errorf("parsing private key: %w", parseErr)
 	}
 
-	return privateKeyString, publicKeyString, nil
+	publicKey = strings.TrimSpace(string(ssh.MarshalAuthorizedKey(signer.PublicKey())))
+	privateKey = string(privKeyData)
+
+	return privateKey, publicKey, nil
 }
 
 // CopyFile copies a file to a remote host using scp
