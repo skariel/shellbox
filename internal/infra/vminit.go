@@ -39,3 +39,5 @@ runcmd:
 func GenerateBoxInitScript() (string, error) {
 	return base64.StdEncoding.EncodeToString([]byte(boxBaseScript)), nil
 }
+
+// TODO: move these initialization script to the bastion and box files
