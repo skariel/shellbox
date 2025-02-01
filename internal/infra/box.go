@@ -2,6 +2,7 @@ package infra
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"time"
 
@@ -11,6 +12,16 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
 	"github.com/google/uuid"
 )
+
+const (
+	boxBaseScript = `#!/bin/bash
+sudo apt-get update -y
+sudo apt-get upgrade -y`
+)
+
+func GenerateBoxInitScript() (string, error) {
+	return base64.StdEncoding.EncodeToString([]byte(boxBaseScript)), nil
+}
 
 // BoxTags represents searchable metadata for box VMs.
 // These tags are used to track VM status and lifecycle.
@@ -56,7 +67,6 @@ func CreateBox(ctx context.Context, clients *AzureClients, config *VMConfig) (st
 }
 
 func createBoxNSG(ctx context.Context, clients *AzureClients, nsgName string) (*armnetwork.SecurityGroup, error) {
-	bastionSubnet := "10.0.0.0/24"
 
 	nsgParams := armnetwork.SecurityGroup{
 		Location: to.Ptr(location),
@@ -66,7 +76,7 @@ func createBoxNSG(ctx context.Context, clients *AzureClients, nsgName string) (*
 					Name: to.Ptr("AllowICMPFromBastion"),
 					Properties: &armnetwork.SecurityRulePropertiesFormat{
 						Protocol:                 to.Ptr(armnetwork.SecurityRuleProtocolIcmp),
-						SourceAddressPrefix:      to.Ptr(bastionSubnet),
+						SourceAddressPrefix:      to.Ptr(bastionSubnetCIDR),
 						SourcePortRange:          to.Ptr("*"),
 						DestinationAddressPrefix: to.Ptr("*"),
 						DestinationPortRange:     to.Ptr("*"),
@@ -79,7 +89,7 @@ func createBoxNSG(ctx context.Context, clients *AzureClients, nsgName string) (*
 					Name: to.Ptr("AllowSSHFromBastion"),
 					Properties: &armnetwork.SecurityRulePropertiesFormat{
 						Protocol:                 to.Ptr(armnetwork.SecurityRuleProtocolTCP),
-						SourceAddressPrefix:      to.Ptr(bastionSubnet),
+						SourceAddressPrefix:      to.Ptr(bastionSubnetCIDR),
 						SourcePortRange:          to.Ptr("*"),
 						DestinationAddressPrefix: to.Ptr("*"),
 						DestinationPortRange:     to.Ptr("22"),

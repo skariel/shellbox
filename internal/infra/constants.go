@@ -42,10 +42,24 @@ const (
 	bastionVMName  = "shellbox-bastion"
 	bastionNICName = "bastion-nic"
 	bastionIPName  = "bastion-ip"
+	BastionSSHPort = 2222
 )
 
 // NSG Rules configuration
 var BastionNSGRules = []*armnetwork.SecurityRule{
+	{
+		Name: to.Ptr("AllowCustomSSH"),
+		Properties: &armnetwork.SecurityRulePropertiesFormat{
+			Protocol:                 to.Ptr(armnetwork.SecurityRuleProtocolTCP),
+			SourceAddressPrefix:      to.Ptr("Internet"),
+			SourcePortRange:          to.Ptr("*"),
+			DestinationAddressPrefix: to.Ptr("*"),
+			DestinationPortRange:     to.Ptr(fmt.Sprintf("%d", BastionSSHPort)),
+			Access:                   to.Ptr(armnetwork.SecurityRuleAccessAllow),
+			Priority:                 to.Ptr(int32(120)),
+			Direction:                to.Ptr(armnetwork.SecurityRuleDirectionInbound),
+		},
+	},
 	{
 		Name: to.Ptr("AllowSSHFromInternet"),
 		Properties: &armnetwork.SecurityRulePropertiesFormat{

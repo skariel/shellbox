@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"shellbox/internal/infra"
+	"shellbox/internal/sshserver"
 	"shellbox/internal/sshutil"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
@@ -69,27 +70,13 @@ func main() {
 	// Create network infrastructure first
 	infra.CreateNetworkInfrastructure(context.Background(), clients)
 
-	// Generate or load SSH key pair
+	// Ensure SSH key pair exists
 	keyPath := "/home/shellbox/.ssh/id_rsa"
-	publicKey := ""
-
-	// Check if key already exists
-	if _, err := os.Stat(keyPath); os.IsNotExist(err) {
-		var err error
-		_, publicKey, err = sshutil.GenerateKeyPair(keyPath)
-		if err != nil {
-			log.Fatalf("failed to generate SSH keys: %v", err)
-		}
-		log.Printf("generated new SSH key pair and saved private key to: %s", keyPath)
-	} else {
-		// Load existing public key
-		pubKeyBytes, err := os.ReadFile(keyPath + ".pub")
-		if err != nil {
-			log.Fatalf("failed to read existing public key: %v", err)
-		}
-		publicKey = string(pubKeyBytes)
-		log.Printf("using existing SSH key pair from: %s", keyPath)
+	publicKey, err := sshutil.EnsureKeyPair(keyPath)
+	if err != nil {
+		log.Fatalf("failed to ensure SSH key pair: %v", err)
 	}
+	log.Printf("using SSH key pair at: %s", keyPath)
 	log.Printf("public key: %q", publicKey)
 
 	config := &infra.VMConfig{
@@ -102,5 +89,16 @@ func main() {
 	defer cancel()
 
 	pool := infra.NewBoxPool(clients, config)
-	pool.MaintainPool(ctx)
+	go pool.MaintainPool(ctx)
+
+	// Start SSH server
+	sshServer := sshserver.New(infra.BastionSSHPort)
+	go func() {
+		if err := sshServer.Run(); err != nil {
+			log.Printf("SSH server error: %v", err)
+		}
+	}()
+
+	// Keep main running
+	select {}
 }

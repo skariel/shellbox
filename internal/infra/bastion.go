@@ -2,6 +2,7 @@ package infra
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"log"
 	"os/exec"
@@ -16,6 +17,29 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
 	"github.com/google/uuid"
 )
+
+const bastionSetupScript = `#!/bin/bash
+sudo apt-get update -y
+sudo apt-get upgrade -y
+
+# Security hardening
+ufw allow OpenSSH
+ufw --force enable
+
+# Bastion-specific setup
+mkdir -p /etc/ssh/sshd_config.d/
+echo "PermitUserEnvironment yes" > /etc/ssh/sshd_config.d/shellbox.conf
+systemctl reload sshd
+
+# Create shellbox directory
+mkdir -p /home/\${admin_user}`
+
+func GenerateBastionInitScript() (string, error) {
+	fullScript := fmt.Sprintf(`#cloud-config
+runcmd:
+- %s`, bastionSetupScript)
+	return base64.StdEncoding.EncodeToString([]byte(fullScript)), nil
+}
 
 // DefaultBastionConfig returns a default configuration for bastion deployment
 func DefaultBastionConfig() *VMConfig {
@@ -99,10 +123,10 @@ func createBastionVM(ctx context.Context, clients *AzureClients, config *VMConfi
 			},
 			StorageProfile: &armcompute.StorageProfile{
 				ImageReference: &armcompute.ImageReference{
-					Publisher: to.Ptr("Canonical"),
-					Offer:     to.Ptr("0001-com-ubuntu-server-jammy"),
-					SKU:       to.Ptr("22_04-lts-gen2"),
-					Version:   to.Ptr("latest"),
+					Publisher: to.Ptr(VMPublisher),
+					Offer:     to.Ptr(VMOffer),
+					SKU:       to.Ptr(VMSku),
+					Version:   to.Ptr(VMVersion),
 				},
 				OSDisk: &armcompute.OSDisk{
 					Name:         to.Ptr("bastion-os-disk"),
@@ -242,7 +266,7 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *VMConfig)
 		log.Fatalf("failed to create NIC: %v", err)
 	}
 
-	customData, err := GenerateBastionInitScript(config.SSHPublicKey)
+	customData, err := GenerateBastionInitScript()
 	if err != nil {
 		log.Fatalf("failed to generate init script: %v", err)
 	}
