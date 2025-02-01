@@ -2,6 +2,7 @@ package infra
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"log"
 	"os/exec"
@@ -16,6 +17,29 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
 	"github.com/google/uuid"
 )
+
+const bastionSetupScript = `#!/bin/bash
+sudo apt-get update -y
+sudo apt-get upgrade -y
+
+# Security hardening
+ufw allow OpenSSH
+ufw --force enable
+
+# Bastion-specific setup
+mkdir -p /etc/ssh/sshd_config.d/
+echo "PermitUserEnvironment yes" > /etc/ssh/sshd_config.d/shellbox.conf
+systemctl reload sshd
+
+# Create shellbox directory
+mkdir -p /home/\${admin_user}`
+
+func GenerateBastionInitScript() (string, error) {
+	fullScript := fmt.Sprintf(`#cloud-config
+runcmd:
+- %s`, bastionSetupScript)
+	return base64.StdEncoding.EncodeToString([]byte(fullScript)), nil
+}
 
 // DefaultBastionConfig returns a default configuration for bastion deployment
 func DefaultBastionConfig() *VMConfig {

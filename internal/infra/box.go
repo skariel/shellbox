@@ -2,6 +2,7 @@ package infra
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"time"
 
@@ -11,6 +12,16 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
 	"github.com/google/uuid"
 )
+
+const (
+	boxBaseScript = `#!/bin/bash
+sudo apt-get update -y
+sudo apt-get upgrade -y`
+)
+
+func GenerateBoxInitScript() (string, error) {
+	return base64.StdEncoding.EncodeToString([]byte(boxBaseScript)), nil
+}
 
 // BoxTags represents searchable metadata for box VMs.
 // These tags are used to track VM status and lifecycle.
