@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"shellbox/internal/infra"
+	"shellbox/internal/sshserver"
 	"shellbox/internal/sshutil"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
@@ -88,5 +89,16 @@ func main() {
 	defer cancel()
 
 	pool := infra.NewBoxPool(clients, config)
-	pool.MaintainPool(ctx)
+	go pool.MaintainPool(ctx)
+
+	// Start SSH server
+	sshServer := sshserver.New(infra.BastionSSHPort)
+	go func() {
+		if err := sshServer.Run(); err != nil {
+			log.Printf("SSH server error: %v", err)
+		}
+	}()
+
+	// Keep main running
+	select {}
 }

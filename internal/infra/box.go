@@ -67,7 +67,6 @@ func CreateBox(ctx context.Context, clients *AzureClients, config *VMConfig) (st
 }
 
 func createBoxNSG(ctx context.Context, clients *AzureClients, nsgName string) (*armnetwork.SecurityGroup, error) {
-	bastionSubnet := "10.0.0.0/24"
 
 	nsgParams := armnetwork.SecurityGroup{
 		Location: to.Ptr(location),
@@ -77,7 +76,7 @@ func createBoxNSG(ctx context.Context, clients *AzureClients, nsgName string) (*
 					Name: to.Ptr("AllowICMPFromBastion"),
 					Properties: &armnetwork.SecurityRulePropertiesFormat{
 						Protocol:                 to.Ptr(armnetwork.SecurityRuleProtocolIcmp),
-						SourceAddressPrefix:      to.Ptr(bastionSubnet),
+						SourceAddressPrefix:      to.Ptr(bastionSubnetCIDR),
 						SourcePortRange:          to.Ptr("*"),
 						DestinationAddressPrefix: to.Ptr("*"),
 						DestinationPortRange:     to.Ptr("*"),
@@ -90,7 +89,7 @@ func createBoxNSG(ctx context.Context, clients *AzureClients, nsgName string) (*
 					Name: to.Ptr("AllowSSHFromBastion"),
 					Properties: &armnetwork.SecurityRulePropertiesFormat{
 						Protocol:                 to.Ptr(armnetwork.SecurityRuleProtocolTCP),
-						SourceAddressPrefix:      to.Ptr(bastionSubnet),
+						SourceAddressPrefix:      to.Ptr(bastionSubnetCIDR),
 						SourcePortRange:          to.Ptr("*"),
 						DestinationAddressPrefix: to.Ptr("*"),
 						DestinationPortRange:     to.Ptr("22"),

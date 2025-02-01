@@ -123,10 +123,10 @@ func createBastionVM(ctx context.Context, clients *AzureClients, config *VMConfi
 			},
 			StorageProfile: &armcompute.StorageProfile{
 				ImageReference: &armcompute.ImageReference{
-					Publisher: to.Ptr("Canonical"),
-					Offer:     to.Ptr("0001-com-ubuntu-server-jammy"),
-					SKU:       to.Ptr("22_04-lts-gen2"),
-					Version:   to.Ptr("latest"),
+					Publisher: to.Ptr(VMPublisher),
+					Offer:     to.Ptr(VMOffer),
+					SKU:       to.Ptr(VMSku),
+					Version:   to.Ptr(VMVersion),
 				},
 				OSDisk: &armcompute.OSDisk{
 					Name:         to.Ptr("bastion-os-disk"),
