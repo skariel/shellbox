@@ -242,7 +242,7 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *VMConfig)
 		log.Fatalf("failed to create NIC: %v", err)
 	}
 
-	customData, err := GenerateBastionInitScript(config.SSHPublicKey)
+	customData, err := GenerateBastionInitScript()
 	if err != nil {
 		log.Fatalf("failed to generate init script: %v", err)
 	}

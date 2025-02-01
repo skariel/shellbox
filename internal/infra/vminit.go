@@ -27,14 +27,10 @@ sudo apt-get update -y
 sudo apt-get upgrade -y`
 )
 
-func GenerateBastionInitScript(sshPublicKey string) (string, error) {
+func GenerateBastionInitScript() (string, error) {
 	fullScript := fmt.Sprintf(`#cloud-config
-users:
-- name: ${admin_user}
-  ssh_authorized_keys:
-  - %s
 runcmd:
-- %s`, sshPublicKey, bastionSetupScript)
+- %s`, bastionSetupScript)
 
 	return base64.StdEncoding.EncodeToString([]byte(fullScript)), nil
 }
