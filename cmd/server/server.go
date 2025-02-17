@@ -49,7 +49,10 @@ func main() {
 	go pool.MaintainPool(ctx)
 
 	// Start SSH server
-	sshServer := sshserver.New(infra.BastionSSHPort)
+	sshServer, err := sshserver.New(infra.BastionSSHPort)
+	if err != nil {
+		log.Fatalf("Failed to create SSH server: %v", err)
+	}
 	go func() {
 		if err := sshServer.Run(); err != nil {
 			log.Printf("SSH server error: %v", err)

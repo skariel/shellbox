@@ -2,107 +2,131 @@ package sshserver
 
 import (
 	"fmt"
+	"io"
 	"log"
-	"os"
-	"os/exec"
-	"strings"
+	"time"
 
-	"github.com/gliderlabs/ssh"
+	"shellbox/internal/sshutil"
+
+	gssh "github.com/gliderlabs/ssh" // alias to avoid confusion with crypto/ssh
+	"golang.org/x/crypto/ssh"
 )
 
 // Server represents the SSH server configuration
 type Server struct {
-	port int
+	port         int
+	boxSSHConfig *ssh.ClientConfig
+	boxAddr      string
 }
 
 // New creates a new SSH server instance
-func New(port int) *Server {
-	return &Server{port: port}
+func New(port int) (*Server, error) {
+	privateKey, _, err := sshutil.LoadKeyPair("$HOME/.ssh/id_rsa")
+	if err != nil {
+		return nil, fmt.Errorf("failed to load SSH key pair: %w", err)
+	}
+
+	signer, err := ssh.ParsePrivateKey([]byte(privateKey))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse private key: %w", err)
+	}
+
+	return &Server{
+		port:    port,
+		boxAddr: "10.1.0.4",
+		boxSSHConfig: &ssh.ClientConfig{
+			User: "ubuntu",
+			Auth: []ssh.AuthMethod{
+				ssh.PublicKeys(signer),
+			},
+			HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+			Timeout:         10 * time.Second,
+		},
+	}, nil
+}
+
+// dialBox establishes connection to the box
+func (s *Server) dialBox() (*ssh.Client, error) {
+	return ssh.Dial("tcp", fmt.Sprintf("%s:2222", s.boxAddr), s.boxSSHConfig)
 }
 
 // Run starts the SSH server
 func (s *Server) Run() error {
-	server := ssh.Server{
+	server := gssh.Server{
 		Addr: fmt.Sprintf(":%d", s.port),
-		PublicKeyHandler: func(_ ssh.Context, _ ssh.PublicKey) bool {
+		PublicKeyHandler: func(_ gssh.Context, _ gssh.PublicKey) bool {
 			// Accept any key
 			return true
 		},
-		Handler: func(s ssh.Session) {
-			if _, err := s.Write([]byte("\n\nHI FROM SHELLBOX!\n\n")); err != nil {
+		Handler: func(sess gssh.Session) {
+			if _, err := sess.Write([]byte("\n\nHI FROM SHELLBOX!\n\n")); err != nil {
 				log.Printf("Error writing to SSH session: %v", err)
 				return
 			}
 
-			sshArgs := []string{
-				"-o", "StrictHostKeyChecking=no",
-				"-o", "SendEnv=TERM",
-				"-p", "2222",
+			client, err := s.dialBox()
+			if err != nil {
+				log.Printf("Failed to connect to box: %v", err)
+				fmt.Fprintf(sess.Stderr(), "Error connecting to box: %v\n", err)
+				return
 			}
+			defer client.Close()
 
-			// Only force TTY allocation if client requested PTY
-			if pty, winCh, isPty := s.Pty(); isPty {
-				sshArgs = append(sshArgs, "-tt")
-				cmd := exec.Command("ssh", append(sshArgs, "ubuntu@10.1.0.4")...)
+			boxSession, err := client.NewSession()
+			if err != nil {
+				log.Printf("Failed to create box session: %v", err)
+				fmt.Fprintf(sess.Stderr(), "Error creating session: %v\n", err)
+				return
+			}
+			defer boxSession.Close()
 
-				// Set up environment with terminal type and size
-				cmd.Env = append(cmd.Env, fmt.Sprintf("TERM=%s", pty.Term))
-				cmd.Env = append(os.Environ(), 
-					"SSH_TTY=/dev/pts/0",
-					fmt.Sprintf("LINES=%d", pty.Window.Height),
-					fmt.Sprintf("COLUMNS=%d", pty.Window.Width))
-
-				cmd.Stdin = s
-				cmd.Stdout = s
-				cmd.Stderr = s
-
-				// Start command
-				if err := cmd.Start(); err != nil {
-					log.Printf("Failed to start command: %v", err)
+			// Handle PTY
+			if pty, winCh, isPty := sess.Pty(); isPty {
+				// Request PTY on the box session
+				if err := boxSession.RequestPty(pty.Term, pty.Window.Height, pty.Window.Width, ssh.TerminalModes{}); err != nil {
+					log.Printf("Failed to request PTY: %v", err)
 					return
 				}
 
-				// Handle window size changes using kill -SIGWINCH
+				// Handle window size changes
 				go func() {
 					for win := range winCh {
-						// Get the PID of the remote sshd process
-						pidCmd := exec.Command("ssh",
-							"-o", "StrictHostKeyChecking=no",
-							"-p", "2222",
-							"ubuntu@10.1.0.4",
-							"ps -ef | grep sshd | grep pts | awk '{print $2}' | head -n1")
-						pidBytes, err := pidCmd.Output()
-						if err != nil {
-							log.Printf("Failed to get remote PID: %v", err)
-							continue
-						}
-						pid := strings.TrimSpace(string(pidBytes))
-						
-						// Send SIGWINCH to the remote process
-						cmd := exec.Command("ssh",
-							"-o", "StrictHostKeyChecking=no",
-							"-p", "2222",
-							"ubuntu@10.1.0.4",
-							fmt.Sprintf("kill -SIGWINCH %s", pid))
-						if err := cmd.Run(); err != nil {
-							log.Printf("Failed to send SIGWINCH: %v", err)
-						}
+						boxSession.WindowChange(win.Height, win.Width)
 					}
 				}()
+			}
 
-				if err := cmd.Wait(); err != nil {
-					fmt.Fprintf(s.Stderr(), "Error connecting to box: %v\n", err)
-				}
-			} else {
-				// Non-PTY session
-				cmd := exec.Command("ssh", append(sshArgs, "ubuntu@10.1.0.4")...)
-				cmd.Stdin = s
-				cmd.Stdout = s
-				cmd.Stderr = s
+			// Set up pipes
+			stdin, err := boxSession.StdinPipe()
+			if err != nil {
+				log.Printf("Failed to get stdin pipe: %v", err)
+				return
+			}
+			stdout, err := boxSession.StdoutPipe()
+			if err != nil {
+				log.Printf("Failed to get stdout pipe: %v", err)
+				return
+			}
+			stderr, err := boxSession.StderrPipe()
+			if err != nil {
+				log.Printf("Failed to get stderr pipe: %v", err)
+				return
+			}
 
-				if err := cmd.Run(); err != nil {
-					fmt.Fprintf(s.Stderr(), "Error connecting to box: %v\n", err)
-				}
+			// Start shell
+			if err := boxSession.Shell(); err != nil {
+				log.Printf("Failed to start shell: %v", err)
+				return
+			}
+
+			// Copy data in both directions
+			go io.Copy(stdin, sess)
+			go io.Copy(sess, stdout)
+			go io.Copy(sess.Stderr(), stderr)
+
+			// Wait for session to complete
+			if err := boxSession.Wait(); err != nil {
+				log.Printf("Session ended with error: %v", err)
 			}
 		},
 	}
