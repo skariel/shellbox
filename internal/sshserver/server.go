@@ -27,6 +27,7 @@ func (s *Server) Run() error {
 			return true
 		},
 		Handler: func(s ssh.Session) {
+			s.Write([]byte("\n\nHI FROM SHELLBOX!\n\n"))
 			// Forward to box instead
 			cmd := exec.Command("ssh",
 				"-tt",
