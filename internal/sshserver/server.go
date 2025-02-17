@@ -10,6 +10,7 @@ import (
 
 	gssh "github.com/gliderlabs/ssh" // alias to avoid confusion with crypto/ssh
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/sync/errgroup"
 )
 
 // Server represents the SSH server configuration
@@ -39,6 +40,9 @@ func New(port int) (*Server, error) {
 			Auth: []ssh.AuthMethod{
 				ssh.PublicKeys(signer),
 			},
+			// InsecureIgnoreHostKey is acceptable here as we're connecting to boxes
+			// within our Azure VNet with strict NSG rules preventing external access
+			// and boxes are ephemeral with dynamic host keys
 			HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 			Timeout:         10 * time.Second,
 		},
@@ -91,7 +95,9 @@ func (s *Server) Run() error {
 				// Handle window size changes
 				go func() {
 					for win := range winCh {
-						boxSession.WindowChange(win.Height, win.Width)
+						if err := boxSession.WindowChange(win.Height, win.Width); err != nil {
+							log.Printf("Failed to change window size: %v", err)
+						}
 					}
 				}()
 			}
@@ -119,10 +125,25 @@ func (s *Server) Run() error {
 				return
 			}
 
-			// Copy data in both directions
-			go io.Copy(stdin, sess)
-			go io.Copy(sess, stdout)
-			go io.Copy(sess.Stderr(), stderr)
+			// Copy data in both directions using errgroup
+			var g errgroup.Group
+			g.Go(func() error {
+				_, err := io.Copy(stdin, sess)
+				return err
+			})
+			g.Go(func() error {
+				_, err := io.Copy(sess, stdout)
+				return err
+			})
+			g.Go(func() error {
+				_, err := io.Copy(sess.Stderr(), stderr)
+				return err
+			})
+
+			// Wait for copies to complete
+			if err := g.Wait(); err != nil {
+				log.Printf("Error copying data: %v", err)
+			}
 
 			// Wait for session to complete
 			if err := boxSession.Wait(); err != nil {
