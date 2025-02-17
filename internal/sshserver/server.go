@@ -6,7 +6,6 @@ import (
 	"os/exec"
 
 	"github.com/gliderlabs/ssh"
-	pssh "golang.org/x/crypto/ssh"
 )
 
 // Server represents the SSH server configuration
@@ -28,45 +27,32 @@ func (s *Server) Run() error {
 			return true
 		},
 		Handler: func(s ssh.Session) {
-			s.Write([]byte("\n\nHI FROM SHELLBOX!\n\n"))
-
-			// Get public key from session
-			pubKey := s.PublicKey()
-			if pubKey == nil {
-				fmt.Fprintf(s.Stderr(), "No public key provided\n")
+			if _, err := s.Write([]byte("\n\nHI FROM SHELLBOX!\n\n")); err != nil {
+				log.Printf("Error writing to SSH session: %v", err)
 				return
 			}
 
-			// Convert to authorized_keys format using standard ssh package
-			authKey := string(pssh.MarshalAuthorizedKey(pubKey))
-
-			// Create command to append key to authorized_keys
-			setupCmd := fmt.Sprintf(`mkdir -p ~/.ssh && echo '%s' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh`, authKey)
-
-			// Execute on the running VM
-			keyCmd := exec.Command("ssh",
-				"-o", "StrictHostKeyChecking=no",
-				"-o", "PreferredAuthentications=password",
-				"-o", "PubkeyAuthentication=no",
-				"-p", "2222",
-				"ubuntu@10.1.0.4",
-				setupCmd)
-
-			if err := keyCmd.Run(); err != nil {
-				fmt.Fprintf(s.Stderr(), "Error adding public key: %v\n", err)
-				return
-			}
-
-			// Now proceed with main SSH connection, but without password restrictions
 			cmd := exec.Command("ssh",
 				"-tt",
 				"-o", "StrictHostKeyChecking=no",
+				"-o", "SendEnv=TERM",
 				"-p", "2222",
 				"ubuntu@10.1.0.4")
 
 			cmd.Stdin = s
 			cmd.Stdout = s
 			cmd.Stderr = s
+
+			// Get terminal info if PTY was requested
+			if pty, winCh, isPty := s.Pty(); isPty {
+				cmd.Env = append(cmd.Env, fmt.Sprintf("TERM=%s", pty.Term))
+				go func() {
+					for win := range winCh {
+						// Could handle window size changes here if needed
+						_ = win
+					}
+				}()
+			}
 
 			if err := cmd.Run(); err != nil {
 				fmt.Fprintf(s.Stderr(), "Error connecting to box: %v\n", err)

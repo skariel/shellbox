@@ -13,8 +13,8 @@ import (
 	"github.com/google/uuid"
 )
 
-const (
-    boxBaseScript = `#!/bin/bash
+func GenerateBoxInitScript(sshPublicKey string) (string, error) {
+	script := fmt.Sprintf(`#!/bin/bash
 
 echo "\$nrconf{restart} = 'a';" | sudo tee /etc/needrestart/conf.d/50-autorestart.conf
 sudo apt update
@@ -29,29 +29,29 @@ wget https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-
 cp ubuntu-24.04-server-cloudimg-amd64.img ~/qemu-disks/ubuntu-base.qcow2
 qemu-img resize ~/qemu-disks/ubuntu-base.qcow2 16G
 
-cat << 'EOF' > user-data 
+cat > user-data << 'EOFMARKER'
 #cloud-config
 hostname: ubuntu
 users:
   - name: ubuntu
-    passwd: '$6$rounds=4096$UFg6YrZy/onJUwol$cHMc9AgqYoyEZ3FnVGnnNk8C7mSitS43yOwLAshx6l9WR4FA5he6XUviVzR2D3YNaKCzSvFov8IQH6yHOVe7f.'
-    lock_passwd: false
+    ssh_authorized_keys:
+      - '%s'
     shell: /bin/bash
     sudo: ALL=(ALL) NOPASSWD:ALL
 package_update: true
 packages:
   - openssh-server
-ssh_pwauth: true
+ssh_pwauth: false
 ssh:
   install-server: yes
   permit_root_login: false
-  password_authentication: true
-EOF
+  password_authentication: false
+EOFMARKER
 
-cat << 'EOF' > meta-data
+cat > meta-data << 'EOFMARKER'
 instance-id: ubuntu-inst-1
 local-hostname: ubuntu
-EOF
+EOFMARKER
 
 genisoimage -output ~/qemu-disks/cloud-init.iso -volid cidata -joliet -rock user-data meta-data
 
@@ -65,11 +65,9 @@ sudo qemu-system-x86_64 \
    -drive file=~/qemu-disks/ubuntu-base.qcow2,format=qcow2 \
    -drive file=~/qemu-disks/cloud-init.iso,format=raw \
    -nographic \
-   -nic user,model=virtio,hostfwd=tcp::2222-:22,dns=8.8.8.8`
-)
+   -nic user,model=virtio,hostfwd=tcp::2222-:22,dns=8.8.8.8`, sshPublicKey)
 
-func GenerateBoxInitScript() (string, error) {
-	return base64.StdEncoding.EncodeToString([]byte(boxBaseScript)), nil
+	return base64.StdEncoding.EncodeToString([]byte(script)), nil
 }
 
 // BoxTags represents searchable metadata for box VMs.
@@ -278,8 +276,8 @@ func createBoxVM(ctx context.Context, clients *AzureClients, vmName string, nicI
 		"box_id":     to.Ptr(tags.BoxID),
 	}
 
-	// Generate base initialization script
-	initScript, err := GenerateBoxInitScript()
+	// Generate initialization script with SSH key
+	initScript, err := GenerateBoxInitScript(config.SSHPublicKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate box init script: %w", err)
 	}
@@ -308,7 +306,8 @@ func createBoxVM(ctx context.Context, clients *AzureClients, vmName string, nicI
 			OSProfile: &armcompute.OSProfile{
 				ComputerName:  to.Ptr(vmName),
 				AdminUsername: to.Ptr(config.AdminUsername),
-				CustomData:    to.Ptr(initScript),
+				// Where can I see the logs of running the script belopw AI?
+				CustomData: to.Ptr(initScript),
 				LinuxConfiguration: &armcompute.LinuxConfiguration{
 					DisablePasswordAuthentication: to.Ptr(true),
 					SSH: &armcompute.SSHConfiguration{
