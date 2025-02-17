@@ -6,6 +6,7 @@ import (
 	"os/exec"
 
 	"github.com/gliderlabs/ssh"
+	pssh "golang.org/x/crypto/ssh"
 )
 
 // Server represents the SSH server configuration
@@ -28,12 +29,38 @@ func (s *Server) Run() error {
 		},
 		Handler: func(s ssh.Session) {
 			s.Write([]byte("\n\nHI FROM SHELLBOX!\n\n"))
-			// Forward to box instead
+
+			// Get public key from session
+			pubKey := s.PublicKey()
+			if pubKey == nil {
+				fmt.Fprintf(s.Stderr(), "No public key provided\n")
+				return
+			}
+
+			// Convert to authorized_keys format using standard ssh package
+			authKey := string(pssh.MarshalAuthorizedKey(pubKey))
+
+			// Create command to append key to authorized_keys
+			setupCmd := fmt.Sprintf(`mkdir -p ~/.ssh && echo '%s' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && chmod 700 ~/.ssh`, authKey)
+
+			// Execute on the running VM
+			keyCmd := exec.Command("ssh",
+				"-o", "StrictHostKeyChecking=no",
+				"-o", "PreferredAuthentications=password",
+				"-o", "PubkeyAuthentication=no",
+				"-p", "2222",
+				"ubuntu@10.1.0.4",
+				setupCmd)
+
+			if err := keyCmd.Run(); err != nil {
+				fmt.Fprintf(s.Stderr(), "Error adding public key: %v\n", err)
+				return
+			}
+
+			// Now proceed with main SSH connection, but without password restrictions
 			cmd := exec.Command("ssh",
 				"-tt",
 				"-o", "StrictHostKeyChecking=no",
-				"-o", "PreferredAuthentications=password", // Add this
-				"-o", "PubkeyAuthentication=no", // Add this
 				"-p", "2222",
 				"ubuntu@10.1.0.4")
 
