@@ -40,9 +40,10 @@ func New(port int) (*Server, error) {
 			Auth: []ssh.AuthMethod{
 				ssh.PublicKeys(signer),
 			},
-			// InsecureIgnoreHostKey is acceptable here as we're connecting to boxes
-			// within our Azure VNet with strict NSG rules preventing external access
-			// and boxes are ephemeral with dynamic host keys
+			// #nosec G106 -- Intentionally skipping host key verification because:
+			// 1. Boxes are ephemeral with dynamic IPs and host keys
+			// 2. Connections are within Azure VNet with strict NSG rules
+			// 3. Network architecture prevents MITM attacks (see network.txt)
 			HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 			Timeout:         10 * time.Second,
 		},
