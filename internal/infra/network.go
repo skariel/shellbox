@@ -125,36 +125,47 @@ func createRoleClient(clients *AzureClients) {
 	clients.RoleClient = client
 }
 
+func waitForRoleAssignment(ctx context.Context, cred *azidentity.ManagedIdentityCredential) string {
+	opts := DefaultRetryOptions()
+	opts.Operation = "verify role assignment"
+	opts.Timeout = 5 * time.Minute
+	opts.Interval = 5 * time.Second
+
+	var subscriptionID string
+	_, err := RetryWithTimeout(ctx, opts, func(ctx context.Context) (bool, error) {
+		client, err := armsubscriptions.NewClient(cred, nil)
+		if err != nil {
+			return false, err // retry with error
+		}
+		pager := client.NewListPager(nil)
+		page, err := pager.NextPage(ctx)
+		if err != nil {
+			return false, err // retry with error
+		}
+		if len(page.Value) == 0 {
+			return false, fmt.Errorf("no subscriptions found") // retry with specific error
+		}
+		subscriptionID = *page.Value[0].SubscriptionID
+		return true, nil
+	})
+	if err != nil {
+		log.Fatalf("role assignment verification failed: %v", err)
+	}
+	return subscriptionID
+}
+
 // NewAzureClients creates all Azure clients using credential-based subscription ID discovery
 func NewAzureClients(suffix string) *AzureClients {
 	cred, err := azidentity.NewManagedIdentityCredential(nil)
 	if err != nil {
 		log.Fatalf("failed to create credential: %v", err)
 	}
-	// in the lines below we create many azure clients (some by calling some of our functions). what is the default retry policy used AI?
-	subsClient, err := armsubscriptions.NewClient(cred, nil)
-	if err != nil {
-		log.Fatalf("failed to create subscriptions client: %v", err)
-	}
 
-	pager := subsClient.NewListPager(nil)
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	log.Println("waiting for role assignment to propagate...")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
-
-	// Get first subscription ID (assuming single subscription access)
-	var subscriptionID string
-	if pager.More() {
-		page, err := pager.NextPage(ctx)
-		if err != nil {
-			log.Fatalf("failed to list subscriptions: %v", err)
-		}
-		if len(page.Value) == 0 {
-			log.Fatal("no subscriptions found for managed identity")
-		}
-		subscriptionID = *page.Value[0].SubscriptionID
-	} else {
-		log.Fatal("no subscriptions available")
-	}
+	subscriptionID := waitForRoleAssignment(ctx, cred)
+	log.Println("role assignment active")
 
 	// Initialize clients with parallel client creation
 	clients := &AzureClients{
