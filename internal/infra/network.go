@@ -131,7 +131,7 @@ func NewAzureClients(suffix string) *AzureClients {
 	if err != nil {
 		log.Fatalf("failed to create credential: %v", err)
 	}
-
+	// in the lines below we create many azure clients (some by calling some of our functions). what is the default retry policy used AI?
 	subsClient, err := armsubscriptions.NewClient(cred, nil)
 	if err != nil {
 		log.Fatalf("failed to create subscriptions client: %v", err)
