@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"strings"
 	"time"
 
 	"shellbox/internal/sshutil"
@@ -55,6 +56,34 @@ func (s *Server) dialBox() (*ssh.Client, error) {
 	return ssh.Dial("tcp", fmt.Sprintf("%s:2222", s.boxAddr), s.boxSSHConfig)
 }
 
+// handleSCP handles SCP file transfer sessions
+func (s *Server) handleSCP(sess gssh.Session) error {
+	// Connect to box
+	client, err := s.dialBox()
+	if err != nil {
+		log.Printf("Failed to connect to box: %v", err)
+		return fmt.Errorf("error connecting to box: %w", err)
+	}
+	defer client.Close()
+
+	// Create new session for SCP
+	boxSession, err := client.NewSession()
+	if err != nil {
+		log.Printf("Failed to create box session: %v", err)
+		return fmt.Errorf("error creating session: %w", err)
+	}
+	defer boxSession.Close()
+
+	// Connect pipes - gliderlabs/ssh Session implements io.Reader/io.Writer directly
+	boxSession.Stdin = sess
+	boxSession.Stdout = sess
+	boxSession.Stderr = sess.Stderr()
+
+	// Execute the same SCP command on the box
+	cmd := strings.Join(sess.Command(), " ")
+	return boxSession.Run(cmd)
+}
+
 // Run starts the SSH server
 func (s *Server) Run() error {
 	server := gssh.Server{
@@ -64,6 +93,17 @@ func (s *Server) Run() error {
 			return true
 		},
 		Handler: func(sess gssh.Session) {
+			// Check if this is an SCP session
+			if len(sess.Command()) > 0 && sess.Command()[0] == "scp" {
+				if err := s.handleSCP(sess); err != nil {
+					log.Printf("SCP error: %v", err)
+					sess.Exit(1)
+					return
+				}
+				sess.Exit(0)
+				return
+			}
+
 			if _, err := sess.Write([]byte("\n\nHI FROM SHELLBOX!\n\n")); err != nil {
 				log.Printf("Error writing to SSH session: %v", err)
 				return
