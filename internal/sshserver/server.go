@@ -84,6 +84,116 @@ func (s *Server) handleSCP(sess gssh.Session) error {
 	return boxSession.Run(cmd)
 }
 
+func (s *Server) handleSession(sess gssh.Session) {
+	if len(sess.Command()) > 0 && sess.Command()[0] == "scp" {
+		if err := s.handleSCP(sess); err != nil {
+			log.Printf("SCP error: %v", err)
+			if err := sess.Exit(1); err != nil {
+				log.Printf("Error during exit(1): %v", err)
+			}
+			return
+		}
+		if err := sess.Exit(0); err != nil {
+			log.Printf("Error during exit(0): %v", err)
+		}
+		return
+	}
+
+	s.handleShellSession(sess)
+}
+
+func (s *Server) handleShellSession(sess gssh.Session) {
+	if _, err := sess.Write([]byte("\n\nHI FROM SHELLBOX!\n\n")); err != nil {
+		log.Printf("Error writing to SSH session: %v", err)
+		return
+	}
+
+	client, err := s.dialBox()
+	if err != nil {
+		log.Printf("Failed to connect to box: %v", err)
+		fmt.Fprintf(sess.Stderr(), "Error connecting to box: %v\n", err)
+		return
+	}
+	defer client.Close()
+
+	boxSession, err := client.NewSession()
+	if err != nil {
+		log.Printf("Failed to create box session: %v", err)
+		fmt.Fprintf(sess.Stderr(), "Error creating session: %v\n", err)
+		return
+	}
+	defer boxSession.Close()
+
+	if err := s.setupPty(sess, boxSession); err != nil {
+		log.Printf("Failed to setup PTY: %v", err)
+		return
+	}
+
+	if err := s.handleIO(sess, boxSession); err != nil {
+		log.Printf("Failed to handle IO: %v", err)
+	}
+}
+
+func (s *Server) setupPty(sess gssh.Session, boxSession *ssh.Session) error {
+	if pty, winCh, isPty := sess.Pty(); isPty {
+		if err := boxSession.RequestPty(pty.Term, pty.Window.Height, pty.Window.Width, ssh.TerminalModes{}); err != nil {
+			return fmt.Errorf("failed to request PTY: %w", err)
+		}
+
+		go func() {
+			for win := range winCh {
+				if err := boxSession.WindowChange(win.Height, win.Width); err != nil {
+					log.Printf("Failed to change window size: %v", err)
+				}
+			}
+		}()
+	}
+	return nil
+}
+
+func (s *Server) handleIO(sess gssh.Session, boxSession *ssh.Session) error {
+	stdin, err := boxSession.StdinPipe()
+	if err != nil {
+		return fmt.Errorf("failed to get stdin pipe: %w", err)
+	}
+	stdout, err := boxSession.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("failed to get stdout pipe: %w", err)
+	}
+	stderr, err := boxSession.StderrPipe()
+	if err != nil {
+		return fmt.Errorf("failed to get stderr pipe: %w", err)
+	}
+
+	if err := boxSession.Shell(); err != nil {
+		return fmt.Errorf("failed to start shell: %w", err)
+	}
+
+	var g errgroup.Group
+	g.Go(func() error {
+		_, err := io.Copy(stdin, sess)
+		return err
+	})
+	g.Go(func() error {
+		_, err := io.Copy(sess, stdout)
+		return err
+	})
+	g.Go(func() error {
+		_, err := io.Copy(sess.Stderr(), stderr)
+		return err
+	})
+
+	if err := g.Wait(); err != nil {
+		return fmt.Errorf("error copying data: %w", err)
+	}
+
+	if err := boxSession.Wait(); err != nil {
+		return fmt.Errorf("session ended with error: %w", err)
+	}
+
+	return nil
+}
+
 // Run starts the SSH server
 func (s *Server) Run() error {
 	server := gssh.Server{
@@ -92,105 +202,7 @@ func (s *Server) Run() error {
 			// Accept any key
 			return true
 		},
-		Handler: func(sess gssh.Session) {
-			// Check if this is an SCP session
-			if len(sess.Command()) > 0 && sess.Command()[0] == "scp" {
-				if err := s.handleSCP(sess); err != nil {
-					log.Printf("SCP error: %v", err)
-					sess.Exit(1)
-					return
-				}
-				sess.Exit(0)
-				return
-			}
-
-			if _, err := sess.Write([]byte("\n\nHI FROM SHELLBOX!\n\n")); err != nil {
-				log.Printf("Error writing to SSH session: %v", err)
-				return
-			}
-
-			client, err := s.dialBox()
-			if err != nil {
-				log.Printf("Failed to connect to box: %v", err)
-				fmt.Fprintf(sess.Stderr(), "Error connecting to box: %v\n", err)
-				return
-			}
-			defer client.Close()
-
-			boxSession, err := client.NewSession()
-			if err != nil {
-				log.Printf("Failed to create box session: %v", err)
-				fmt.Fprintf(sess.Stderr(), "Error creating session: %v\n", err)
-				return
-			}
-			defer boxSession.Close()
-
-			// Handle PTY
-			if pty, winCh, isPty := sess.Pty(); isPty {
-				// Request PTY on the box session
-				if err := boxSession.RequestPty(pty.Term, pty.Window.Height, pty.Window.Width, ssh.TerminalModes{}); err != nil {
-					log.Printf("Failed to request PTY: %v", err)
-					return
-				}
-
-				// Handle window size changes
-				go func() {
-					for win := range winCh {
-						if err := boxSession.WindowChange(win.Height, win.Width); err != nil {
-							log.Printf("Failed to change window size: %v", err)
-						}
-					}
-				}()
-			}
-
-			// Set up pipes
-			stdin, err := boxSession.StdinPipe()
-			if err != nil {
-				log.Printf("Failed to get stdin pipe: %v", err)
-				return
-			}
-			stdout, err := boxSession.StdoutPipe()
-			if err != nil {
-				log.Printf("Failed to get stdout pipe: %v", err)
-				return
-			}
-			stderr, err := boxSession.StderrPipe()
-			if err != nil {
-				log.Printf("Failed to get stderr pipe: %v", err)
-				return
-			}
-
-			// Start shell
-			if err := boxSession.Shell(); err != nil {
-				log.Printf("Failed to start shell: %v", err)
-				return
-			}
-
-			// Copy data in both directions using errgroup
-			var g errgroup.Group
-			g.Go(func() error {
-				_, err := io.Copy(stdin, sess)
-				return err
-			})
-			g.Go(func() error {
-				_, err := io.Copy(sess, stdout)
-				return err
-			})
-			g.Go(func() error {
-				_, err := io.Copy(sess.Stderr(), stderr)
-				return err
-			})
-
-			// Wait for copies to complete
-			if err := g.Wait(); err != nil {
-				log.Printf("Error copying data: %v", err)
-			}
-
-			// Wait for session to complete
-			if err := boxSession.Wait(); err != nil {
-				log.Printf("Session ended with error: %v", err)
-			}
-		},
+		Handler: s.handleSession,
 	}
 
 	log.Printf("Starting SSH server on port %d", s.port)
