@@ -2,8 +2,10 @@ package infra
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
@@ -28,22 +30,23 @@ type VMConfig struct {
 
 // AzureClients holds all the Azure SDK clients needed for the application
 type AzureClients struct {
-	Cred                azcore.TokenCredential
-	SubscriptionID      string
-	ResourceGroupSuffix string
-	ResourceGroupName   string
-	BastionSubnetID     string
-	BoxesSubnetID       string
-	ResourceClient      *armresources.ResourceGroupsClient
-	NetworkClient       *armnetwork.VirtualNetworksClient
-	NSGClient           *armnetwork.SecurityGroupsClient
-	ComputeClient       *armcompute.VirtualMachinesClient
-	PublicIPClient      *armnetwork.PublicIPAddressesClient
-	NICClient           *armnetwork.InterfacesClient
-	CosmosClient        *armcosmos.DatabaseAccountsClient
-	KeyVaultClient      *armkeyvault.VaultsClient
-	SecretsClient       *armkeyvault.SecretsClient
-	RoleClient          *armauthorization.RoleAssignmentsClient
+	Cred                    azcore.TokenCredential
+	SubscriptionID          string
+	ResourceGroupSuffix     string
+	ResourceGroupName       string
+	BastionSubnetID         string
+	BoxesSubnetID           string
+	CosmosDBConnectionString string
+	ResourceClient          *armresources.ResourceGroupsClient
+	NetworkClient           *armnetwork.VirtualNetworksClient
+	NSGClient               *armnetwork.SecurityGroupsClient
+	ComputeClient           *armcompute.VirtualMachinesClient
+	PublicIPClient          *armnetwork.PublicIPAddressesClient
+	NICClient               *armnetwork.InterfacesClient
+	CosmosClient            *armcosmos.DatabaseAccountsClient
+	KeyVaultClient          *armkeyvault.VaultsClient
+	SecretsClient           *armkeyvault.SecretsClient
+	RoleClient              *armauthorization.RoleAssignmentsClient
 }
 
 func createResourceGroupClient(clients *AzureClients) {
@@ -156,10 +159,28 @@ func waitForRoleAssignment(ctx context.Context, cred azcore.TokenCredential) str
 }
 
 // NewAzureClients creates all Azure clients using credential-based subscription ID discovery
+// readCosmosDBConfig reads CosmosDB connection string from the config file
+func readCosmosDBConfig(clients *AzureClients) error {
+	data, err := os.ReadFile(cosmosdbConfigFile)
+	if err != nil {
+		return fmt.Errorf("failed to read CosmosDB config file: %w", err)
+	}
+	
+	var config struct {
+		ConnectionString string `json:"connectionString"`
+	}
+	
+	if err := json.Unmarshal(data, &config); err != nil {
+		return fmt.Errorf("failed to parse CosmosDB config: %w", err)
+	}
+	
+	clients.CosmosDBConnectionString = config.ConnectionString
+	return nil
+}
+
 func NewAzureClients(suffix string, useAzureCli bool) *AzureClients {
 	g := new(errgroup.Group)
 	resourceGroupName := resourceGroupPrefix + "-" + suffix
-	// if using the azure cli (according to the param to the function) then start the creation of a cosmos account, database and two containers. This can happen in parallel, using the errorgroup. The connection strings to the clients need to be saved in the AzureClients struct -- add them there. Use the resourcegroupName, then cosmosdbAccount, and shellboxDB. The containers would be "EventLog" and "ResourceRegistry". If not using AzureCli, the connectionstrings need to be read from a file ".cosmosdb.json". The name of the file should be defined as a constant together with the other constants of the program. Can you make a plan to implement this AI?
 
 	var cred azcore.TokenCredential
 	var err error
@@ -203,6 +224,40 @@ func NewAzureClients(suffix string, useAzureCli bool) *AzureClients {
 	g.Go(func() error { createKeyVaultClient(clients); return nil })
 	g.Go(func() error { createSecretsClient(clients); return nil })
 	g.Go(func() error { createRoleClient(clients); return nil })
+
+	// Initialize CosmosDB
+	if useAzureCli {
+		g.Go(func() error {
+			cosmosAccount := fmt.Sprintf("%s%s", cosmosdbAccountName, clients.ResourceGroupSuffix)
+			containers := []Container{
+				{Name: cosmosContainerEventLog, PartitionKey: "/id", Throughput: 400},
+				{Name: cosmosContainerResourceRegistry, PartitionKey: "/id", Throughput: 400},
+			}
+			
+			result := CreateCosmosDBResources(
+				clients.ResourceGroupName, 
+				location, 
+				cosmosAccount, 
+				cosmosdbDatabaseName, 
+				containers,
+			)
+			
+			if result.Error != nil {
+				log.Printf("Warning: CosmosDB setup error: %v", result.Error)
+				return nil // Don't fail the entire deployment for CosmosDB issues
+			}
+			
+			clients.CosmosDBConnectionString = result.ConnectionString
+			return nil
+		})
+	} else {
+		g.Go(func() error {
+			if err := readCosmosDBConfig(clients); err != nil {
+				log.Printf("Warning: Failed to read CosmosDB config: %v", err)
+			}
+			return nil
+		})
+	}
 
 	_ = g.Wait() // We can ignore the error since the functions use log.Fatal
 

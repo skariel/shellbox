@@ -30,6 +30,15 @@ const (
 	boxesSubnetCIDR = "10.1.0.0/16"
 )
 
+// CosmosDB configuration
+const (
+	cosmosdbConfigFile             = ".cosmosdb.json"
+	cosmosdbAccountName            = "shellbox"
+	cosmosdbDatabaseName           = "shellboxDB"
+	cosmosContainerEventLog        = "EventLog"
+	cosmosContainerResourceRegistry = "ResourceRegistry"
+)
+
 // VM configuration
 const (
 	// VM image configuration
