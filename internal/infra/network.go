@@ -341,7 +341,7 @@ func InitializeCosmosDB(clients *AzureClients, useAzureCli bool) {
 			cosmosdbDatabaseName,
 			containers,
 		)
-
+		// the errors below should be fatal, this is initialization AI!
 		if result.Error != nil {
 			log.Printf("Warning: CosmosDB setup error: %v", result.Error)
 			return // Don't fail the entire deployment for CosmosDB issues
