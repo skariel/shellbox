@@ -18,7 +18,7 @@ func GenerateBoxInitScript(sshPublicKey string) (string, error) {
 
 echo "\$nrconf{restart} = 'a';" | sudo tee /etc/needrestart/conf.d/50-autorestart.conf
 sudo apt update
-sudo apt install qemu-utils qemu-system-x86 genisoimage qemu-kvm qemu-system libvirt-daemon-system libvirt-clients bridge-utils genisoimage whois libguestfs-tools -y
+sudo apt install qemu-utils qemu-system-x86 qemu-kvm qemu-system libvirt-daemon-system libvirt-clients bridge-utils genisoimage whois libguestfs-tools -y
 
 sudo usermod -aG kvm,libvirt $USER
 sudo systemctl enable --now libvirtd
