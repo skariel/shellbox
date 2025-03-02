@@ -126,7 +126,7 @@ func createRoleClient(clients *AzureClients) {
 	clients.RoleClient = client
 }
 
-func waitForRoleAssignment(ctx context.Context, cred *azidentity.ManagedIdentityCredential) string {
+func waitForRoleAssignment(ctx context.Context, cred azcore.TokenCredential) string {
 	opts := DefaultRetryOptions()
 	opts.Operation = "verify role assignment"
 	opts.Timeout = 5 * time.Minute
@@ -168,7 +168,6 @@ func NewAzureClients(suffix string, use_az_cli bool) *AzureClients {
 		log.Println("waiting for role assignment to propagate...")
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
-		// 2. cannot use cred (variable of type azcore.TokenCredential) as *azidentity.ManagedIdentityCredential value in argument to waitForRoleAssignment: need type assertion [IncompatibleAssign] AI!
 		subscriptionID := waitForRoleAssignment(ctx, cred)
 		log.Println("role assignment active")
 	} else {
