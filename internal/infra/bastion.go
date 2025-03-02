@@ -207,20 +207,20 @@ func copyServerBinary(ctx context.Context, config *VMConfig, publicIPAddress str
 // is already initialized and accepting connections.
 func copyCosmosDBConfig(ctx context.Context, clients *AzureClients, config *VMConfig, publicIPAddress string) error {
 	cosmosConfigContent := fmt.Sprintf(`{"connectionString": "%s"}`, clients.CosmosDBConnectionString)
-	
+
 	// Create temporary local file
 	tempFile := "/tmp/cosmosdb.json"
 	if err := os.WriteFile(tempFile, []byte(cosmosConfigContent), 0600); err != nil {
 		return fmt.Errorf("failed to create temporary CosmosDB config file: %w", err)
 	}
 	defer os.Remove(tempFile) // Clean up when done
-	
+
 	// Copy to bastion
 	remoteConfigPath := fmt.Sprintf("/home/%s/%s", config.AdminUsername, cosmosdbConfigFile)
 	if err := sshutil.CopyFile(ctx, tempFile, remoteConfigPath, config.AdminUsername, publicIPAddress); err != nil {
 		return fmt.Errorf("failed to copy CosmosDB config to bastion: %w", err)
 	}
-	
+
 	return nil
 }
 
