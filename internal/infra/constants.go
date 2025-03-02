@@ -30,13 +30,12 @@ const (
 	boxesSubnetCIDR = "10.1.0.0/16"
 )
 
-// CosmosDB configuration
+// Table Storage configuration
 const (
-	cosmosdbConfigFile              = ".cosmosdb.json"
-	cosmosdbAccountName             = "shellbox"
-	cosmosdbDatabaseName            = "shellboxDB"
-	cosmosContainerEventLog         = "EventLog"
-	cosmosContainerResourceRegistry = "ResourceRegistry"
+	tableStorageConfigFile  = ".tablestorage.json"
+	storageAccountName      = "shellboxstorage"
+	tableEventLog           = "EventLog"
+	tableResourceRegistry   = "ResourceRegistry"
 )
 
 // VM configuration

@@ -12,9 +12,9 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
+	"github.com/Azure/azure-sdk-for-go/sdk/data/aztables"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/cosmos/armcosmos"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/keyvault/armkeyvault"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
@@ -31,23 +31,23 @@ type VMConfig struct {
 
 // AzureClients holds all the Azure SDK clients needed for the application
 type AzureClients struct {
-	Cred                     azcore.TokenCredential
-	SubscriptionID           string
-	ResourceGroupSuffix      string
-	ResourceGroupName        string
-	BastionSubnetID          string
-	BoxesSubnetID            string
-	CosmosDBConnectionString string
-	ResourceClient           *armresources.ResourceGroupsClient
-	NetworkClient            *armnetwork.VirtualNetworksClient
-	NSGClient                *armnetwork.SecurityGroupsClient
-	ComputeClient            *armcompute.VirtualMachinesClient
-	PublicIPClient           *armnetwork.PublicIPAddressesClient
-	NICClient                *armnetwork.InterfacesClient
-	CosmosClient             *armcosmos.DatabaseAccountsClient
-	KeyVaultClient           *armkeyvault.VaultsClient
-	SecretsClient            *armkeyvault.SecretsClient
-	RoleClient               *armauthorization.RoleAssignmentsClient
+	Cred                        azcore.TokenCredential
+	SubscriptionID              string
+	ResourceGroupSuffix         string
+	ResourceGroupName           string
+	BastionSubnetID             string
+	BoxesSubnetID               string
+	TableStorageConnectionString string
+	ResourceClient              *armresources.ResourceGroupsClient
+	NetworkClient               *armnetwork.VirtualNetworksClient
+	NSGClient                   *armnetwork.SecurityGroupsClient
+	ComputeClient               *armcompute.VirtualMachinesClient
+	PublicIPClient              *armnetwork.PublicIPAddressesClient
+	NICClient                   *armnetwork.InterfacesClient
+	TableServiceClient          *aztables.ServiceClient
+	KeyVaultClient              *armkeyvault.VaultsClient
+	SecretsClient               *armkeyvault.SecretsClient
+	RoleClient                  *armauthorization.RoleAssignmentsClient
 }
 
 func createResourceGroupClient(clients *AzureClients) {
@@ -98,12 +98,17 @@ func createComputeClient(clients *AzureClients) {
 	clients.ComputeClient = client
 }
 
-func createCosmosClient(clients *AzureClients) {
-	client, err := armcosmos.NewDatabaseAccountsClient(clients.SubscriptionID, clients.Cred, nil)
-	if err != nil {
-		log.Fatalf("failed to create cosmos client: %v", err)
+func createTableServiceClient(clients *AzureClients) {
+	if clients.TableStorageConnectionString == "" {
+		log.Println("Table Storage connection string not available yet, skipping client creation")
+		return
 	}
-	clients.CosmosClient = client
+	
+	client, err := aztables.NewServiceClientFromConnectionString(clients.TableStorageConnectionString, nil)
+	if err != nil {
+		log.Fatalf("failed to create table service client: %v", err)
+	}
+	clients.TableServiceClient = client
 }
 
 func createKeyVaultClient(clients *AzureClients) {
@@ -160,11 +165,11 @@ func waitForRoleAssignment(ctx context.Context, cred azcore.TokenCredential) str
 }
 
 // NewAzureClients creates all Azure clients using credential-based subscription ID discovery
-// readCosmosDBConfig reads CosmosDB connection string from the config file
-func readCosmosDBConfig(clients *AzureClients) error {
-	data, err := os.ReadFile(cosmosdbConfigFile)
+// readTableStorageConfig reads Table Storage connection string from the config file
+func readTableStorageConfig(clients *AzureClients) error {
+	data, err := os.ReadFile(tableStorageConfigFile)
 	if err != nil {
-		return fmt.Errorf("failed to read CosmosDB config file: %w", err)
+		return fmt.Errorf("failed to read Table Storage config file: %w", err)
 	}
 
 	var config struct {
@@ -172,10 +177,13 @@ func readCosmosDBConfig(clients *AzureClients) error {
 	}
 
 	if err := json.Unmarshal(data, &config); err != nil {
-		return fmt.Errorf("failed to parse CosmosDB config: %w", err)
+		return fmt.Errorf("failed to parse Table Storage config: %w", err)
 	}
 
-	clients.CosmosDBConnectionString = config.ConnectionString
+	clients.TableStorageConnectionString = config.ConnectionString
+	
+	// Now create the table service client
+	createTableServiceClient(clients)
 	return nil
 }
 
@@ -219,10 +227,10 @@ func NewAzureClients(suffix string, useAzureCli bool) *AzureClients {
 	g.Go(func() error { createPublicIPClient(clients); return nil })
 	g.Go(func() error { createNICClient(clients); return nil })
 	g.Go(func() error { createComputeClient(clients); return nil })
-	g.Go(func() error { createCosmosClient(clients); return nil })
 	g.Go(func() error { createKeyVaultClient(clients); return nil })
 	g.Go(func() error { createSecretsClient(clients); return nil })
 	g.Go(func() error { createRoleClient(clients); return nil })
+	// Table Service client will be created after connection string is available
 
 	_ = g.Wait() // We can ignore the error since the functions use log.Fatal
 
@@ -325,30 +333,50 @@ func setSubnetIDsFromVNet(clients *AzureClients, vnetResult armnetwork.VirtualNe
 	}
 }
 
-// InitializeCosmosDB sets up CosmosDB resources or reads configuration
-func InitializeCosmosDB(clients *AzureClients, useAzureCli bool) {
+// InitializeTableStorage sets up Table Storage resources or reads configuration
+func InitializeTableStorage(clients *AzureClients, useAzureCli bool) {
 	if useAzureCli {
-		cosmosAccount := fmt.Sprintf("%s%s", cosmosdbAccountName, clients.ResourceGroupSuffix)
-		containers := []Container{
-			{Name: cosmosContainerEventLog, PartitionKey: "/id", Throughput: 400},
-			{Name: cosmosContainerResourceRegistry, PartitionKey: "/id", Throughput: 400},
+		// Create a unique storage account name using the suffix
+		storageAccountInstance := fmt.Sprintf("%s%s", storageAccountName, clients.ResourceGroupSuffix)
+		tables := []Table{
+			{Name: tableEventLog},
+			{Name: tableResourceRegistry},
 		}
 
-		result := CreateCosmosDBResources(
+		result := CreateTableStorageResources(
 			clients.ResourceGroupName,
 			location,
-			cosmosAccount,
-			cosmosdbDatabaseName,
-			containers,
+			storageAccountInstance,
+			tables,
 		)
+		
 		if result.Error != nil {
-			log.Fatalf("CosmosDB setup error: %v", result.Error)
+			log.Fatalf("Table Storage setup error: %v", result.Error)
 		}
 
-		clients.CosmosDBConnectionString = result.ConnectionString
+		clients.TableStorageConnectionString = result.ConnectionString
+		
+		// Save the connection string to a file for later use
+		configData := struct {
+			ConnectionString string `json:"connectionString"`
+		}{
+			ConnectionString: result.ConnectionString,
+		}
+		
+		jsonData, err := json.MarshalIndent(configData, "", "  ")
+		if err != nil {
+			log.Printf("Warning: failed to serialize Table Storage config: %v", err)
+		} else {
+			if err := os.WriteFile(tableStorageConfigFile, jsonData, 0600); err != nil {
+				log.Printf("Warning: failed to save Table Storage config file: %v", err)
+			}
+		}
+		
+		// Create table service client
+		createTableServiceClient(clients)
 	} else {
-		if err := readCosmosDBConfig(clients); err != nil {
-			log.Fatalf("Failed to read CosmosDB config: %v", err)
+		if err := readTableStorageConfig(clients); err != nil {
+			log.Fatalf("Failed to read Table Storage config: %v", err)
 		}
 	}
 }
@@ -357,13 +385,13 @@ func CreateNetworkInfrastructure(ctx context.Context, clients *AzureClients, use
 	// 1. Create resource group first and wait for it to be ready
 	createResourceGroup(ctx, clients)
 
-	// Start CosmosDB initialization in parallel with NSG and VNet creation
+	// Start Table Storage initialization in parallel with NSG and VNet creation
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		// Initialize CosmosDB after resource group is created
-		InitializeCosmosDB(clients, useAzureCli)
+		// Initialize Table Storage after resource group is created
+		InitializeTableStorage(clients, useAzureCli)
 	}()
 
 	// 2. Create NSG first since VNet depends on it
