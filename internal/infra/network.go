@@ -6,6 +6,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization"
@@ -156,14 +157,20 @@ func waitForRoleAssignment(ctx context.Context, cred *azidentity.ManagedIdentity
 
 // NewAzureClients creates all Azure clients using credential-based subscription ID discovery
 func NewAzureClients(suffix string, use_az_cli bool) *AzureClients {
-	var cred *azidentity.ManagedIdentityCredential
+	var cred azcore.TokenCredential
+	var err error
+	
 	if !use_az_cli {
-		cred, err := azidentity.NewManagedIdentityCredential(nil)
+		cred, err = azidentity.NewManagedIdentityCredential(nil)
 		if err != nil {
-			log.Fatalf("failed to create credential: %v", err)
+			log.Fatalf("failed to create managed identity credential: %v", err)
 		}
 	} else {
-		// use az cli to get credentials AI?
+		// Use Azure CLI credentials
+		cred, err = azidentity.NewAzureCLICredential(nil)
+		if err != nil {
+			log.Fatalf("failed to create Azure CLI credential: %v", err)
+		}
 	}
 
 	log.Println("waiting for role assignment to propagate...")
