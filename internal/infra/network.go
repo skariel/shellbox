@@ -223,41 +223,6 @@ func NewAzureClients(suffix string, useAzureCli bool) *AzureClients {
 	g.Go(func() error { createSecretsClient(clients); return nil })
 	g.Go(func() error { createRoleClient(clients); return nil })
 
-	// the initialization of cosmosdb need it's own function and it need to happen after the resourcegroup is created, in createinfrastructure function AI!
-	// Initialize CosmosDB
-	if useAzureCli {
-		g.Go(func() error {
-			cosmosAccount := fmt.Sprintf("%s%s", cosmosdbAccountName, clients.ResourceGroupSuffix)
-			containers := []Container{
-				{Name: cosmosContainerEventLog, PartitionKey: "/id", Throughput: 400},
-				{Name: cosmosContainerResourceRegistry, PartitionKey: "/id", Throughput: 400},
-			}
-
-			result := CreateCosmosDBResources(
-				clients.ResourceGroupName,
-				location,
-				cosmosAccount,
-				cosmosdbDatabaseName,
-				containers,
-			)
-
-			if result.Error != nil {
-				log.Printf("Warning: CosmosDB setup error: %v", result.Error)
-				return nil // Don't fail the entire deployment for CosmosDB issues
-			}
-
-			clients.CosmosDBConnectionString = result.ConnectionString
-			return nil
-		})
-	} else {
-		g.Go(func() error {
-			if err := readCosmosDBConfig(clients); err != nil {
-				log.Printf("Warning: Failed to read CosmosDB config: %v", err)
-			}
-			return nil
-		})
-	}
-
 	_ = g.Wait() // We can ignore the error since the functions use log.Fatal
 
 	return clients
@@ -359,13 +324,46 @@ func setSubnetIDsFromVNet(clients *AzureClients, vnetResult armnetwork.VirtualNe
 	}
 }
 
-func CreateNetworkInfrastructure(ctx context.Context, clients *AzureClients) {
+// InitializeCosmosDB sets up CosmosDB resources or reads configuration
+func InitializeCosmosDB(clients *AzureClients, useAzureCli bool) {
+	if useAzureCli {
+		cosmosAccount := fmt.Sprintf("%s%s", cosmosdbAccountName, clients.ResourceGroupSuffix)
+		containers := []Container{
+			{Name: cosmosContainerEventLog, PartitionKey: "/id", Throughput: 400},
+			{Name: cosmosContainerResourceRegistry, PartitionKey: "/id", Throughput: 400},
+		}
+
+		result := CreateCosmosDBResources(
+			clients.ResourceGroupName,
+			location,
+			cosmosAccount,
+			cosmosdbDatabaseName,
+			containers,
+		)
+
+		if result.Error != nil {
+			log.Printf("Warning: CosmosDB setup error: %v", result.Error)
+			return // Don't fail the entire deployment for CosmosDB issues
+		}
+
+		clients.CosmosDBConnectionString = result.ConnectionString
+	} else {
+		if err := readCosmosDBConfig(clients); err != nil {
+			log.Printf("Warning: Failed to read CosmosDB config: %v", err)
+		}
+	}
+}
+
+func CreateNetworkInfrastructure(ctx context.Context, clients *AzureClients, useAzureCli bool) {
 	// 1. Create resource group first and wait for it to be ready
 	createResourceGroup(ctx, clients)
+	
+	// 2. Initialize CosmosDB after resource group is created
+	InitializeCosmosDB(clients, useAzureCli)
 
-	// 2. Create NSG first since VNet depends on it
+	// 3. Create NSG first since VNet depends on it
 	createBastionNSG(ctx, clients)
 
-	// 3. Create VNet after NSG is ready
+	// 4. Create VNet after NSG is ready
 	createVirtualNetwork(ctx, clients)
 }
