@@ -201,24 +201,24 @@ func copyServerBinary(ctx context.Context, config *VMConfig, publicIPAddress str
 	return err
 }
 
-// copyTableStorageConfig creates a configuration file with Table Storage connection string
+// copyCosmosDBConfig creates a configuration file with CosmosDB connection string
 // and copies it to the bastion host. This is called after copyServerBinary
 // because we don't need to retry - if copyServerBinary succeeded, the bastion
 // is already initialized and accepting connections.
-func copyTableStorageConfig(ctx context.Context, clients *AzureClients, config *VMConfig, publicIPAddress string) error {
-	tableStorageConfigContent := fmt.Sprintf(`{"connectionString": "%s"}`, clients.TableStorageConnectionString)
+func copyCosmosDBConfig(ctx context.Context, clients *AzureClients, config *VMConfig, publicIPAddress string) error {
+	cosmosConfigContent := fmt.Sprintf(`{"connectionString": "%s"}`, clients.CosmosDBConnectionString)
 
 	// Create temporary local file
-	tempFile := "/tmp/tablestorage.json"
-	if err := os.WriteFile(tempFile, []byte(tableStorageConfigContent), 0600); err != nil {
-		return fmt.Errorf("failed to create temporary Table Storage config file: %w", err)
+	tempFile := "/tmp/cosmosdb.json"
+	if err := os.WriteFile(tempFile, []byte(cosmosConfigContent), 0600); err != nil {
+		return fmt.Errorf("failed to create temporary CosmosDB config file: %w", err)
 	}
 	defer os.Remove(tempFile) // Clean up when done
 
 	// Copy to bastion
-	remoteConfigPath := fmt.Sprintf("/home/%s/%s", config.AdminUsername, tableStorageConfigFile)
+	remoteConfigPath := fmt.Sprintf("/home/%s/%s", config.AdminUsername, cosmosdbConfigFile)
 	if err := sshutil.CopyFile(ctx, tempFile, remoteConfigPath, config.AdminUsername, publicIPAddress); err != nil {
-		return fmt.Errorf("failed to copy Table Storage config to bastion: %w", err)
+		return fmt.Errorf("failed to copy CosmosDB config to bastion: %w", err)
 	}
 
 	return nil
@@ -310,8 +310,8 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *VMConfig)
 		log.Fatalf("failed to copy server binary: %v", err)
 	}
 
-	if err := copyTableStorageConfig(ctx, clients, config, *publicIP.Properties.IPAddress); err != nil {
-		log.Fatalf("failed to copy Table Storage config: %v", err)
+	if err := copyCosmosDBConfig(ctx, clients, config, *publicIP.Properties.IPAddress); err != nil {
+		log.Fatalf("failed to copy CosmosDB config: %v", err)
 	}
 
 	if err := startServerOnBastion(ctx, config, *publicIP.Properties.IPAddress, clients.ResourceGroupSuffix); err != nil {
