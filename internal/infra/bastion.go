@@ -181,6 +181,8 @@ func createBastionVM(ctx context.Context, clients *AzureClients, config *VMConfi
 }
 
 func copyServerBinary(ctx context.Context, config *VMConfig, publicIPAddress string) error {
+	// in addition to copying the server binary, we also need to create in the bastion the file containing the cosmos connection strings. This should be done after copying the server file. There is no need to retry, the retry in the server copy is because the bastion is initializing. If that succeeded then tmaking other files should also suceed. AI?
+
 	opts := DefaultRetryOptions()
 	opts.Operation = "copy server binary to bastion"
 	opts.Timeout = 5 * time.Minute // Longer timeout for file transfer
