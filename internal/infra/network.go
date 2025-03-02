@@ -31,23 +31,23 @@ type VMConfig struct {
 
 // AzureClients holds all the Azure SDK clients needed for the application
 type AzureClients struct {
-	Cred                        azcore.TokenCredential
-	SubscriptionID              string
-	ResourceGroupSuffix         string
-	ResourceGroupName           string
-	BastionSubnetID             string
-	BoxesSubnetID               string
+	Cred                         azcore.TokenCredential
+	SubscriptionID               string
+	ResourceGroupSuffix          string
+	ResourceGroupName            string
+	BastionSubnetID              string
+	BoxesSubnetID                string
 	TableStorageConnectionString string
-	ResourceClient              *armresources.ResourceGroupsClient
-	NetworkClient               *armnetwork.VirtualNetworksClient
-	NSGClient                   *armnetwork.SecurityGroupsClient
-	ComputeClient               *armcompute.VirtualMachinesClient
-	PublicIPClient              *armnetwork.PublicIPAddressesClient
-	NICClient                   *armnetwork.InterfacesClient
-	TableServiceClient          *aztables.ServiceClient
-	KeyVaultClient              *armkeyvault.VaultsClient
-	SecretsClient               *armkeyvault.SecretsClient
-	RoleClient                  *armauthorization.RoleAssignmentsClient
+	ResourceClient               *armresources.ResourceGroupsClient
+	NetworkClient                *armnetwork.VirtualNetworksClient
+	NSGClient                    *armnetwork.SecurityGroupsClient
+	ComputeClient                *armcompute.VirtualMachinesClient
+	PublicIPClient               *armnetwork.PublicIPAddressesClient
+	NICClient                    *armnetwork.InterfacesClient
+	TableServiceClient           *aztables.ServiceClient
+	KeyVaultClient               *armkeyvault.VaultsClient
+	SecretsClient                *armkeyvault.SecretsClient
+	RoleClient                   *armauthorization.RoleAssignmentsClient
 }
 
 func createResourceGroupClient(clients *AzureClients) {
@@ -103,7 +103,7 @@ func createTableServiceClient(clients *AzureClients) {
 		log.Println("Table Storage connection string not available yet, skipping client creation")
 		return
 	}
-	
+
 	client, err := aztables.NewServiceClientFromConnectionString(clients.TableStorageConnectionString, nil)
 	if err != nil {
 		log.Fatalf("failed to create table service client: %v", err)
@@ -181,7 +181,7 @@ func readTableStorageConfig(clients *AzureClients) error {
 	}
 
 	clients.TableStorageConnectionString = config.ConnectionString
-	
+
 	// Now create the table service client
 	createTableServiceClient(clients)
 	return nil
@@ -349,20 +349,21 @@ func InitializeTableStorage(clients *AzureClients, useAzureCli bool) {
 			storageAccountInstance,
 			tables,
 		)
-		
+
 		if result.Error != nil {
 			log.Fatalf("Table Storage setup error: %v", result.Error)
 		}
 
 		clients.TableStorageConnectionString = result.ConnectionString
-		
+
+		// why is this saving to a file needed AI?
 		// Save the connection string to a file for later use
 		configData := struct {
 			ConnectionString string `json:"connectionString"`
 		}{
 			ConnectionString: result.ConnectionString,
 		}
-		
+
 		jsonData, err := json.MarshalIndent(configData, "", "  ")
 		if err != nil {
 			log.Printf("Warning: failed to serialize Table Storage config: %v", err)
@@ -371,7 +372,7 @@ func InitializeTableStorage(clients *AzureClients, useAzureCli bool) {
 				log.Printf("Warning: failed to save Table Storage config file: %v", err)
 			}
 		}
-		
+
 		// Create table service client
 		createTableServiceClient(clients)
 	} else {
