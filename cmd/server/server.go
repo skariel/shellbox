@@ -25,7 +25,7 @@ func main() {
 	clients := infra.NewAzureClients(suffix, false)
 
 	// Create network infrastructure first
-	infra.CreateNetworkInfrastructure(context.Background(), clients)
+	infra.CreateNetworkInfrastructure(context.Background(), clients, false)
 
 	// Ensure SSH key pair exists
 	keyPath := "/home/shellbox/.ssh/id_rsa"

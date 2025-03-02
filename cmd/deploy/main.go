@@ -27,7 +27,7 @@ func main() {
 	fmt.Println(infra.FormatConfig(suffix))
 
 	log.Println("upserting networking infra")
-	infra.CreateNetworkInfrastructure(ctx, clients)
+	infra.CreateNetworkInfrastructure(ctx, clients, true)
 
 	log.Println("done upserting")
 	_, pubKey, err := sshutil.LoadKeyPair("$HOME/.ssh/id_ed25519")
