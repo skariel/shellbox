@@ -179,9 +179,6 @@ func readCosmosDBConfig(clients *AzureClients) error {
 }
 
 func NewAzureClients(suffix string, useAzureCli bool) *AzureClients {
-	g := new(errgroup.Group)
-	resourceGroupName := resourceGroupPrefix + "-" + suffix
-
 	var cred azcore.TokenCredential
 	var err error
 
@@ -209,11 +206,12 @@ func NewAzureClients(suffix string, useAzureCli bool) *AzureClients {
 		Cred:                cred,
 		SubscriptionID:      subscriptionID,
 		ResourceGroupSuffix: suffix,
-		ResourceGroupName:   resourceGroupName,
+		ResourceGroupName:   resourceGroupPrefix + "-" + suffix,
 		BastionSubnetID:     "",
 		BoxesSubnetID:       "",
 	}
 
+	g := new(errgroup.Group)
 	g.Go(func() error { createResourceGroupClient(clients); return nil })
 	g.Go(func() error { createNetworkClient(clients); return nil })
 	g.Go(func() error { createNSGClient(clients); return nil })
@@ -225,6 +223,7 @@ func NewAzureClients(suffix string, useAzureCli bool) *AzureClients {
 	g.Go(func() error { createSecretsClient(clients); return nil })
 	g.Go(func() error { createRoleClient(clients); return nil })
 
+	// the initialization of cosmosdb need it's own function and it need to happen after the resourcegroup is created, in createinfrastructure function AI!
 	// Initialize CosmosDB
 	if useAzureCli {
 		g.Go(func() error {
