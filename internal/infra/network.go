@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
@@ -358,13 +359,21 @@ func CreateNetworkInfrastructure(ctx context.Context, clients *AzureClients, use
 	// 1. Create resource group first and wait for it to be ready
 	createResourceGroup(ctx, clients)
 
-	// this can be done in parallel to the functions below AI!
-	// 2. Initialize CosmosDB after resource group is created
-	InitializeCosmosDB(clients, useAzureCli)
+	// Start CosmosDB initialization in parallel with NSG and VNet creation
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		// Initialize CosmosDB after resource group is created
+		InitializeCosmosDB(clients, useAzureCli)
+	}()
 
-	// 3. Create NSG first since VNet depends on it
+	// 2. Create NSG first since VNet depends on it
 	createBastionNSG(ctx, clients)
 
-	// 4. Create VNet after NSG is ready
+	// 3. Create VNet after NSG is ready
 	createVirtualNetwork(ctx, clients)
+
+	// Wait for CosmosDB initialization to complete
+	wg.Wait()
 }
