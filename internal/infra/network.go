@@ -161,7 +161,6 @@ func waitForRoleAssignment(ctx context.Context, cred azcore.TokenCredential) str
 // NewAzureClients creates all Azure clients using credential-based subscription ID discovery
 // readCosmosDBConfig reads CosmosDB connection string from the config file
 func readCosmosDBConfig(clients *AzureClients) error {
-	// 1. undefined: cosmosdbConfigFile [UndeclaredName] AI!
 	data, err := os.ReadFile(cosmosdbConfigFile)
 	if err != nil {
 		return fmt.Errorf("failed to read CosmosDB config file: %w", err)
