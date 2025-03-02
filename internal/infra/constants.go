@@ -32,10 +32,10 @@ const (
 
 // CosmosDB configuration
 const (
-	cosmosdbConfigFile             = ".cosmosdb.json"
-	cosmosdbAccountName            = "shellbox"
-	cosmosdbDatabaseName           = "shellboxDB"
-	cosmosContainerEventLog        = "EventLog"
+	cosmosdbConfigFile              = ".cosmosdb.json"
+	cosmosdbAccountName             = "shellbox"
+	cosmosdbDatabaseName            = "shellboxDB"
+	cosmosContainerEventLog         = "EventLog"
 	cosmosContainerResourceRegistry = "ResourceRegistry"
 )
 
