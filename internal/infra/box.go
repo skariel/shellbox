@@ -306,8 +306,7 @@ func createBoxVM(ctx context.Context, clients *AzureClients, vmName string, nicI
 			OSProfile: &armcompute.OSProfile{
 				ComputerName:  to.Ptr(vmName),
 				AdminUsername: to.Ptr(config.AdminUsername),
-				// Where can I see the logs of running the script belopw AI?
-				CustomData: to.Ptr(initScript),
+				CustomData:    to.Ptr(initScript),
 				LinuxConfiguration: &armcompute.LinuxConfiguration{
 					DisablePasswordAuthentication: to.Ptr(true),
 					SSH: &armcompute.SSHConfiguration{

@@ -384,6 +384,6 @@ func CreateNetworkInfrastructure(ctx context.Context, clients *AzureClients, use
 	// 3. Create VNet after NSG is ready
 	createVirtualNetwork(ctx, clients)
 
-	// Wait for CosmosDB initialization to complete
+	// Wait for TableStorage initialization to complete
 	wg.Wait()
 }

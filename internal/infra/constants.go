@@ -32,10 +32,10 @@ const (
 
 // Table Storage configuration
 const (
-	tableStorageConfigFile  = ".tablestorage.json"
-	storageAccountName      = "shellboxstorage"
-	tableEventLog           = "EventLog"
-	tableResourceRegistry   = "ResourceRegistry"
+	tableStorageConfigFile = ".tablestorage.json"
+	storageAccountName     = "shellboxstorage"
+	tableEventLog          = "EventLog"
+	tableResourceRegistry  = "ResourceRegistry"
 )
 
 // VM configuration
