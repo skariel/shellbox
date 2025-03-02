@@ -155,10 +155,15 @@ func waitForRoleAssignment(ctx context.Context, cred *azidentity.ManagedIdentity
 }
 
 // NewAzureClients creates all Azure clients using credential-based subscription ID discovery
-func NewAzureClients(suffix string) *AzureClients {
-	cred, err := azidentity.NewManagedIdentityCredential(nil)
-	if err != nil {
-		log.Fatalf("failed to create credential: %v", err)
+func NewAzureClients(suffix string, use_az_cli bool) *AzureClients {
+	var cred *azidentity.ManagedIdentityCredential
+	if !use_az_cli {
+		cred, err := azidentity.NewManagedIdentityCredential(nil)
+		if err != nil {
+			log.Fatalf("failed to create credential: %v", err)
+		}
+	} else {
+		// use az cli to get credentials AI?
 	}
 
 	log.Println("waiting for role assignment to propagate...")
