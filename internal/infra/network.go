@@ -157,6 +157,10 @@ func waitForRoleAssignment(ctx context.Context, cred azcore.TokenCredential) str
 
 // NewAzureClients creates all Azure clients using credential-based subscription ID discovery
 func NewAzureClients(suffix string, useAzureCli bool) *AzureClients {
+	g := new(errgroup.Group)
+	resourceGroupName := resourceGroupPrefix + "-" + suffix
+	// if using the azure cli (according to the param to the function) then start the creation of a cosmos account, database and two containers. This can happen in parallel, using the errorgroup. The connection strings to the clients need to be saved in the AzureClients struct -- add them there. Use the resourcegroupName, then cosmosdbAccount, and shellboxDB. The containers would be "EventLog" and "ResourceRegistry". If not using AzureCli, the connectionstrings need to be read from a file ".cosmosdb.json". The name of the file should be defined as a constant together with the other constants of the program. Can you make a plan to implement this AI?
+
 	var cred azcore.TokenCredential
 	var err error
 
@@ -184,12 +188,10 @@ func NewAzureClients(suffix string, useAzureCli bool) *AzureClients {
 		Cred:                cred,
 		SubscriptionID:      subscriptionID,
 		ResourceGroupSuffix: suffix,
-		ResourceGroupName:   resourceGroupPrefix + "-" + suffix,
+		ResourceGroupName:   resourceGroupName,
 		BastionSubnetID:     "",
 		BoxesSubnetID:       "",
 	}
-
-	g := new(errgroup.Group)
 
 	g.Go(func() error { createResourceGroupClient(clients); return nil })
 	g.Go(func() error { createNetworkClient(clients); return nil })
