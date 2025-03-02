@@ -176,6 +176,7 @@ func NewAzureClients(suffix string, use_az_cli bool) *AzureClients {
 		if err != nil {
 			log.Fatalf("failed to create Azure CLI credential: %v", err)
 		}
+		// need to get a subscriptionID here too. And change the scope as it needs to be used below too AI!
 	}
 
 	// Initialize clients with parallel client creation
