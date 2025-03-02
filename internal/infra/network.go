@@ -30,23 +30,23 @@ type VMConfig struct {
 
 // AzureClients holds all the Azure SDK clients needed for the application
 type AzureClients struct {
-	Cred                    azcore.TokenCredential
-	SubscriptionID          string
-	ResourceGroupSuffix     string
-	ResourceGroupName       string
-	BastionSubnetID         string
-	BoxesSubnetID           string
+	Cred                     azcore.TokenCredential
+	SubscriptionID           string
+	ResourceGroupSuffix      string
+	ResourceGroupName        string
+	BastionSubnetID          string
+	BoxesSubnetID            string
 	CosmosDBConnectionString string
-	ResourceClient          *armresources.ResourceGroupsClient
-	NetworkClient           *armnetwork.VirtualNetworksClient
-	NSGClient               *armnetwork.SecurityGroupsClient
-	ComputeClient           *armcompute.VirtualMachinesClient
-	PublicIPClient          *armnetwork.PublicIPAddressesClient
-	NICClient               *armnetwork.InterfacesClient
-	CosmosClient            *armcosmos.DatabaseAccountsClient
-	KeyVaultClient          *armkeyvault.VaultsClient
-	SecretsClient           *armkeyvault.SecretsClient
-	RoleClient              *armauthorization.RoleAssignmentsClient
+	ResourceClient           *armresources.ResourceGroupsClient
+	NetworkClient            *armnetwork.VirtualNetworksClient
+	NSGClient                *armnetwork.SecurityGroupsClient
+	ComputeClient            *armcompute.VirtualMachinesClient
+	PublicIPClient           *armnetwork.PublicIPAddressesClient
+	NICClient                *armnetwork.InterfacesClient
+	CosmosClient             *armcosmos.DatabaseAccountsClient
+	KeyVaultClient           *armkeyvault.VaultsClient
+	SecretsClient            *armkeyvault.SecretsClient
+	RoleClient               *armauthorization.RoleAssignmentsClient
 }
 
 func createResourceGroupClient(clients *AzureClients) {
@@ -161,19 +161,20 @@ func waitForRoleAssignment(ctx context.Context, cred azcore.TokenCredential) str
 // NewAzureClients creates all Azure clients using credential-based subscription ID discovery
 // readCosmosDBConfig reads CosmosDB connection string from the config file
 func readCosmosDBConfig(clients *AzureClients) error {
+	// 1. undefined: cosmosdbConfigFile [UndeclaredName] AI!
 	data, err := os.ReadFile(cosmosdbConfigFile)
 	if err != nil {
 		return fmt.Errorf("failed to read CosmosDB config file: %w", err)
 	}
-	
+
 	var config struct {
 		ConnectionString string `json:"connectionString"`
 	}
-	
+
 	if err := json.Unmarshal(data, &config); err != nil {
 		return fmt.Errorf("failed to parse CosmosDB config: %w", err)
 	}
-	
+
 	clients.CosmosDBConnectionString = config.ConnectionString
 	return nil
 }
@@ -233,20 +234,20 @@ func NewAzureClients(suffix string, useAzureCli bool) *AzureClients {
 				{Name: cosmosContainerEventLog, PartitionKey: "/id", Throughput: 400},
 				{Name: cosmosContainerResourceRegistry, PartitionKey: "/id", Throughput: 400},
 			}
-			
+
 			result := CreateCosmosDBResources(
-				clients.ResourceGroupName, 
-				location, 
-				cosmosAccount, 
-				cosmosdbDatabaseName, 
+				clients.ResourceGroupName,
+				location,
+				cosmosAccount,
+				cosmosdbDatabaseName,
 				containers,
 			)
-			
+
 			if result.Error != nil {
 				log.Printf("Warning: CosmosDB setup error: %v", result.Error)
 				return nil // Don't fail the entire deployment for CosmosDB issues
 			}
-			
+
 			clients.CosmosDBConnectionString = result.ConnectionString
 			return nil
 		})
