@@ -159,12 +159,18 @@ func waitForRoleAssignment(ctx context.Context, cred *azidentity.ManagedIdentity
 func NewAzureClients(suffix string, use_az_cli bool) *AzureClients {
 	var cred azcore.TokenCredential
 	var err error
-	
+
 	if !use_az_cli {
 		cred, err = azidentity.NewManagedIdentityCredential(nil)
 		if err != nil {
 			log.Fatalf("failed to create managed identity credential: %v", err)
 		}
+		log.Println("waiting for role assignment to propagate...")
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+		// 2. cannot use cred (variable of type azcore.TokenCredential) as *azidentity.ManagedIdentityCredential value in argument to waitForRoleAssignment: need type assertion [IncompatibleAssign] AI!
+		subscriptionID := waitForRoleAssignment(ctx, cred)
+		log.Println("role assignment active")
 	} else {
 		// Use Azure CLI credentials
 		cred, err = azidentity.NewAzureCLICredential(nil)
@@ -172,12 +178,6 @@ func NewAzureClients(suffix string, use_az_cli bool) *AzureClients {
 			log.Fatalf("failed to create Azure CLI credential: %v", err)
 		}
 	}
-
-	log.Println("waiting for role assignment to propagate...")
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
-	subscriptionID := waitForRoleAssignment(ctx, cred)
-	log.Println("role assignment active")
 
 	// Initialize clients with parallel client creation
 	clients := &AzureClients{
