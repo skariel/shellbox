@@ -357,7 +357,8 @@ func InitializeCosmosDB(clients *AzureClients, useAzureCli bool) {
 func CreateNetworkInfrastructure(ctx context.Context, clients *AzureClients, useAzureCli bool) {
 	// 1. Create resource group first and wait for it to be ready
 	createResourceGroup(ctx, clients)
-	
+
+	// this can be done in parallel to the functions below AI!
 	// 2. Initialize CosmosDB after resource group is created
 	InitializeCosmosDB(clients, useAzureCli)
 
