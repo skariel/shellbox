@@ -160,6 +160,8 @@ func NewAzureClients(suffix string, use_az_cli bool) *AzureClients {
 	var cred azcore.TokenCredential
 	var err error
 
+	var subscriptionID string
+
 	if !use_az_cli {
 		cred, err = azidentity.NewManagedIdentityCredential(nil)
 		if err != nil {
@@ -168,7 +170,7 @@ func NewAzureClients(suffix string, use_az_cli bool) *AzureClients {
 		log.Println("waiting for role assignment to propagate...")
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
-		subscriptionID := waitForRoleAssignment(ctx, cred)
+		subscriptionID = waitForRoleAssignment(ctx, cred)
 		log.Println("role assignment active")
 	} else {
 		// Use Azure CLI credentials
@@ -176,7 +178,9 @@ func NewAzureClients(suffix string, use_az_cli bool) *AzureClients {
 		if err != nil {
 			log.Fatalf("failed to create Azure CLI credential: %v", err)
 		}
-		// need to get a subscriptionID here too. And change the scope as it needs to be used below too AI!
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+		subscriptionID = waitForRoleAssignment(ctx, cred)
 	}
 
 	// Initialize clients with parallel client creation
