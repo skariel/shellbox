@@ -22,7 +22,7 @@ func main() {
 	log.Println("Current configuration:")
 	fmt.Println(infra.FormatConfig(suffix))
 
-	clients := infra.NewAzureClients(suffix)
+	clients := infra.NewAzureClients(suffix, false)
 
 	// Create network infrastructure first
 	infra.CreateNetworkInfrastructure(context.Background(), clients)

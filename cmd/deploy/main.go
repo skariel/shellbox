@@ -18,7 +18,7 @@ func main() {
 	}
 	suffix := os.Args[1]
 
-	clients := infra.NewAzureClients(suffix)
+	clients := infra.NewAzureClients(suffix, true)
 
 	rgName := clients.ResourceGroupName
 	log.Printf("using resource group: %s", rgName)

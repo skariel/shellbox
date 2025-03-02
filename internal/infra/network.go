@@ -28,7 +28,7 @@ type VMConfig struct {
 
 // AzureClients holds all the Azure SDK clients needed for the application
 type AzureClients struct {
-	Cred                *azidentity.ManagedIdentityCredential
+	Cred                azcore.TokenCredential
 	SubscriptionID      string
 	ResourceGroupSuffix string
 	ResourceGroupName   string
@@ -156,32 +156,28 @@ func waitForRoleAssignment(ctx context.Context, cred azcore.TokenCredential) str
 }
 
 // NewAzureClients creates all Azure clients using credential-based subscription ID discovery
-func NewAzureClients(suffix string, use_az_cli bool) *AzureClients {
+func NewAzureClients(suffix string, useAzureCli bool) *AzureClients {
 	var cred azcore.TokenCredential
 	var err error
 
-	var subscriptionID string
-
-	if !use_az_cli {
+	if !useAzureCli {
 		cred, err = azidentity.NewManagedIdentityCredential(nil)
 		if err != nil {
 			log.Fatalf("failed to create managed identity credential: %v", err)
 		}
-		log.Println("waiting for role assignment to propagate...")
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-		defer cancel()
-		subscriptionID = waitForRoleAssignment(ctx, cred)
-		log.Println("role assignment active")
 	} else {
 		// Use Azure CLI credentials
 		cred, err = azidentity.NewAzureCLICredential(nil)
 		if err != nil {
 			log.Fatalf("failed to create Azure CLI credential: %v", err)
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-		defer cancel()
-		subscriptionID = waitForRoleAssignment(ctx, cred)
 	}
+
+	log.Println("waiting for role assignment to propagate...")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	subscriptionID := waitForRoleAssignment(ctx, cred)
+	log.Println("role assignment active")
 
 	// Initialize clients with parallel client creation
 	clients := &AzureClients{
