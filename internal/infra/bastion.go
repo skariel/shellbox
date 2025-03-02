@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"log"
+	"os"
 	"os/exec"
 	"shellbox/internal/sshutil"
 	"strings"
@@ -180,9 +181,10 @@ func createBastionVM(ctx context.Context, clients *AzureClients, config *VMConfi
 	return &vm.VirtualMachine, nil
 }
 
+// copyServerBinary compiles and copies the server binary to the bastion host.
+// Uses retry with timeout because the bastion may still be initializing and
+// might not be ready to accept SSH connections immediately.
 func copyServerBinary(ctx context.Context, config *VMConfig, publicIPAddress string) error {
-	// in addition to copying the server binary, we also need to create in the bastion the file containing the cosmos connection strings. This should be done after copying the server file. There is no need to retry, the retry in the server copy is because the bastion is initializing. If that succeeded then tmaking other files should also suceed. AI?
-
 	opts := DefaultRetryOptions()
 	opts.Operation = "copy server binary to bastion"
 	opts.Timeout = 5 * time.Minute // Longer timeout for file transfer
@@ -197,6 +199,29 @@ func copyServerBinary(ctx context.Context, config *VMConfig, publicIPAddress str
 		return true, nil
 	})
 	return err
+}
+
+// copyCosmosDBConfig creates a configuration file with CosmosDB connection string
+// and copies it to the bastion host. This is called after copyServerBinary
+// because we don't need to retry - if copyServerBinary succeeded, the bastion
+// is already initialized and accepting connections.
+func copyCosmosDBConfig(ctx context.Context, clients *AzureClients, config *VMConfig, publicIPAddress string) error {
+	cosmosConfigContent := fmt.Sprintf(`{"connectionString": "%s"}`, clients.CosmosDBConnectionString)
+	
+	// Create temporary local file
+	tempFile := "/tmp/cosmosdb.json"
+	if err := os.WriteFile(tempFile, []byte(cosmosConfigContent), 0600); err != nil {
+		return fmt.Errorf("failed to create temporary CosmosDB config file: %w", err)
+	}
+	defer os.Remove(tempFile) // Clean up when done
+	
+	// Copy to bastion
+	remoteConfigPath := fmt.Sprintf("/home/%s/%s", config.AdminUsername, cosmosdbConfigFile)
+	if err := sshutil.CopyFile(ctx, tempFile, remoteConfigPath, config.AdminUsername, publicIPAddress); err != nil {
+		return fmt.Errorf("failed to copy CosmosDB config to bastion: %w", err)
+	}
+	
+	return nil
 }
 
 func startServerOnBastion(ctx context.Context, config *VMConfig, publicIPAddress string, resourceGroupSuffix string) error {
@@ -283,6 +308,10 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *VMConfig)
 	}
 	if err := copyServerBinary(ctx, config, *publicIP.Properties.IPAddress); err != nil {
 		log.Fatalf("failed to copy server binary: %v", err)
+	}
+
+	if err := copyCosmosDBConfig(ctx, clients, config, *publicIP.Properties.IPAddress); err != nil {
+		log.Fatalf("failed to copy CosmosDB config: %v", err)
 	}
 
 	if err := startServerOnBastion(ctx, config, *publicIP.Properties.IPAddress, clients.ResourceGroupSuffix); err != nil {
