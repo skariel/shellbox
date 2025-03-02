@@ -356,23 +356,6 @@ func InitializeTableStorage(clients *AzureClients, useAzureCli bool) {
 
 		clients.TableStorageConnectionString = result.ConnectionString
 
-		// why is this saving to a file needed AI?
-		// Save the connection string to a file for later use
-		configData := struct {
-			ConnectionString string `json:"connectionString"`
-		}{
-			ConnectionString: result.ConnectionString,
-		}
-
-		jsonData, err := json.MarshalIndent(configData, "", "  ")
-		if err != nil {
-			log.Printf("Warning: failed to serialize Table Storage config: %v", err)
-		} else {
-			if err := os.WriteFile(tableStorageConfigFile, jsonData, 0600); err != nil {
-				log.Printf("Warning: failed to save Table Storage config file: %v", err)
-			}
-		}
-
 		// Create table service client
 		createTableServiceClient(clients)
 	} else {
