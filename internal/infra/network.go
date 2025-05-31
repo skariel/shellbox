@@ -13,6 +13,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v7"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resourcegraph/armresourcegraph"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/storage/armstorage"
 )
@@ -43,6 +44,9 @@ type AzureClients struct {
 	StorageClient                *armstorage.AccountsClient
 	RoleClient                   *armauthorization.RoleAssignmentsClient
 	TableClient                  *aztables.ServiceClient
+	DisksClient                  *armcompute.DisksClient
+	SnapshotsClient              *armcompute.SnapshotsClient
+	ResourceGraphClient          *armresourcegraph.Client
 }
 
 func createResourceGroup(ctx context.Context, clients *AzureClients) {

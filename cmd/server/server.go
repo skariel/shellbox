@@ -53,16 +53,19 @@ func main() {
 		logger.Warn("Failed to log server start event", "error", err)
 	}
 
-	config := &infra.VMConfig{
+	vmConfig := &infra.VMConfig{
 		AdminUsername: "shellbox",
 		SSHPublicKey:  publicKey,
 		VMSize:        "Standard_D8s_v3",
 	}
 
+	// Use development pool configuration for now
+	poolConfig := infra.NewDevPoolConfig()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	pool := infra.NewBoxPool(clients, config)
+	pool := infra.NewBoxPool(clients, vmConfig, poolConfig)
 	go pool.MaintainPool(ctx)
 
 	// Start SSH server

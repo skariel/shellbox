@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"log"
+	"strings"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
@@ -393,4 +395,200 @@ func FindBoxesByStatus(ctx context.Context, clients *AzureClients, status string
 	}
 
 	return boxes, nil
+}
+
+// boxResourceInfo holds information about resources associated with a box
+type boxResourceInfo struct {
+	boxID        string
+	nicID        string
+	nicName      string
+	nsgName      string
+	osDiskName   string
+	dataDiskName string
+}
+
+// DeleteBox completely removes a box VM and all its associated resources.
+// This includes the VM, its OS disk, data disk (if any), NIC, and NSG.
+// This function is used for both temporary cleanup and pool shrinking operations.
+func DeleteBox(ctx context.Context, clients *AzureClients, resourceGroupName, vmName string) error {
+	// Get VM and extract resource information
+	vm, err := clients.ComputeClient.Get(ctx, resourceGroupName, vmName, nil)
+	if err != nil {
+		log.Printf("VM %s not found, proceeding with cleanup of other resources: %v", vmName, err)
+	}
+
+	// Extract resource information from VM or generate from naming patterns
+	resourceInfo := extractBoxResourceInfo(vm, vmName, resourceGroupName, err == nil)
+
+	log.Printf("Deleting box %s with resources: NIC=%s, NSG=%s, OSDisk=%s, DataDisk=%s",
+		vmName, resourceInfo.nicName, resourceInfo.nsgName, resourceInfo.osDiskName, resourceInfo.dataDiskName)
+
+	// Delete resources in order: VM, data disk, OS disk, NIC, NSG
+	deleteVM(ctx, clients, resourceGroupName, vmName, err == nil)
+	deleteDisk(ctx, clients, resourceGroupName, resourceInfo.dataDiskName, "data disk")
+	deleteDisk(ctx, clients, resourceGroupName, resourceInfo.osDiskName, "OS disk")
+	deleteNIC(ctx, clients, resourceGroupName, resourceInfo.nicName, resourceInfo.nicID)
+	deleteNSG(ctx, clients, resourceGroupName, resourceInfo.nsgName)
+
+	log.Printf("Box deletion completed: %s", vmName)
+	return nil
+}
+
+// extractBoxResourceInfo extracts resource information from VM or generates from naming patterns
+func extractBoxResourceInfo(vm armcompute.VirtualMachinesClientGetResponse, vmName, resourceGroupName string, vmExists bool) boxResourceInfo {
+	info := boxResourceInfo{}
+
+	if vmExists && vm.Properties != nil {
+		extractResourcesFromVM(&info, vm)
+	}
+
+	// Extract box ID from VM name if not found in tags
+	if info.boxID == "" {
+		info.boxID = extractBoxIDFromVMName(vmName)
+	}
+
+	// Generate missing resource names using naming patterns
+	generateMissingResourceNames(&info, resourceGroupName)
+
+	return info
+}
+
+// extractResourcesFromVM extracts resource information from VM properties
+func extractResourcesFromVM(info *boxResourceInfo, vm armcompute.VirtualMachinesClientGetResponse) {
+	// Extract box ID from tags
+	if vm.Tags != nil && vm.Tags["box_id"] != nil {
+		info.boxID = *vm.Tags["box_id"]
+	}
+
+	// Get NIC ID
+	if vm.Properties.NetworkProfile != nil && len(vm.Properties.NetworkProfile.NetworkInterfaces) > 0 {
+		info.nicID = *vm.Properties.NetworkProfile.NetworkInterfaces[0].ID
+	}
+
+	// Get disk names from storage profile
+	if vm.Properties.StorageProfile != nil {
+		if vm.Properties.StorageProfile.OSDisk != nil {
+			info.osDiskName = *vm.Properties.StorageProfile.OSDisk.Name
+		}
+		if len(vm.Properties.StorageProfile.DataDisks) > 0 {
+			info.dataDiskName = *vm.Properties.StorageProfile.DataDisks[0].Name
+		}
+	}
+}
+
+// extractBoxIDFromVMName extracts box ID from VM name using naming pattern
+func extractBoxIDFromVMName(vmName string) string {
+	parts := strings.Split(vmName, "-")
+	if len(parts) >= 4 {
+		return parts[len(parts)-2]
+	}
+	return ""
+}
+
+// generateMissingResourceNames generates missing resource names using naming patterns
+func generateMissingResourceNames(info *boxResourceInfo, resourceGroupName string) {
+	if info.boxID == "" {
+		return
+	}
+
+	namer := NewResourceNamer(extractSuffix(resourceGroupName))
+	info.nicName = namer.BoxNICName(info.boxID)
+	info.nsgName = namer.BoxNSGName(info.boxID)
+
+	if info.osDiskName == "" {
+		info.osDiskName = namer.BoxOSDiskName(info.boxID)
+	}
+	if info.dataDiskName == "" {
+		info.dataDiskName = namer.BoxDataDiskName(info.boxID)
+	}
+}
+
+// deleteVM deletes a virtual machine
+func deleteVM(ctx context.Context, clients *AzureClients, resourceGroupName, vmName string, vmExists bool) {
+	if !vmExists {
+		return
+	}
+
+	log.Printf("Deleting VM: %s", vmName)
+	vmDelete, err := clients.ComputeClient.BeginDelete(ctx, resourceGroupName, vmName, nil)
+	if err != nil {
+		log.Printf("Failed to start VM deletion %s: %v", vmName, err)
+		return
+	}
+
+	_, err = vmDelete.PollUntilDone(ctx, nil)
+	if err != nil {
+		log.Printf("Failed waiting for VM deletion %s: %v", vmName, err)
+	} else {
+		log.Printf("Successfully deleted VM: %s", vmName)
+	}
+}
+
+// deleteDisk deletes a disk (OS or data disk)
+func deleteDisk(ctx context.Context, clients *AzureClients, resourceGroupName, diskName, diskType string) {
+	if diskName == "" {
+		return
+	}
+
+	log.Printf("Deleting %s: %s", diskType, diskName)
+	diskDelete, err := clients.DisksClient.BeginDelete(ctx, resourceGroupName, diskName, nil)
+	if err != nil {
+		log.Printf("Failed to start %s deletion %s: %v", diskType, diskName, err)
+		return
+	}
+
+	_, err = diskDelete.PollUntilDone(ctx, nil)
+	if err != nil {
+		log.Printf("Failed waiting for %s deletion %s: %v", diskType, diskName, err)
+	} else {
+		log.Printf("Successfully deleted %s: %s", diskType, diskName)
+	}
+}
+
+// deleteNIC deletes a network interface
+func deleteNIC(ctx context.Context, clients *AzureClients, resourceGroupName, nicName, nicID string) {
+	targetNICName := nicName
+	if targetNICName == "" && nicID != "" {
+		parts := strings.Split(nicID, "/")
+		targetNICName = parts[len(parts)-1]
+	}
+
+	if targetNICName == "" {
+		return
+	}
+
+	log.Printf("Deleting NIC: %s", targetNICName)
+	nicDelete, err := clients.NICClient.BeginDelete(ctx, resourceGroupName, targetNICName, nil)
+	if err != nil {
+		log.Printf("Failed to start NIC deletion %s: %v", targetNICName, err)
+		return
+	}
+
+	_, err = nicDelete.PollUntilDone(ctx, nil)
+	if err != nil {
+		log.Printf("Failed waiting for NIC deletion %s: %v", targetNICName, err)
+	} else {
+		log.Printf("Successfully deleted NIC: %s", targetNICName)
+	}
+}
+
+// deleteNSG deletes a network security group
+func deleteNSG(ctx context.Context, clients *AzureClients, resourceGroupName, nsgName string) {
+	if nsgName == "" {
+		return
+	}
+
+	log.Printf("Deleting NSG: %s", nsgName)
+	nsgDelete, err := clients.NSGClient.BeginDelete(ctx, resourceGroupName, nsgName, nil)
+	if err != nil {
+		log.Printf("Failed to start NSG deletion %s: %v", nsgName, err)
+		return
+	}
+
+	_, err = nsgDelete.PollUntilDone(ctx, nil)
+	if err != nil {
+		log.Printf("Failed waiting for NSG deletion %s: %v", nsgName, err)
+	} else {
+		log.Printf("Successfully deleted NSG: %s", nsgName)
+	}
 }

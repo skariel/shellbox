@@ -76,3 +76,15 @@ func (r *ResourceNamer) BoxOSDiskName(boxID string) string {
 func (r *ResourceNamer) StorageAccountName() string {
 	return fmt.Sprintf("shellbox%s", r.suffix)
 }
+
+func (r *ResourceNamer) GoldenSnapshotName() string {
+	return fmt.Sprintf("shellbox-%s-golden-snapshot", r.suffix)
+}
+
+func (r *ResourceNamer) BoxDataDiskName(boxID string) string {
+	return fmt.Sprintf("shellbox-%s-box-%s-data-disk", r.suffix, boxID)
+}
+
+func (r *ResourceNamer) VolumePoolDiskName(volumeID string) string {
+	return fmt.Sprintf("shellbox-%s-volume-%s", r.suffix, volumeID)
+}

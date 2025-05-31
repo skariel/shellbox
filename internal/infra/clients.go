@@ -14,6 +14,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v7"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resourcegraph/armresourcegraph"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armsubscriptions"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/storage/armstorage"
@@ -52,6 +53,15 @@ func createAzureClients(clients *AzureClients) {
 
 	clients.RoleClient, err = armauthorization.NewRoleAssignmentsClient(clients.SubscriptionID, clients.Cred, nil)
 	FatalOnError(err, "failed to create role assignments client")
+
+	clients.DisksClient, err = armcompute.NewDisksClient(clients.SubscriptionID, clients.Cred, nil)
+	FatalOnError(err, "failed to create disks client")
+
+	clients.SnapshotsClient, err = armcompute.NewSnapshotsClient(clients.SubscriptionID, clients.Cred, nil)
+	FatalOnError(err, "failed to create snapshots client")
+
+	clients.ResourceGraphClient, err = armresourcegraph.NewClient(clients.Cred, nil)
+	FatalOnError(err, "failed to create resource graph client")
 }
 
 func createTableClient(clients *AzureClients) {

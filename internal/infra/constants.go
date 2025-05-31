@@ -49,6 +49,68 @@ const (
 	// SSH key paths
 	DeploymentSSHKeyPath = "$HOME/.ssh/id_ed25519"      // For deployment from dev machine
 	BastionSSHKeyPath    = "/home/shellbox/.ssh/id_rsa" // For bastion host operations
+
+	// VM default configuration
+	VMSize        = "Standard_D8s_v3" // 8 vCPUs, 32GB RAM for good nested VM performance
+	AdminUsername = "shellbox"
+)
+
+// Resource roles
+const (
+	ResourceRoleInstance = "instance"
+	ResourceRoleVolume   = "volume"
+)
+
+// Resource statuses
+const (
+	ResourceStatusFree      = "free"
+	ResourceStatusConnected = "connected"
+	ResourceStatusAttached  = "attached"
+)
+
+// Tag keys
+const (
+	TagKeyRole     = "shellbox:role"
+	TagKeyStatus   = "shellbox:status"
+	TagKeyCreated  = "shellbox:created"
+	TagKeyLastUsed = "shellbox:lastused"
+)
+
+// Azure resource types for Resource Graph queries
+const (
+	AzureResourceTypeVM   = "microsoft.compute/virtualmachines"
+	AzureResourceTypeDisk = "microsoft.compute/disks"
+)
+
+// Query and disk constants
+const (
+	MaxQueryResults      = 10
+	DefaultVolumeSizeGB  = 32
+	GoldenSnapshotPrefix = "golden-snapshot"
+)
+
+// Pool configuration constants for production
+const (
+	DefaultMinFreeInstances  = 5
+	DefaultMaxFreeInstances  = 10
+	DefaultMaxTotalInstances = 100
+	DefaultMinFreeVolumes    = 20
+	DefaultMaxFreeVolumes    = 50
+	DefaultMaxTotalVolumes   = 500
+	DefaultCheckInterval     = 1 * time.Minute
+	DefaultScaleDownCooldown = 10 * time.Minute
+)
+
+// Pool configuration constants for development
+const (
+	DevMinFreeInstances  = 1
+	DevMaxFreeInstances  = 2
+	DevMaxTotalInstances = 5
+	DevMinFreeVolumes    = 2
+	DevMaxFreeVolumes    = 5
+	DevMaxTotalVolumes   = 20
+	DevCheckInterval     = 30 * time.Second
+	DevScaleDownCooldown = 2 * time.Minute
 )
 
 // Default polling options for Azure operations

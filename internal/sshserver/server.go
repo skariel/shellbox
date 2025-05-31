@@ -333,9 +333,9 @@ func (s *Server) handleSpinupCommand(ctx CommandContext, result CommandResult, s
 
 	// TODO: Implement actual box creation/allocation logic here
 	// For now, just simulate successful box creation
-	
+
 	successMsg := fmt.Sprintf("Box '%s' created successfully!\n\nTo connect to your box, use:\n  ssh -p 2222 %s@shellbox.dev\n", boxName, boxName)
-	
+
 	if _, err := sess.Write([]byte(successMsg)); err != nil {
 		s.logger.Error("Error writing spinup success message", "error", err)
 	}
