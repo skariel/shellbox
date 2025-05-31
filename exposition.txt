@@ -1,29 +1,37 @@
 Project Context: shellbox.dev
 
-A cloud development environment service using SSH as its primary interface. Users connect and manage environments through standard SSH commands, with web browser only used for payment processing via QR codes.
+A cloud development environment service using SSH as its primary interface. Users connect and manage environments (aka Boxes) through standard SSH commands, with web browser only used for payment processing via QR codes.
+
+The propject is WIP, the below is what I would like itr toll look like:
 
 Core Architecture:
-- Environments are Docker containers with SSH access and CRIU checkpoint/restore
-- Full state preservation (filesystem, memory, processes) using volume-based checkpointing
-- VMs from ready-to-connect pool (20% of active size) host containers
-- Connection flow: User -> Bastion -> VM -> Container (port 22)
+- Boxes are Qemu VMs with SSH access and suspend/restore
+- Each Box lives in its own volume, hard-drive managed by Azure.
+- there is a pool of such volumes: some are connected to active VMs, some are waiting for their user to ask to log-in to be connected to a VM
+- Full state preservation (filesystem, memory, processes)
+- The Boxes run in Azure instances from ready-to-connect pool (a pool of VMs ready to connect to volumes with their boxes): each instance is connected to a volume on demand and the Qemu VM can be restored
+- Connection flow: User -> Bastion -> Instance -> Box (port 22)
+- There are virtual networks for maintaining some security: the instances can only receive connections from the bastrion. They can have out-going connections to the internet thgouh. If the user wants to build a server in their box, the can do so with port-foprwarding from their dev machine (where they ssh from)
+- the bastion is open on port 22 for incomming requests from the internet
+- the instances hosting the boxes are agentless: no custom code in them. Instead, the bastion will manage them through custom code execution features from Azure.
+- I use the word "box" interchangeably to refer to the VM and the host instance for this VM. it depends on the context used...
 
 Key Features:
 - Native SSH workflow (connect, SCP, port forwarding)
 - Pay-per-use: billing only during active SSH sessions
 - Instant suspend on disconnect with complete state preservation
+- Instant connect to Boxes (Azure VM from ready pool connected to Volume and Qemu resumes the VM)
 - Volume-based state management between sessions
 
 Technical Stack:
-- Backend: Go, Azure VMs, SQLite with sqlc. IaC using pulumi automation api
+- Backend: Go, Azure VMs, volumes and tables. Usingf the Azure Go SDK and also the cli for IaC
 - Supporting services: Paddle (payments), Resend (email), Plausible (analytics)
 - Implementation focus: bottom-up development, code-first approach over infrastructure tools
 
 Development Guidelines:
 - Maintain simplicity in implementation
-- Build foundational functions before high-level components
 - Ensure consistency with existing codebase
+- Write essential comments explaioning the why, not the what. Cluster these at the beginning of logic blocks.
 
-I call the user VMs, the instances hosting their containers (user dev envs), -- a "box". Every box will host a single dev env, and boxes will be agentless, i.e. no custom code on them. Instead they will be managed through custome script execution from the bastion (using Azure) 
+general note: do not appologize. Instead, admit if an error was made and move on
 
-general note: do not appologize. Just admit if an error was made and move on fast
