@@ -27,8 +27,11 @@ Users interact with the service entirely through SSH commands:
 # Create a new development box
 ssh shellbox.dev spinup <name>
 
-# Connect to an existing box
+# Connect to an existing box (connects as ubuntu user by default)
 ssh <box-name>.shellbox.dev
+
+# Connect to an existing box with specific user
+ssh <username>@<box-name>.shellbox.dev
 
 # Check account status and box list
 ssh shellbox.dev
