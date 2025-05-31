@@ -8,8 +8,8 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v7"
 	"github.com/google/uuid"
 )
 
@@ -65,7 +65,7 @@ sudo qemu-system-x86_64 \
    -drive file=~/qemu-disks/ubuntu-base.qcow2,format=qcow2 \
    -drive file=~/qemu-disks/cloud-init.iso,format=raw \
    -nographic \
-   -nic user,model=virtio,hostfwd=tcp::2222-:22,dns=8.8.8.8`, sshPublicKey)
+   -nic user,model=virtio,hostfwd=tcp::%d-:22,dns=8.8.8.8`, sshPublicKey, BoxSSHPort)
 
 	return base64.StdEncoding.EncodeToString([]byte(script)), nil
 }
@@ -82,9 +82,10 @@ type BoxTags struct {
 // It returns the box ID and any error encountered.
 func CreateBox(ctx context.Context, clients *AzureClients, config *VMConfig) (string, error) {
 	boxID := uuid.New().String()
-	vmName := fmt.Sprintf("box-%s", boxID)
-	nicName := fmt.Sprintf("box-nic-%s", boxID)
-	nsgName := fmt.Sprintf("box-nsg-%s", boxID)
+	namer := NewResourceNamer(clients.Suffix)
+	vmName := namer.BoxVMName(boxID)
+	nicName := namer.BoxNICName(boxID)
+	nsgName := namer.BoxNSGName(boxID)
 
 	// Create NSG for the box
 	nsg, err := createBoxNSG(ctx, clients, nsgName)
@@ -146,13 +147,13 @@ func createBoxNSG(ctx context.Context, clients *AzureClients, nsgName string) (*
 					},
 				},
 				{
-					Name: to.Ptr("AllowSSHFromBastionTMPTMPTMP"),
+					Name: to.Ptr("AllowBoxSSHFromBastion"),
 					Properties: &armnetwork.SecurityRulePropertiesFormat{
 						Protocol:                 to.Ptr(armnetwork.SecurityRuleProtocolTCP),
 						SourceAddressPrefix:      to.Ptr(bastionSubnetCIDR),
 						SourcePortRange:          to.Ptr("*"),
 						DestinationAddressPrefix: to.Ptr("*"),
-						DestinationPortRange:     to.Ptr("2222"),
+						DestinationPortRange:     to.Ptr(fmt.Sprintf("%d", BoxSSHPort)),
 						Access:                   to.Ptr(armnetwork.SecurityRuleAccessAllow),
 						Priority:                 to.Ptr(int32(111)),
 						Direction:                to.Ptr(armnetwork.SecurityRuleDirectionInbound),
@@ -270,6 +271,7 @@ func createBoxNIC(ctx context.Context, clients *AzureClients, nicName string, ns
 }
 
 func createBoxVM(ctx context.Context, clients *AzureClients, vmName string, nicID string, config *VMConfig, tags BoxTags) (*armcompute.VirtualMachine, error) {
+	namer := NewResourceNamer(clients.Suffix)
 	tagsMap := map[string]*string{
 		"status":     to.Ptr(tags.Status),
 		"created_at": to.Ptr(tags.CreatedAt),
@@ -297,6 +299,7 @@ func createBoxVM(ctx context.Context, clients *AzureClients, vmName string, nicI
 					Version:   to.Ptr(VMVersion),
 				},
 				OSDisk: &armcompute.OSDisk{
+					Name:         to.Ptr(namer.BoxOSDiskName(tags.BoxID)),
 					CreateOption: to.Ptr(armcompute.DiskCreateOptionTypesFromImage),
 					ManagedDisk: &armcompute.ManagedDiskParameters{
 						StorageAccountType: to.Ptr(armcompute.StorageAccountTypesPremiumLRS), // Using Premium SSD for better nested VM performance
@@ -304,7 +307,7 @@ func createBoxVM(ctx context.Context, clients *AzureClients, vmName string, nicI
 				},
 			},
 			OSProfile: &armcompute.OSProfile{
-				ComputerName:  to.Ptr(vmName),
+				ComputerName:  to.Ptr(namer.BoxComputerName(tags.BoxID)),
 				AdminUsername: to.Ptr(config.AdminUsername),
 				// Where can I see the logs of running the script belopw AI?
 				CustomData: to.Ptr(initScript),

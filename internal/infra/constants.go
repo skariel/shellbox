@@ -4,38 +4,32 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v7"
 )
 
 // Resource group configuration
 const (
-	resourceGroupPrefix = "shellbox-infra"
-	location            = "westus2"
+	location = "westus2"
 )
 
 // Network configuration
 const (
-	vnetName         = "shellbox-network"
 	vnetAddressSpace = "10.0.0.0/8"
 
-	// Bastion subnet configuration
-	bastionSubnetName = "bastion-subnet"
+	// Subnet CIDR configuration
 	bastionSubnetCIDR = "10.0.0.0/24"
-	bastionNSGName    = "bastion-nsg"
-
-	// Boxes subnet configuration
-	boxesSubnetName = "boxes-subnet"
-	boxesSubnetCIDR = "10.1.0.0/16"
+	boxesSubnetCIDR   = "10.1.0.0/16"
 )
 
 // Table Storage configuration
 const (
-	tableStorageConfigFile  = ".tablestorage.json"
-	tableStorageAccountName = "shellbox"
-	tableEventLog           = "EventLog"
-	tableResourceRegistry   = "ResourceRegistry"
+	tableStorageConfigFile = ".tablestorage.json"
+	tableEventLog          = "EventLog"
+	tableResourceRegistry  = "ResourceRegistry"
 )
 
 // VM configuration
@@ -46,109 +40,50 @@ const (
 	VMSku       = "22_04-lts-gen2"
 	VMVersion   = "latest"
 
-	// Bastion VM configuration
-	bastionVMName  = "shellbox-bastion"
-	bastionNICName = "bastion-nic"
-	bastionIPName  = "bastion-ip"
+	// SSH port configuration
 	BastionSSHPort = 2222
+
+	// Box SSH configuration
+	BoxSSHPort = 2222
+
+	// SSH key paths
+	DeploymentSSHKeyPath = "$HOME/.ssh/id_ed25519"      // For deployment from dev machine
+	BastionSSHKeyPath    = "/home/shellbox/.ssh/id_rsa" // For bastion host operations
 )
+
+// Default polling options for Azure operations
+var DefaultPollOptions = runtime.PollUntilDoneOptions{
+	Frequency: 2 * time.Second,
+}
+
+// createNSGRule helper function to reduce boilerplate
+func createNSGRule(name, protocol, srcAddr, dstAddr, dstPort string, access armnetwork.SecurityRuleAccess, priority int32, direction armnetwork.SecurityRuleDirection) *armnetwork.SecurityRule {
+	return &armnetwork.SecurityRule{
+		Name: to.Ptr(name),
+		Properties: &armnetwork.SecurityRulePropertiesFormat{
+			Protocol:                 to.Ptr(armnetwork.SecurityRuleProtocol(protocol)),
+			SourceAddressPrefix:      to.Ptr(srcAddr),
+			SourcePortRange:          to.Ptr("*"),
+			DestinationAddressPrefix: to.Ptr(dstAddr),
+			DestinationPortRange:     to.Ptr(dstPort),
+			Access:                   to.Ptr(access),
+			Priority:                 to.Ptr(priority),
+			Direction:                to.Ptr(direction),
+		},
+	}
+}
 
 // NSG Rules configuration
 var BastionNSGRules = []*armnetwork.SecurityRule{
-	{
-		Name: to.Ptr("AllowCustomSSH"),
-		Properties: &armnetwork.SecurityRulePropertiesFormat{
-			Protocol:                 to.Ptr(armnetwork.SecurityRuleProtocolTCP),
-			SourceAddressPrefix:      to.Ptr("Internet"),
-			SourcePortRange:          to.Ptr("*"),
-			DestinationAddressPrefix: to.Ptr("*"),
-			DestinationPortRange:     to.Ptr(fmt.Sprintf("%d", BastionSSHPort)),
-			Access:                   to.Ptr(armnetwork.SecurityRuleAccessAllow),
-			Priority:                 to.Ptr(int32(120)),
-			Direction:                to.Ptr(armnetwork.SecurityRuleDirectionInbound),
-		},
-	},
-	{
-		Name: to.Ptr("AllowSSHFromInternet"),
-		Properties: &armnetwork.SecurityRulePropertiesFormat{
-			Protocol:                 to.Ptr(armnetwork.SecurityRuleProtocolTCP),
-			SourceAddressPrefix:      to.Ptr("Internet"),
-			SourcePortRange:          to.Ptr("*"),
-			DestinationAddressPrefix: to.Ptr("*"),
-			DestinationPortRange:     to.Ptr("22"),
-			Access:                   to.Ptr(armnetwork.SecurityRuleAccessAllow),
-			Priority:                 to.Ptr(int32(100)),
-			Direction:                to.Ptr(armnetwork.SecurityRuleDirectionInbound),
-		},
-	},
-	{
-		Name: to.Ptr("AllowHTTPSFromInternet"),
-		Properties: &armnetwork.SecurityRulePropertiesFormat{
-			Protocol:                 to.Ptr(armnetwork.SecurityRuleProtocolTCP),
-			SourceAddressPrefix:      to.Ptr("Internet"),
-			SourcePortRange:          to.Ptr("*"),
-			DestinationAddressPrefix: to.Ptr("*"),
-			DestinationPortRange:     to.Ptr("443"),
-			Access:                   to.Ptr(armnetwork.SecurityRuleAccessAllow),
-			Priority:                 to.Ptr(int32(110)),
-			Direction:                to.Ptr(armnetwork.SecurityRuleDirectionInbound),
-		},
-	},
-	{
-		Name: to.Ptr("DenyAllInbound"),
-		Properties: &armnetwork.SecurityRulePropertiesFormat{
-			Protocol:                 to.Ptr(armnetwork.SecurityRuleProtocolAsterisk),
-			SourceAddressPrefix:      to.Ptr("*"),
-			SourcePortRange:          to.Ptr("*"),
-			DestinationAddressPrefix: to.Ptr("*"),
-			DestinationPortRange:     to.Ptr("*"),
-			Access:                   to.Ptr(armnetwork.SecurityRuleAccessDeny),
-			Priority:                 to.Ptr(int32(4096)),
-			Direction:                to.Ptr(armnetwork.SecurityRuleDirectionInbound),
-		},
-	},
-	{
-		Name: to.Ptr("AllowToBoxesSubnet"),
-		Properties: &armnetwork.SecurityRulePropertiesFormat{
-			Protocol:                 to.Ptr(armnetwork.SecurityRuleProtocolAsterisk),
-			SourceAddressPrefix:      to.Ptr("*"),
-			SourcePortRange:          to.Ptr("*"),
-			DestinationAddressPrefix: to.Ptr(boxesSubnetCIDR),
-			DestinationPortRange:     to.Ptr("*"),
-			Access:                   to.Ptr(armnetwork.SecurityRuleAccessAllow),
-			Priority:                 to.Ptr(int32(100)),
-			Direction:                to.Ptr(armnetwork.SecurityRuleDirectionOutbound),
-		},
-	},
-	{
-		Name: to.Ptr("AllowToInternet"),
-		Properties: &armnetwork.SecurityRulePropertiesFormat{
-			Protocol:                 to.Ptr(armnetwork.SecurityRuleProtocolAsterisk),
-			SourceAddressPrefix:      to.Ptr("*"),
-			SourcePortRange:          to.Ptr("*"),
-			DestinationAddressPrefix: to.Ptr("Internet"),
-			DestinationPortRange:     to.Ptr("*"),
-			Access:                   to.Ptr(armnetwork.SecurityRuleAccessAllow),
-			Priority:                 to.Ptr(int32(110)),
-			Direction:                to.Ptr(armnetwork.SecurityRuleDirectionOutbound),
-		},
-	},
-	{
-		Name: to.Ptr("DenyAllOutbound"),
-		Properties: &armnetwork.SecurityRulePropertiesFormat{
-			Protocol:                 to.Ptr(armnetwork.SecurityRuleProtocolAsterisk),
-			SourceAddressPrefix:      to.Ptr("*"),
-			SourcePortRange:          to.Ptr("*"),
-			DestinationAddressPrefix: to.Ptr("*"),
-			DestinationPortRange:     to.Ptr("*"),
-			Access:                   to.Ptr(armnetwork.SecurityRuleAccessDeny),
-			Priority:                 to.Ptr(int32(4096)),
-			Direction:                to.Ptr(armnetwork.SecurityRuleDirectionOutbound),
-		},
-	},
+	createNSGRule("AllowSSHFromInternet", "Tcp", "Internet", "*", "22", armnetwork.SecurityRuleAccessAllow, 100, armnetwork.SecurityRuleDirectionInbound),
+	createNSGRule("AllowCustomSSHFromInternet", "Tcp", "Internet", "*", fmt.Sprintf("%d", BastionSSHPort), armnetwork.SecurityRuleAccessAllow, 110, armnetwork.SecurityRuleDirectionInbound),
+	createNSGRule("AllowHTTPSFromInternet", "Tcp", "Internet", "*", "443", armnetwork.SecurityRuleAccessAllow, 120, armnetwork.SecurityRuleDirectionInbound),
+	createNSGRule("AllowToBoxesSubnet", "*", "*", boxesSubnetCIDR, "*", armnetwork.SecurityRuleAccessAllow, 100, armnetwork.SecurityRuleDirectionOutbound),
+	createNSGRule("AllowToInternet", "*", "*", "Internet", "*", armnetwork.SecurityRuleAccessAllow, 110, armnetwork.SecurityRuleDirectionOutbound),
 }
 
 func FormatConfig(suffix string) string {
+	namer := NewResourceNamer(suffix)
 	return fmt.Sprintf(`Network Configuration:
   VNet: %s (%s)
   Bastion Subnet: %s (%s)
@@ -156,9 +91,9 @@ func FormatConfig(suffix string) string {
   NSG Rules:
 %s
   Resource Group Suffix: %s`,
-		vnetName, vnetAddressSpace,
-		bastionSubnetName, bastionSubnetCIDR,
-		boxesSubnetName, boxesSubnetCIDR,
+		namer.VNetName(), vnetAddressSpace,
+		namer.BastionSubnetName(), bastionSubnetCIDR,
+		namer.BoxesSubnetName(), boxesSubnetCIDR,
 		formatNSGRules(BastionNSGRules),
 		suffix)
 }

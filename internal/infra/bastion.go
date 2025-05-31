@@ -4,18 +4,17 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"os/exec"
 	"shellbox/internal/sshutil"
 	"strings"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization"
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v7"
 	"github.com/google/uuid"
 )
 
@@ -50,10 +49,6 @@ func DefaultBastionConfig() *VMConfig {
 	}
 }
 
-var defaultPollOptions = runtime.PollUntilDoneOptions{
-	Frequency: 2 * time.Second,
-}
-
 func compileBastionServer() error {
 	if err := exec.Command("go", "build", "-o", "/tmp/server", "./cmd/server").Run(); err != nil {
 		return fmt.Errorf("failed to compile server binary: %w", err)
@@ -62,7 +57,8 @@ func compileBastionServer() error {
 }
 
 func createBastionPublicIP(ctx context.Context, clients *AzureClients) (*armnetwork.PublicIPAddress, error) {
-	ipPoller, err := clients.PublicIPClient.BeginCreateOrUpdate(ctx, clients.ResourceGroupName, bastionIPName, armnetwork.PublicIPAddress{
+	namer := NewResourceNamer(clients.Suffix)
+	ipPoller, err := clients.PublicIPClient.BeginCreateOrUpdate(ctx, clients.ResourceGroupName, namer.BastionPublicIPName(), armnetwork.PublicIPAddress{
 		Location: to.Ptr(location),
 		SKU: &armnetwork.PublicIPAddressSKU{
 			Name: to.Ptr(armnetwork.PublicIPAddressSKUNameStandard),
@@ -74,7 +70,7 @@ func createBastionPublicIP(ctx context.Context, clients *AzureClients) (*armnetw
 	if err != nil {
 		return nil, fmt.Errorf("failed to start public IP creation: %w", err)
 	}
-	res, err := ipPoller.PollUntilDone(ctx, &defaultPollOptions)
+	res, err := ipPoller.PollUntilDone(ctx, &DefaultPollOptions)
 	if err != nil {
 		return nil, fmt.Errorf("failed to poll IP creation: %w", err)
 	}
@@ -83,7 +79,8 @@ func createBastionPublicIP(ctx context.Context, clients *AzureClients) (*armnetw
 }
 
 func createBastionNIC(ctx context.Context, clients *AzureClients, publicIPID *string) (*armnetwork.Interface, error) {
-	nicPoller, err := clients.NICClient.BeginCreateOrUpdate(ctx, clients.ResourceGroupName, bastionNICName, armnetwork.Interface{
+	namer := NewResourceNamer(clients.Suffix)
+	nicPoller, err := clients.NICClient.BeginCreateOrUpdate(ctx, clients.ResourceGroupName, namer.BastionNICName(), armnetwork.Interface{
 		Location: to.Ptr(location),
 		Properties: &armnetwork.InterfacePropertiesFormat{
 			IPConfigurations: []*armnetwork.InterfaceIPConfiguration{
@@ -105,7 +102,7 @@ func createBastionNIC(ctx context.Context, clients *AzureClients, publicIPID *st
 	if err != nil {
 		return nil, fmt.Errorf("failed to start NIC creation: %w", err)
 	}
-	res, err := nicPoller.PollUntilDone(ctx, &defaultPollOptions)
+	res, err := nicPoller.PollUntilDone(ctx, &DefaultPollOptions)
 	if err != nil {
 		return nil, fmt.Errorf("failed to poll NIC creation: %w", err)
 	}
@@ -113,7 +110,8 @@ func createBastionNIC(ctx context.Context, clients *AzureClients, publicIPID *st
 }
 
 func createBastionVM(ctx context.Context, clients *AzureClients, config *VMConfig, nicID string, customData string) (*armcompute.VirtualMachine, error) {
-	vmPoller, err := clients.ComputeClient.BeginCreateOrUpdate(ctx, clients.ResourceGroupName, bastionVMName, armcompute.VirtualMachine{
+	namer := NewResourceNamer(clients.Suffix)
+	vmPoller, err := clients.ComputeClient.BeginCreateOrUpdate(ctx, clients.ResourceGroupName, namer.BastionVMName(), armcompute.VirtualMachine{
 		Location: to.Ptr(location),
 		Identity: &armcompute.VirtualMachineIdentity{
 			Type: to.Ptr(armcompute.ResourceIdentityTypeSystemAssigned),
@@ -130,7 +128,7 @@ func createBastionVM(ctx context.Context, clients *AzureClients, config *VMConfi
 					Version:   to.Ptr(VMVersion),
 				},
 				OSDisk: &armcompute.OSDisk{
-					Name:         to.Ptr("bastion-os-disk"),
+					Name:         to.Ptr(namer.BastionOSDiskName()),
 					CreateOption: to.Ptr(armcompute.DiskCreateOptionTypesFromImage),
 					ManagedDisk: &armcompute.ManagedDiskParameters{
 						StorageAccountType: to.Ptr(armcompute.StorageAccountTypesPremiumLRS),
@@ -138,7 +136,7 @@ func createBastionVM(ctx context.Context, clients *AzureClients, config *VMConfi
 				},
 			},
 			OSProfile: &armcompute.OSProfile{
-				ComputerName:  to.Ptr("shellbox-bastion"),
+				ComputerName:  to.Ptr(namer.BastionComputerName()),
 				AdminUsername: to.Ptr(config.AdminUsername),
 				CustomData:    to.Ptr(customData),
 				LinuxConfiguration: &armcompute.LinuxConfiguration{
@@ -169,7 +167,7 @@ func createBastionVM(ctx context.Context, clients *AzureClients, config *VMConfi
 		return nil, fmt.Errorf("failed to start bastion VM creation: %w", err)
 	}
 
-	vm, err := vmPoller.PollUntilDone(ctx, &defaultPollOptions)
+	vm, err := vmPoller.PollUntilDone(ctx, &DefaultPollOptions)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create bastion VM: %w", err)
 	}
@@ -185,20 +183,10 @@ func createBastionVM(ctx context.Context, clients *AzureClients, config *VMConfi
 // Uses retry with timeout because the bastion may still be initializing and
 // might not be ready to accept SSH connections immediately.
 func copyServerBinary(ctx context.Context, config *VMConfig, publicIPAddress string) error {
-	opts := DefaultRetryOptions()
-	opts.Operation = "copy server binary to bastion"
-	opts.Timeout = 5 * time.Minute // Longer timeout for file transfer
-
-	// Copy file to bastion
 	remotePath := fmt.Sprintf("/home/%s/server", config.AdminUsername)
-
-	_, err := RetryWithTimeout(ctx, opts, func(ctx context.Context) (bool, error) {
-		if err := sshutil.CopyFile(ctx, "/tmp/server", remotePath, config.AdminUsername, publicIPAddress); err != nil {
-			return false, err
-		}
-		return true, nil
-	})
-	return err
+	return RetryOperation(ctx, func(ctx context.Context) error {
+		return sshutil.CopyFile(ctx, "/tmp/server", remotePath, config.AdminUsername, publicIPAddress)
+	}, 5*time.Minute, 5*time.Second, "copy server binary to bastion")
 }
 
 // copyTableStorageConfig creates a configuration file with Table Storage connection string
@@ -225,16 +213,10 @@ func copyTableStorageConfig(ctx context.Context, clients *AzureClients, config *
 }
 
 func startServerOnBastion(ctx context.Context, config *VMConfig, publicIPAddress string, resourceGroupSuffix string) error {
-	opts := DefaultRetryOptions()
-	opts.Operation = "start server on bastion"
 	command := fmt.Sprintf("nohup /home/%s/server %s > /home/%s/server.log 2>&1 &", config.AdminUsername, resourceGroupSuffix, config.AdminUsername)
-	_, err := RetryWithTimeout(ctx, opts, func(ctx context.Context) (bool, error) {
-		if err := sshutil.ExecuteCommand(ctx, command, config.AdminUsername, publicIPAddress); err != nil {
-			return false, err
-		}
-		return true, nil
-	})
-	return err
+	return RetryOperation(ctx, func(ctx context.Context) error {
+		return sshutil.ExecuteCommand(ctx, command, config.AdminUsername, publicIPAddress)
+	}, 2*time.Minute, 5*time.Second, "start server on bastion")
 }
 
 func getBastionRoleID(subscriptionID string) string {
@@ -245,15 +227,9 @@ func getBastionRoleID(subscriptionID string) string {
 func assignRoleToVM(ctx context.Context, clients *AzureClients, principalID *string) error {
 	roleDefID := getBastionRoleID(clients.SubscriptionID)
 	guid := uuid.New().String()
-	// Assign at subscription level to allow resource creation in any resource group
 	scope := fmt.Sprintf("/subscriptions/%s", clients.SubscriptionID)
 
-	opts := DefaultRetryOptions()
-	opts.Operation = "assign role to bastion VM"
-	opts.Timeout = 2 * time.Minute   // Longer timeout for AAD propagation
-	opts.Interval = 10 * time.Second // Longer interval between retries
-
-	_, err := RetryWithTimeout(ctx, opts, func(ctx context.Context) (bool, error) {
+	return RetryOperation(ctx, func(ctx context.Context) error {
 		_, err := clients.RoleClient.Create(ctx,
 			scope,
 			guid,
@@ -264,58 +240,68 @@ func assignRoleToVM(ctx context.Context, clients *AzureClients, principalID *str
 				},
 			}, nil)
 		if err != nil {
-			// Return false without error to trigger retry for PrincipalNotFound
+			// Treat PrincipalNotFound as retryable without logging error
 			if strings.Contains(err.Error(), "PrincipalNotFound") {
-				return false, nil
+				return fmt.Errorf("principal not found, retrying")
 			}
-			// Return actual error for other cases
-			return false, fmt.Errorf("creating role assignment: %w", err)
+			return fmt.Errorf("creating role assignment: %w", err)
 		}
-		return true, nil
-	})
-
-	return err
+		return nil
+	}, 2*time.Minute, 10*time.Second, "assign role to bastion VM")
 }
 
 // DeployBastion creates a bastion host in the bastion subnet and returns its public IP
 func DeployBastion(ctx context.Context, clients *AzureClients, config *VMConfig) string {
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	}))
+
 	if err := compileBastionServer(); err != nil {
-		log.Fatalf("failed to compile server binary: %v", err)
+		logger.Error("failed to compile server binary", "error", err)
+		os.Exit(1)
 	}
 
 	publicIP, err := createBastionPublicIP(ctx, clients)
 	if err != nil {
-		log.Fatalf("failed to create public IP: %v", err)
+		logger.Error("failed to create public IP", "error", err)
+		os.Exit(1)
 	}
 
 	nic, err := createBastionNIC(ctx, clients, publicIP.ID)
 	if err != nil {
-		log.Fatalf("failed to create NIC: %v", err)
+		logger.Error("failed to create NIC", "error", err)
+		os.Exit(1)
 	}
 
 	customData, err := GenerateBastionInitScript()
 	if err != nil {
-		log.Fatalf("failed to generate init script: %v", err)
+		logger.Error("failed to generate init script", "error", err)
+		os.Exit(1)
 	}
 
 	vm, err := createBastionVM(ctx, clients, config, *nic.ID, customData)
 	if err != nil {
-		log.Fatalf("failed to create bastion VM: %v", err)
+		logger.Error("failed to create bastion VM", "error", err)
+		os.Exit(1)
 	}
 
 	if err := assignRoleToVM(ctx, clients, vm.Identity.PrincipalID); err != nil {
-		log.Fatalf("failed to assign role to VM: %v", err)
+		logger.Error("failed to assign role to VM", "error", err)
+		os.Exit(1)
 	}
 	if err := copyServerBinary(ctx, config, *publicIP.Properties.IPAddress); err != nil {
-		log.Fatalf("failed to copy server binary: %v", err)
+		logger.Error("failed to copy server binary", "error", err)
+		os.Exit(1)
 	}
 
 	if err := copyTableStorageConfig(ctx, clients, config, *publicIP.Properties.IPAddress); err != nil {
-		log.Fatalf("failed to copy Table Storage config: %v", err)
+		logger.Error("failed to copy Table Storage config", "error", err)
+		os.Exit(1)
 	}
 
 	if err := startServerOnBastion(ctx, config, *publicIP.Properties.IPAddress, clients.ResourceGroupSuffix); err != nil {
-		log.Fatalf("failed to start server on bastion: %v", err)
+		logger.Error("failed to start server on bastion", "error", err)
+		os.Exit(1)
 	}
 
 	return *publicIP.Properties.IPAddress

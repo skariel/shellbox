@@ -2,8 +2,7 @@ package main
 
 import (
 	"context"
-	"fmt"
-	"log"
+	"log/slog"
 	"os"
 
 	"shellbox/internal/infra"
@@ -11,37 +10,41 @@ import (
 )
 
 func main() {
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	}))
+
 	ctx := context.Background()
 
 	if len(os.Args) < 2 {
-		log.Fatal("resource group suffix argument is required")
+		logger.Error("resource group suffix argument is required")
+		os.Exit(1)
 	}
 	suffix := os.Args[1]
 
 	clients := infra.NewAzureClients(suffix, true)
 
 	rgName := clients.ResourceGroupName
-	log.Printf("using resource group: %s", rgName)
+	logger.Info("using resource group", "name", rgName)
 
-	log.Println("current configuration:")
-	fmt.Println(infra.FormatConfig(suffix))
+	logger.Info("current configuration", "config", infra.FormatConfig(suffix))
 
-	log.Println("upserting networking infra")
+	logger.Info("upserting networking infra")
 	infra.CreateNetworkInfrastructure(ctx, clients, true)
 
-	log.Println("done upserting")
-	_, pubKey, err := sshutil.LoadKeyPair("$HOME/.ssh/id_ed25519")
+	logger.Info("done upserting")
+	_, pubKey, err := sshutil.LoadKeyPair(infra.DeploymentSSHKeyPath)
 	if err != nil {
-		log.Fatalf("could not load ssh pub key: %s", err)
+		logger.Error("could not load ssh pub key", "error", err)
+		os.Exit(1)
 	}
 
-	log.Println("creating bastion")
+	logger.Info("creating bastion")
 	bastionIP := infra.DeployBastion(ctx, clients, &infra.VMConfig{
 		AdminUsername: "shellbox",
 		SSHPublicKey:  pubKey,
 		VMSize:        "Standard_B2ms",
 	})
 
-	log.Println("infrastructure deployment complete")
-	log.Printf("bastion IP: %s", bastionIP)
+	logger.Info("infrastructure deployment complete", "bastion_ip", bastionIP)
 }

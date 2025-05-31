@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"time"
 
@@ -13,15 +13,19 @@ import (
 )
 
 func main() {
-	log.Println("starting shellbox server")
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	}))
+
+	logger.Info("starting shellbox server")
 
 	if len(os.Args) < 2 {
-		log.Fatal("resource group suffix argument is required")
+		logger.Error("resource group suffix argument is required")
+		os.Exit(1)
 	}
 	suffix := os.Args[1]
 
-	log.Println("Current configuration:")
-	fmt.Println(infra.FormatConfig(suffix))
+	logger.Info("current configuration", "config", infra.FormatConfig(suffix))
 
 	clients := infra.NewAzureClients(suffix, false)
 
@@ -29,13 +33,14 @@ func main() {
 	infra.CreateNetworkInfrastructure(context.Background(), clients, false)
 
 	// Ensure SSH key pair exists
-	keyPath := "/home/shellbox/.ssh/id_rsa"
+	keyPath := infra.BastionSSHKeyPath
 	_, publicKey, err := sshutil.LoadKeyPair(keyPath)
 	if err != nil {
-		log.Fatalf("failed to load SSH key pair: %v", err)
+		logger.Error("failed to load SSH key pair", "error", err)
+		os.Exit(1)
 	}
-	log.Printf("using SSH key pair at: %s", keyPath)
-	log.Printf("public key: %q", publicKey)
+	logger.Info("using SSH key pair", "path", keyPath)
+	logger.Info("loaded public key", "key", publicKey)
 
 	// Log server start event
 	now := time.Now()
@@ -47,7 +52,7 @@ func main() {
 		Details:      fmt.Sprintf(`{"suffix":"%s"}`, suffix),
 	}
 	if err := infra.WriteEventLog(context.Background(), clients, startEvent); err != nil {
-		log.Printf("Failed to log server start event: %v", err)
+		logger.Warn("Failed to log server start event", "error", err)
 	}
 
 	config := &infra.VMConfig{
@@ -65,11 +70,12 @@ func main() {
 	// Start SSH server
 	sshServer, err := sshserver.New(infra.BastionSSHPort, clients)
 	if err != nil {
-		log.Fatalf("Failed to create SSH server: %v", err)
+		logger.Error("Failed to create SSH server", "error", err)
+		os.Exit(1)
 	}
 	go func() {
 		if err := sshServer.Run(); err != nil {
-			log.Printf("SSH server error: %v", err)
+			logger.Error("SSH server error", "error", err)
 		}
 	}()
 

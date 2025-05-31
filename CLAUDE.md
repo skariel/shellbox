@@ -57,24 +57,13 @@ go build -o deploy ./cmd/deploy
 ./deploy <resource-group-suffix>
 ```
 
-### Code Quality
+### Code Quality and Testing
 ```bash
-# Format and lint (from tst.sh)
-find . -name "*.go" -not -path "./vendor/*" -exec goimports -w {} \;
-go fmt ./... && golangci-lint run | grep .go | sort | uniq
-
-# Run linter only
-golangci-lint run
+# Run all testing, linting, and formatting
+./tst.sh
 ```
 
-### Testing
-```bash
-# Run all tests
-go test ./...
-
-# Run tests with verbose output
-go test -v ./...
-```
+**Note**: All code quality tasks (testing, linting, formatting) are handled by `./tst.sh` - this is the single command for all quality checks.
 
 ## Configuration
 
@@ -108,3 +97,10 @@ The project creates these Azure resources:
 - Write essential comments explaining the why, not the what - cluster these at the beginning of logic blocks
 - Always make minimal changes possible: if a task can be achieved in different ways, prefer the one that has minimal change.
 - Maintain backwards compatiblity: as much as possible,  prefer non-braking changes to the codebase
+
+### Error Handling Pattern
+
+The codebase uses a deliberate mix of fatal and error value returns based on context:
+- **Deployment time**: Use `log.Fatal()` for immediate failure when infrastructure setup encounters issues - deployment should fail fast and clearly
+- **Runtime**: Return error values for graceful handling and service stability - the running service should handle errors gracefully to maintain stability for connected users  
+- **Bastion creation**: Uses fatal errors during idempotent infrastructure creation as a simpler client creation mechanism instead of passing information through the wire during deployment

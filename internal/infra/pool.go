@@ -3,7 +3,7 @@ package infra
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"sync"
 	"time"
 )
@@ -43,7 +43,7 @@ func (p *BoxPool) MaintainPool(ctx context.Context) {
 
 			if currentSize < targetPoolSize {
 				boxesToCreate := targetPoolSize - currentSize
-				log.Printf("creating %d boxes to maintain pool size", boxesToCreate)
+				slog.Info("creating boxes to maintain pool size", "count", boxesToCreate)
 
 				var wg sync.WaitGroup
 				for i := 0; i < boxesToCreate; i++ {
@@ -52,7 +52,7 @@ func (p *BoxPool) MaintainPool(ctx context.Context) {
 						defer wg.Done()
 						boxID, err := CreateBox(ctx, p.clients, p.config)
 						if err != nil {
-							log.Printf("failed to create box: %v", err)
+							slog.Error("failed to create box", "error", err)
 							return
 						}
 
@@ -60,7 +60,7 @@ func (p *BoxPool) MaintainPool(ctx context.Context) {
 						p.boxes[boxID] = "ready"
 						p.mu.Unlock()
 
-						log.Printf("created box with ID: %s", boxID)
+						slog.Info("created box", "boxID", boxID)
 
 						// Log box creation event
 						now := time.Now()
@@ -73,7 +73,7 @@ func (p *BoxPool) MaintainPool(ctx context.Context) {
 							Details:      `{"status":"ready"}`,
 						}
 						if err := WriteEventLog(ctx, p.clients, createEvent); err != nil {
-							log.Printf("Failed to log box create event: %v", err)
+							slog.Warn("Failed to log box create event", "error", err)
 						}
 
 						// Log resource registry entry
@@ -87,7 +87,7 @@ func (p *BoxPool) MaintainPool(ctx context.Context) {
 							Metadata:     fmt.Sprintf(`{"vm_size":"%s"}`, p.config.VMSize),
 						}
 						if err := WriteResourceRegistry(ctx, p.clients, resourceEntry); err != nil {
-							log.Printf("Failed to log resource registry entry: %v", err)
+							slog.Warn("Failed to log resource registry entry", "error", err)
 						}
 					}()
 				}

@@ -6,7 +6,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
+	"os"
 	"strings"
 	"time"
 
@@ -24,11 +25,12 @@ type Server struct {
 	boxSSHConfig *ssh.ClientConfig
 	boxAddr      string
 	clients      *infra.AzureClients
+	logger       *slog.Logger
 }
 
 // New creates a new SSH server instance
 func New(port int, clients *infra.AzureClients) (*Server, error) {
-	privateKey, _, err := sshutil.LoadKeyPair("$HOME/.ssh/id_rsa")
+	privateKey, _, err := sshutil.LoadKeyPair(infra.BastionSSHKeyPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load SSH key pair: %w", err)
 	}
@@ -42,6 +44,7 @@ func New(port int, clients *infra.AzureClients) (*Server, error) {
 		port:    port,
 		boxAddr: "10.1.0.4",
 		clients: clients,
+		logger:  slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})),
 		boxSSHConfig: &ssh.ClientConfig{
 			User: "ubuntu",
 			Auth: []ssh.AuthMethod{
@@ -59,7 +62,7 @@ func New(port int, clients *infra.AzureClients) (*Server, error) {
 
 // dialBox establishes connection to the box
 func (s *Server) dialBox() (*ssh.Client, error) {
-	return ssh.Dial("tcp", fmt.Sprintf("%s:2222", s.boxAddr), s.boxSSHConfig)
+	return ssh.Dial("tcp", fmt.Sprintf("%s:%d", s.boxAddr, infra.BoxSSHPort), s.boxSSHConfig)
 }
 
 // handleSCP handles SCP file transfer sessions
@@ -67,7 +70,7 @@ func (s *Server) handleSCP(sess gssh.Session) error {
 	// Connect to box
 	client, err := s.dialBox()
 	if err != nil {
-		log.Printf("Failed to connect to box: %v", err)
+		s.logger.Error("Failed to connect to box", "error", err)
 		return fmt.Errorf("error connecting to box: %w", err)
 	}
 	defer client.Close()
@@ -75,7 +78,7 @@ func (s *Server) handleSCP(sess gssh.Session) error {
 	// Create new session for SCP
 	boxSession, err := client.NewSession()
 	if err != nil {
-		log.Printf("Failed to create box session: %v", err)
+		s.logger.Error("Failed to create box session", "error", err)
 		return fmt.Errorf("error creating session: %w", err)
 	}
 	defer boxSession.Close()
@@ -93,14 +96,14 @@ func (s *Server) handleSCP(sess gssh.Session) error {
 func (s *Server) handleSession(sess gssh.Session) {
 	if len(sess.Command()) > 0 && sess.Command()[0] == "scp" {
 		if err := s.handleSCP(sess); err != nil {
-			log.Printf("SCP error: %v", err)
+			s.logger.Error("SCP error", "error", err)
 			if err := sess.Exit(1); err != nil {
-				log.Printf("Error during exit(1): %v", err)
+				s.logger.Error("Error during exit(1)", "error", err)
 			}
 			return
 		}
 		if err := sess.Exit(0); err != nil {
-			log.Printf("Error during exit(0): %v", err)
+			s.logger.Error("Error during exit(0)", "error", err)
 		}
 		return
 	}
@@ -110,7 +113,7 @@ func (s *Server) handleSession(sess gssh.Session) {
 
 func (s *Server) handleShellSession(sess gssh.Session) {
 	if _, err := sess.Write([]byte("\n\nHI FROM SHELLBOX!\n\n")); err != nil {
-		log.Printf("Error writing to SSH session: %v", err)
+		s.logger.Error("Error writing to SSH session", "error", err)
 		return
 	}
 
@@ -134,12 +137,12 @@ func (s *Server) handleShellSession(sess gssh.Session) {
 		Details:      fmt.Sprintf(`{"remote_addr":"%s"}`, sess.RemoteAddr()),
 	}
 	if err := infra.WriteEventLog(context.Background(), s.clients, sessionEvent); err != nil {
-		log.Printf("Failed to log session start event: %v", err)
+		s.logger.Warn("Failed to log session start event", "error", err)
 	}
 
 	client, err := s.dialBox()
 	if err != nil {
-		log.Printf("Failed to connect to box: %v", err)
+		s.logger.Error("Failed to connect to box", "error", err)
 		fmt.Fprintf(sess.Stderr(), "Error connecting to box: %v\n", err)
 
 		// Log failed box connection
@@ -153,7 +156,7 @@ func (s *Server) handleShellSession(sess gssh.Session) {
 			Details:      fmt.Sprintf(`{"error":"%s"}`, err.Error()),
 		}
 		if err := infra.WriteEventLog(context.Background(), s.clients, failEvent); err != nil {
-			log.Printf("Failed to log box connection failure: %v", err)
+			s.logger.Warn("Failed to log box connection failure", "error", err)
 		}
 		return
 	}
@@ -171,24 +174,24 @@ func (s *Server) handleShellSession(sess gssh.Session) {
 		Details:      fmt.Sprintf(`{"box_addr":"%s"}`, s.boxAddr),
 	}
 	if err := infra.WriteEventLog(context.Background(), s.clients, connectEvent); err != nil {
-		log.Printf("Failed to log box connection: %v", err)
+		s.logger.Warn("Failed to log box connection", "error", err)
 	}
 
 	boxSession, err := client.NewSession()
 	if err != nil {
-		log.Printf("Failed to create box session: %v", err)
+		s.logger.Error("Failed to create box session", "error", err)
 		fmt.Fprintf(sess.Stderr(), "Error creating session: %v\n", err)
 		return
 	}
 	defer boxSession.Close()
 
 	if err := s.setupPty(sess, boxSession); err != nil {
-		log.Printf("Failed to setup PTY: %v", err)
+		s.logger.Error("Failed to setup PTY", "error", err)
 		return
 	}
 
 	if err := s.handleIO(sess, boxSession); err != nil {
-		log.Printf("Failed to handle IO: %v", err)
+		s.logger.Error("Failed to handle IO", "error", err)
 	}
 }
 
@@ -201,7 +204,7 @@ func (s *Server) setupPty(sess gssh.Session, boxSession *ssh.Session) error {
 		go func() {
 			for win := range winCh {
 				if err := boxSession.WindowChange(win.Height, win.Width); err != nil {
-					log.Printf("Failed to change window size: %v", err)
+					s.logger.Error("Failed to change window size", "error", err)
 				}
 			}
 		}()
@@ -263,6 +266,6 @@ func (s *Server) Run() error {
 		Handler: s.handleSession,
 	}
 
-	log.Printf("Starting SSH server on port %d", s.port)
+	s.logger.Info("Starting SSH server", "port", s.port)
 	return server.ListenAndServe()
 }

@@ -107,34 +107,14 @@ type ResourceRegistryEntity struct {
 	Metadata     string    `json:"Metadata,omitempty"`
 }
 
-// WriteEventLog writes an entry to the EventLog table
-func WriteEventLog(ctx context.Context, clients *AzureClients, event EventLogEntity) error {
+// writeTableEntity is a generic function for writing entities to Azure Tables
+func writeTableEntity(ctx context.Context, clients *AzureClients, tableName string, entity interface{}) error {
 	if clients.TableClient == nil {
 		return fmt.Errorf("table client not available")
 	}
 
-	entityMap := map[string]interface{}{
-		"PartitionKey": event.PartitionKey,
-		"RowKey":       event.RowKey,
-		"Timestamp":    event.Timestamp,
-		"EventType":    event.EventType,
-	}
-
-	if event.SessionID != "" {
-		entityMap["SessionID"] = event.SessionID
-	}
-	if event.BoxID != "" {
-		entityMap["BoxID"] = event.BoxID
-	}
-	if event.UserKey != "" {
-		entityMap["UserKey"] = event.UserKey
-	}
-	if event.Details != "" {
-		entityMap["Details"] = event.Details
-	}
-
-	tableClient := clients.TableClient.NewClient(tableEventLog)
-	entityBytes, err := json.Marshal(entityMap)
+	tableClient := clients.TableClient.NewClient(tableName)
+	entityBytes, err := json.Marshal(entity)
 	if err != nil {
 		return fmt.Errorf("failed to marshal entity: %w", err)
 	}
@@ -142,33 +122,12 @@ func WriteEventLog(ctx context.Context, clients *AzureClients, event EventLogEnt
 	return err
 }
 
+// WriteEventLog writes an entry to the EventLog table
+func WriteEventLog(ctx context.Context, clients *AzureClients, event EventLogEntity) error {
+	return writeTableEntity(ctx, clients, tableEventLog, event)
+}
+
 // WriteResourceRegistry writes an entry to the ResourceRegistry table
 func WriteResourceRegistry(ctx context.Context, clients *AzureClients, resource ResourceRegistryEntity) error {
-	if clients.TableClient == nil {
-		return fmt.Errorf("table client not available")
-	}
-
-	entityMap := map[string]interface{}{
-		"PartitionKey": resource.PartitionKey,
-		"RowKey":       resource.RowKey,
-		"Timestamp":    resource.Timestamp,
-		"Status":       resource.Status,
-		"CreatedAt":    resource.CreatedAt,
-		"LastActivity": resource.LastActivity,
-	}
-
-	if resource.VMName != "" {
-		entityMap["VMName"] = resource.VMName
-	}
-	if resource.Metadata != "" {
-		entityMap["Metadata"] = resource.Metadata
-	}
-
-	tableClient := clients.TableClient.NewClient(tableResourceRegistry)
-	entityBytes, err := json.Marshal(entityMap)
-	if err != nil {
-		return fmt.Errorf("failed to marshal entity: %w", err)
-	}
-	_, err = tableClient.AddEntity(ctx, entityBytes, nil)
-	return err
+	return writeTableEntity(ctx, clients, tableResourceRegistry, resource)
 }
