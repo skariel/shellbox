@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"shellbox/internal/infra"
 	"shellbox/internal/sshserver"
@@ -36,6 +37,19 @@ func main() {
 	log.Printf("using SSH key pair at: %s", keyPath)
 	log.Printf("public key: %q", publicKey)
 
+	// Log server start event
+	now := time.Now()
+	startEvent := infra.EventLogEntity{
+		PartitionKey: now.Format("2006-01-02"),
+		RowKey:       fmt.Sprintf("%s_server_start", now.Format("20060102T150405")),
+		Timestamp:    now,
+		EventType:    "server_start",
+		Details:      fmt.Sprintf(`{"suffix":"%s"}`, suffix),
+	}
+	if err := infra.WriteEventLog(context.Background(), clients, startEvent); err != nil {
+		log.Printf("Failed to log server start event: %v", err)
+	}
+
 	config := &infra.VMConfig{
 		AdminUsername: "shellbox",
 		SSHPublicKey:  publicKey,
@@ -49,7 +63,7 @@ func main() {
 	go pool.MaintainPool(ctx)
 
 	// Start SSH server
-	sshServer, err := sshserver.New(infra.BastionSSHPort)
+	sshServer, err := sshserver.New(infra.BastionSSHPort, clients)
 	if err != nil {
 		log.Fatalf("Failed to create SSH server: %v", err)
 	}

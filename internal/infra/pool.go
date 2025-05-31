@@ -2,6 +2,7 @@ package infra
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -60,6 +61,34 @@ func (p *BoxPool) MaintainPool(ctx context.Context) {
 						p.mu.Unlock()
 
 						log.Printf("created box with ID: %s", boxID)
+
+						// Log box creation event
+						now := time.Now()
+						createEvent := EventLogEntity{
+							PartitionKey: now.Format("2006-01-02"),
+							RowKey:       fmt.Sprintf("%s_box_create", now.Format("20060102T150405")),
+							Timestamp:    now,
+							EventType:    "box_create",
+							BoxID:        boxID,
+							Details:      `{"status":"ready"}`,
+						}
+						if err := WriteEventLog(ctx, p.clients, createEvent); err != nil {
+							log.Printf("Failed to log box create event: %v", err)
+						}
+
+						// Log resource registry entry
+						resourceEntry := ResourceRegistryEntity{
+							PartitionKey: "box",
+							RowKey:       boxID,
+							Timestamp:    now,
+							Status:       "ready",
+							CreatedAt:    now,
+							LastActivity: now,
+							Metadata:     fmt.Sprintf(`{"vm_size":"%s"}`, p.config.VMSize),
+						}
+						if err := WriteResourceRegistry(ctx, p.clients, resourceEntry); err != nil {
+							log.Printf("Failed to log resource registry entry: %v", err)
+						}
 					}()
 				}
 				wg.Wait()

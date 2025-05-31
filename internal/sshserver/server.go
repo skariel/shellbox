@@ -1,12 +1,16 @@
 package sshserver
 
 import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"log"
 	"strings"
 	"time"
 
+	"shellbox/internal/infra"
 	"shellbox/internal/sshutil"
 
 	gssh "github.com/gliderlabs/ssh" // alias to avoid confusion with crypto/ssh
@@ -19,10 +23,11 @@ type Server struct {
 	port         int
 	boxSSHConfig *ssh.ClientConfig
 	boxAddr      string
+	clients      *infra.AzureClients
 }
 
 // New creates a new SSH server instance
-func New(port int) (*Server, error) {
+func New(port int, clients *infra.AzureClients) (*Server, error) {
 	privateKey, _, err := sshutil.LoadKeyPair("$HOME/.ssh/id_rsa")
 	if err != nil {
 		return nil, fmt.Errorf("failed to load SSH key pair: %w", err)
@@ -36,6 +41,7 @@ func New(port int) (*Server, error) {
 	return &Server{
 		port:    port,
 		boxAddr: "10.1.0.4",
+		clients: clients,
 		boxSSHConfig: &ssh.ClientConfig{
 			User: "ubuntu",
 			Auth: []ssh.AuthMethod{
@@ -108,13 +114,65 @@ func (s *Server) handleShellSession(sess gssh.Session) {
 		return
 	}
 
+	// Generate session ID and user key hash for logging
+	sessionID := fmt.Sprintf("sess_%d", time.Now().UnixNano())
+	var userKeyHash string
+	if publicKey := sess.PublicKey(); publicKey != nil {
+		hash := sha256.Sum256(publicKey.Marshal())
+		userKeyHash = hex.EncodeToString(hash[:])[:16]
+	}
+
+	// Log session start event
+	now := time.Now()
+	sessionEvent := infra.EventLogEntity{
+		PartitionKey: now.Format("2006-01-02"),
+		RowKey:       fmt.Sprintf("%s_session_start", now.Format("20060102T150405")),
+		Timestamp:    now,
+		EventType:    "session_start",
+		SessionID:    sessionID,
+		UserKey:      userKeyHash,
+		Details:      fmt.Sprintf(`{"remote_addr":"%s"}`, sess.RemoteAddr()),
+	}
+	if err := infra.WriteEventLog(context.Background(), s.clients, sessionEvent); err != nil {
+		log.Printf("Failed to log session start event: %v", err)
+	}
+
 	client, err := s.dialBox()
 	if err != nil {
 		log.Printf("Failed to connect to box: %v", err)
 		fmt.Fprintf(sess.Stderr(), "Error connecting to box: %v\n", err)
+
+		// Log failed box connection
+		failEvent := infra.EventLogEntity{
+			PartitionKey: now.Format("2006-01-02"),
+			RowKey:       fmt.Sprintf("%s_box_connect_fail", time.Now().Format("20060102T150405")),
+			Timestamp:    time.Now(),
+			EventType:    "box_connect_fail",
+			SessionID:    sessionID,
+			UserKey:      userKeyHash,
+			Details:      fmt.Sprintf(`{"error":"%s"}`, err.Error()),
+		}
+		if err := infra.WriteEventLog(context.Background(), s.clients, failEvent); err != nil {
+			log.Printf("Failed to log box connection failure: %v", err)
+		}
 		return
 	}
 	defer client.Close()
+
+	// Log successful box connection
+	connectEvent := infra.EventLogEntity{
+		PartitionKey: now.Format("2006-01-02"),
+		RowKey:       fmt.Sprintf("%s_box_connect", time.Now().Format("20060102T150405")),
+		Timestamp:    time.Now(),
+		EventType:    "box_connect",
+		SessionID:    sessionID,
+		UserKey:      userKeyHash,
+		BoxID:        s.boxAddr, // Using box address as ID for now
+		Details:      fmt.Sprintf(`{"box_addr":"%s"}`, s.boxAddr),
+	}
+	if err := infra.WriteEventLog(context.Background(), s.clients, connectEvent); err != nil {
+		log.Printf("Failed to log box connection: %v", err)
+	}
 
 	boxSession, err := client.NewSession()
 	if err != nil {
