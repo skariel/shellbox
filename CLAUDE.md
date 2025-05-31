@@ -4,13 +4,44 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Shellbox.dev is a cloud development environment service using SSH as its primary interface. Users connect and manage environments (aka Boxes) through standard SSH commands, with web browser only used for payment processing via QR codes.
+Shellbox.dev (https://shellbox.dev/) is a cloud development environment service using SSH as its primary interface. Users connect and manage environments (aka Boxes) through standard SSH commands, with web browser only used for payment processing via QR codes.
 
-Key service characteristics:
+### Service Specifications
+- **High-Performance Instances**: 8 vCPUs, 32GB RAM, 96GB SSD, 100GB networking at 1Gbps
+- **Billing Model**: $0.70/hour while actively connected, $0.02/hour while idle
+- **Automatic Cost Control**: Instances stop when balance falls below $5
+- **Prepaid Balance System**: Minimum $10 top-up with refund options
+
+### Key Service Characteristics
 - Pay-per-use billing: Only charged during active SSH sessions
 - Instant suspend on disconnect with complete state preservation (filesystem, memory, processes)
 - Volume-based state management: Each Box lives in its own Azure-managed volume
 - Instant connect: Azure VMs from ready pool connect to volumes and QEMU resumes the VM
+- Zero-configuration setup: No special clients or browser plugins required
+- Full SSH feature support: Port forwarding, SCP, and all standard SSH functionality
+
+### User Commands
+Users interact with the service entirely through SSH commands:
+
+```bash
+# Create a new development box
+ssh shellbox.dev spinup <name>
+
+# Connect to an existing box
+ssh <box-name>.shellbox.dev
+
+# Check account status and box list
+ssh shellbox.dev
+
+# Get help
+ssh shellbox.dev help
+
+# Check current user
+ssh shellbox.dev whoami
+
+# View version information
+ssh shellbox.dev version
+```
 
 ## Architecture
 
@@ -104,3 +135,55 @@ The codebase uses a deliberate mix of fatal and error value returns based on con
 - **Deployment time**: Use `log.Fatal()` for immediate failure when infrastructure setup encounters issues - deployment should fail fast and clearly
 - **Runtime**: Return error values for graceful handling and service stability - the running service should handle errors gracefully to maintain stability for connected users  
 - **Bastion creation**: Uses fatal errors during idempotent infrastructure creation as a simpler client creation mechanism instead of passing information through the wire during deployment
+
+## Go File Reference
+
+### Command Line Tools
+
+#### `cmd/deploy/main.go`
+Entry point for infrastructure deployment tool. Creates network infrastructure and deploys bastion host with the shellbox server binary. Requires resource group suffix as command line argument.
+
+#### `cmd/server/server.go` 
+Main server application that runs on the bastion host. Initializes Azure clients, maintains box pool, starts SSH server, and logs server start events to Azure Table Storage.
+
+### Infrastructure Management (`internal/infra/`)
+
+#### `bastion.go`
+Bastion host deployment functions. Handles VM creation, SSH key setup, server binary compilation/deployment, role assignments, and Table Storage configuration. Contains complete bastion setup workflow with retry logic.
+
+#### `box.go`
+Box VM management including creation, networking setup (NSGs, NICs), QEMU initialization scripts, and lifecycle operations (deallocate, status queries). Each box gets isolated networking and nested VM capabilities.
+
+#### `clients.go`
+Azure SDK client initialization and credential management. Handles both Azure CLI and managed identity authentication, subscription discovery, and Table Storage client setup.
+
+#### `constants.go`
+Configuration constants for networking (VNet/subnet CIDRs), VM settings, SSH ports, key paths, and NSG security rules. Central location for all infrastructure configuration values.
+
+#### `network.go`
+Network infrastructure creation including resource groups, VNets, subnets, and NSGs. Handles the foundational networking setup that both bastion and boxes depend on.
+
+#### `pool.go`
+Box pool management that maintains a target number of ready boxes. Runs as background goroutine, creates new boxes when needed, and logs box lifecycle events to Table Storage.
+
+#### `resource_naming.go`
+Consistent Azure resource naming functions based on suffix. Generates names for all resources (VMs, NICs, NSGs, disks, etc.) following predictable patterns for easy identification.
+
+#### `retry.go`
+Generic retry mechanism with timeout and interval controls. Used throughout infrastructure operations where Azure resources may need time to propagate or become available.
+
+#### `tables.go`
+Azure Table Storage operations for event logging and resource registry. Provides structured logging of server events, box lifecycle, and user sessions for monitoring and debugging.
+
+### SSH Server (`internal/sshserver/`)
+
+#### `server.go`
+Core SSH server that proxies connections to boxes. Handles both interactive shell sessions and command execution, implements SCP support, manages PTY forwarding, and logs all session activity.
+
+#### `commands.go`
+Command parsing using Cobra framework for non-interactive SSH commands (spinup, help, version, whoami). Provides structured command handling with proper argument validation and help text.
+
+### SSH Utilities (`internal/sshutil/`)
+
+#### `ssh.go`
+SSH key management and remote operation utilities. Handles key pair generation/loading, secure file copying via SCP, and remote command execution with proper error handling.
