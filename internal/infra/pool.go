@@ -54,11 +54,12 @@ func NewDevPoolConfig() PoolConfig {
 }
 
 type BoxPool struct {
-	mu         sync.RWMutex
-	boxes      map[string]string // boxID -> status
-	clients    *AzureClients
-	vmConfig   *VMConfig
-	poolConfig PoolConfig
+	mu            sync.RWMutex
+	boxes         map[string]string // boxID -> status
+	clients       *AzureClients
+	vmConfig      *VMConfig
+	poolConfig    PoolConfig
+	lastScaleDown time.Time // Track last scale down to enforce cooldown
 }
 
 func NewBoxPool(clients *AzureClients, vmConfig *VMConfig, poolConfig PoolConfig) *BoxPool {
@@ -84,57 +85,129 @@ func (p *BoxPool) MaintainPool(ctx context.Context) {
 			p.mu.Unlock()
 
 			if currentSize < p.poolConfig.MinFreeInstances {
-				boxesToCreate := p.poolConfig.MinFreeInstances - currentSize
-				slog.Info("creating boxes to maintain pool size", "count", boxesToCreate)
-
-				var wg sync.WaitGroup
-				for i := 0; i < boxesToCreate; i++ {
-					wg.Add(1)
-					go func() {
-						defer wg.Done()
-						boxID, err := CreateBox(ctx, p.clients, p.vmConfig)
-						if err != nil {
-							slog.Error("failed to create box", "error", err)
-							return
-						}
-
-						p.mu.Lock()
-						p.boxes[boxID] = "ready"
-						p.mu.Unlock()
-
-						slog.Info("created box", "boxID", boxID)
-
-						// Log box creation event
-						now := time.Now()
-						createEvent := EventLogEntity{
-							PartitionKey: now.Format("2006-01-02"),
-							RowKey:       fmt.Sprintf("%s_box_create", now.Format("20060102T150405")),
-							Timestamp:    now,
-							EventType:    "box_create",
-							BoxID:        boxID,
-							Details:      `{"status":"ready"}`,
-						}
-						if err := WriteEventLog(ctx, p.clients, createEvent); err != nil {
-							slog.Warn("Failed to log box create event", "error", err)
-						}
-
-						// Log resource registry entry
-						resourceEntry := ResourceRegistryEntity{
-							PartitionKey: "box",
-							RowKey:       boxID,
-							Timestamp:    now,
-							Status:       "ready",
-							CreatedAt:    now,
-							LastActivity: now,
-							Metadata:     fmt.Sprintf(`{"vm_size":"%s"}`, p.vmConfig.VMSize),
-						}
-						if err := WriteResourceRegistry(ctx, p.clients, resourceEntry); err != nil {
-							slog.Warn("Failed to log resource registry entry", "error", err)
-						}
-					}()
-				}
-				wg.Wait()
+				p.scaleUp(ctx, currentSize)
+			} else if currentSize > p.poolConfig.MaxFreeInstances {
+				p.scaleDown(ctx, currentSize)
 			}
 		}
 	}
+}
+
+func (p *BoxPool) scaleUp(ctx context.Context, currentSize int) {
+	boxesToCreate := p.poolConfig.MinFreeInstances - currentSize
+	slog.Info("creating boxes to maintain pool size", "count", boxesToCreate)
+
+	var wg sync.WaitGroup
+	for i := 0; i < boxesToCreate; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			boxID, err := CreateInstance(ctx, p.clients, p.vmConfig)
+			if err != nil {
+				slog.Error("failed to create box", "error", err)
+				return
+			}
+
+			p.mu.Lock()
+			p.boxes[boxID] = "ready"
+			p.mu.Unlock()
+
+			slog.Info("created box", "boxID", boxID)
+
+			// Log box creation event
+			now := time.Now()
+			createEvent := EventLogEntity{
+				PartitionKey: now.Format("2006-01-02"),
+				RowKey:       fmt.Sprintf("%s_box_create", now.Format("20060102T150405")),
+				Timestamp:    now,
+				EventType:    "box_create",
+				BoxID:        boxID,
+				Details:      `{"status":"ready"}`,
+			}
+			if err := WriteEventLog(ctx, p.clients, createEvent); err != nil {
+				slog.Warn("Failed to log box create event", "error", err)
+			}
+
+			// Log resource registry entry
+			resourceEntry := ResourceRegistryEntity{
+				PartitionKey: "box",
+				RowKey:       boxID,
+				Timestamp:    now,
+				Status:       "ready",
+				CreatedAt:    now,
+				LastActivity: now,
+				Metadata:     fmt.Sprintf(`{"vm_size":"%s"}`, p.vmConfig.VMSize),
+			}
+			if err := WriteResourceRegistry(ctx, p.clients, resourceEntry); err != nil {
+				slog.Warn("Failed to log resource registry entry", "error", err)
+			}
+		}()
+	}
+	wg.Wait()
+}
+
+func (p *BoxPool) scaleDown(ctx context.Context, currentSize int) {
+	// Check if enough time has passed since last scale down
+	if time.Since(p.lastScaleDown) < p.poolConfig.ScaleDownCooldown {
+		slog.Info("skipping scale down due to cooldown",
+			"time_remaining", p.poolConfig.ScaleDownCooldown-time.Since(p.lastScaleDown))
+		return
+	}
+
+	boxesToRemove := currentSize - p.poolConfig.MaxFreeInstances
+	slog.Info("removing excess boxes from pool", "count", boxesToRemove)
+
+	// Find ready boxes to remove
+	var boxesToDelete []string
+	p.mu.Lock()
+	for boxID, status := range p.boxes {
+		if status == "ready" && len(boxesToDelete) < boxesToRemove {
+			boxesToDelete = append(boxesToDelete, boxID)
+		}
+	}
+	p.mu.Unlock()
+
+	// Delete boxes
+	var wg sync.WaitGroup
+	for _, boxID := range boxesToDelete {
+		wg.Add(1)
+		go func(id string) {
+			defer wg.Done()
+			namer := NewResourceNamer(p.clients.Suffix)
+			vmName := namer.BoxVMName(id)
+			resourceGroup := namer.ResourceGroup()
+
+			err := DeleteInstance(ctx, p.clients, resourceGroup, vmName)
+			if err != nil {
+				slog.Error("failed to delete box", "boxID", id, "error", err)
+				return
+			}
+
+			p.mu.Lock()
+			delete(p.boxes, id)
+			p.mu.Unlock()
+
+			slog.Info("deleted box", "boxID", id)
+
+			// Log box deletion event
+			now := time.Now()
+			deleteEvent := EventLogEntity{
+				PartitionKey: now.Format("2006-01-02"),
+				RowKey:       fmt.Sprintf("%s_box_delete", now.Format("20060102T150405")),
+				Timestamp:    now,
+				EventType:    "box_delete",
+				BoxID:        id,
+				Details:      `{"reason":"pool_shrink"}`,
+			}
+			if err := WriteEventLog(ctx, p.clients, deleteEvent); err != nil {
+				slog.Warn("Failed to log box delete event", "error", err)
+			}
+		}(boxID)
+	}
+	wg.Wait()
+
+	// Update last scale down time
+	p.mu.Lock()
+	p.lastScaleDown = time.Now()
+	p.mu.Unlock()
 }

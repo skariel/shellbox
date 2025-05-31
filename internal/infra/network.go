@@ -54,7 +54,7 @@ func createResourceGroup(ctx context.Context, clients *AzureClients) {
 	FatalOnError(err, "failed to generate config hash")
 
 	_, err = clients.ResourceClient.CreateOrUpdate(ctx, clients.ResourceGroupName, armresources.ResourceGroup{
-		Location: to.Ptr(location),
+		Location: to.Ptr(Location),
 		Tags: map[string]*string{
 			"config": to.Ptr(fmt.Sprintf("sha256-%s", hash)),
 		},
@@ -65,7 +65,7 @@ func createResourceGroup(ctx context.Context, clients *AzureClients) {
 func createBastionNSG(ctx context.Context, clients *AzureClients) {
 	namer := NewResourceNamer(clients.Suffix)
 	nsgParams := armnetwork.SecurityGroup{
-		Location: to.Ptr(location),
+		Location: to.Ptr(Location),
 		Properties: &armnetwork.SecurityGroupPropertiesFormat{
 			SecurityRules: BastionNSGRules,
 		},
@@ -84,7 +84,7 @@ func createVirtualNetwork(ctx context.Context, clients *AzureClients) {
 	FatalOnError(err, "failed to get bastion NSG")
 
 	vnetParams := armnetwork.VirtualNetwork{
-		Location: to.Ptr(location),
+		Location: to.Ptr(Location),
 		Properties: &armnetwork.VirtualNetworkPropertiesFormat{
 			AddressSpace: &armnetwork.AddressSpace{
 				AddressPrefixes: []*string{to.Ptr(vnetAddressSpace)},

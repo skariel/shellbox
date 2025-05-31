@@ -33,7 +33,7 @@ func CreateTableStorageResources(ctx context.Context, clients *AzureClients, acc
 			Name: to.Ptr(armstorage.SKUNameStandardLRS),
 		},
 		Kind:     to.Ptr(armstorage.KindStorageV2),
-		Location: to.Ptr(location),
+		Location: to.Ptr(Location),
 		Properties: &armstorage.AccountPropertiesCreateParameters{
 			AllowBlobPublicAccess: to.Ptr(false),
 		},

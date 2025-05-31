@@ -40,6 +40,15 @@ func main() {
 	logger.Info("using SSH key pair", "path", keyPath)
 	logger.Info("loaded public key", "key", publicKey)
 
+	// Create golden snapshot if it doesn't exist
+	logger.Info("ensuring golden snapshot exists")
+	goldenSnapshot, err := infra.CreateGoldenSnapshotIfNotExists(context.Background(), clients, clients.ResourceGroupName, infra.Location)
+	if err != nil {
+		logger.Error("failed to create golden snapshot", "error", err)
+		os.Exit(1)
+	}
+	logger.Info("golden snapshot ready", "name", goldenSnapshot.Name, "size_gb", goldenSnapshot.SizeGB)
+
 	// Log server start event
 	now := time.Now()
 	startEvent := infra.EventLogEntity{

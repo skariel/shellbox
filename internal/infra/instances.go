@@ -2,7 +2,6 @@ package infra
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
 	"log"
 	"strings"
@@ -15,111 +14,56 @@ import (
 	"github.com/google/uuid"
 )
 
-func GenerateBoxInitScript(sshPublicKey string) (string, error) {
-	script := fmt.Sprintf(`#!/bin/bash
-
-echo "\$nrconf{restart} = 'a';" | sudo tee /etc/needrestart/conf.d/50-autorestart.conf
-sudo apt update
-sudo apt install qemu-utils qemu-system-x86 qemu-kvm qemu-system libvirt-daemon-system libvirt-clients bridge-utils genisoimage whois libguestfs-tools -y
-
-sudo usermod -aG kvm,libvirt $USER
-sudo systemctl enable --now libvirtd
-
-mkdir -p ~/qemu-disks ~/qemu-memory
-
-wget https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-amd64.img
-cp ubuntu-24.04-server-cloudimg-amd64.img ~/qemu-disks/ubuntu-base.qcow2
-qemu-img resize ~/qemu-disks/ubuntu-base.qcow2 16G
-
-cat > user-data << 'EOFMARKER'
-#cloud-config
-hostname: ubuntu
-users:
-  - name: ubuntu
-    ssh_authorized_keys:
-      - '%s'
-    shell: /bin/bash
-    sudo: ALL=(ALL) NOPASSWD:ALL
-package_update: true
-packages:
-  - openssh-server
-ssh_pwauth: false
-ssh:
-  install-server: yes
-  permit_root_login: false
-  password_authentication: false
-EOFMARKER
-
-cat > meta-data << 'EOFMARKER'
-instance-id: ubuntu-inst-1
-local-hostname: ubuntu
-EOFMARKER
-
-genisoimage -output ~/qemu-disks/cloud-init.iso -volid cidata -joliet -rock user-data meta-data
-
-sudo qemu-system-x86_64 \
-   -enable-kvm \
-   -m 4G \
-   -mem-prealloc \
-   -mem-path ~/qemu-memory/ubuntu-mem \
-   -smp 4 \
-   -cpu host \
-   -drive file=~/qemu-disks/ubuntu-base.qcow2,format=qcow2 \
-   -drive file=~/qemu-disks/cloud-init.iso,format=raw \
-   -nographic \
-   -nic user,model=virtio,hostfwd=tcp::%d-:22,dns=8.8.8.8`, sshPublicKey, BoxSSHPort)
-
-	return base64.StdEncoding.EncodeToString([]byte(script)), nil
-}
-
-// BoxTags represents searchable metadata for box VMs.
+// InstanceTags represents searchable metadata for instance VMs.
 // These tags are used to track VM status and lifecycle.
-type BoxTags struct {
-	Status    string // ready, allocated, deallocated
-	CreatedAt string
-	BoxID     string
+type InstanceTags struct {
+	Status     string // ready, allocated, deallocated
+	CreatedAt  string
+	InstanceID string
 }
 
-// CreateBox creates a new box VM with proper networking setup.
-// It returns the box ID and any error encountered.
-func CreateBox(ctx context.Context, clients *AzureClients, config *VMConfig) (string, error) {
-	boxID := uuid.New().String()
+// CreateInstance creates a new instance VM with proper networking setup.
+// This creates only the compute instance without any volumes or QEMU setup.
+// Volumes will be attached separately when users connect.
+// It returns the instance ID and any error encountered.
+func CreateInstance(ctx context.Context, clients *AzureClients, config *VMConfig) (string, error) {
+	instanceID := uuid.New().String()
 	namer := NewResourceNamer(clients.Suffix)
-	vmName := namer.BoxVMName(boxID)
-	nicName := namer.BoxNICName(boxID)
-	nsgName := namer.BoxNSGName(boxID)
+	vmName := namer.BoxVMName(instanceID)
+	nicName := namer.BoxNICName(instanceID)
+	nsgName := namer.BoxNSGName(instanceID)
 
-	// Create NSG for the box
-	nsg, err := createBoxNSG(ctx, clients, nsgName)
+	// Create NSG for the instance
+	nsg, err := createInstanceNSG(ctx, clients, nsgName)
 	if err != nil {
-		return "", fmt.Errorf("creating box NSG: %w", err)
+		return "", fmt.Errorf("creating instance NSG: %w", err)
 	}
 
 	// Create NIC with the NSG
-	nic, err := createBoxNIC(ctx, clients, nicName, nsg.ID)
+	nic, err := createInstanceNIC(ctx, clients, nicName, nsg.ID)
 	if err != nil {
-		return "", fmt.Errorf("creating box NIC: %w", err)
+		return "", fmt.Errorf("creating instance NIC: %w", err)
 	}
 
-	// Create the VM
-	tags := BoxTags{
-		Status:    "ready",
-		CreatedAt: time.Now().UTC().Format(time.RFC3339),
-		BoxID:     boxID,
+	// Create the VM (instance only, no volumes)
+	tags := InstanceTags{
+		Status:     "ready",
+		CreatedAt:  time.Now().UTC().Format(time.RFC3339),
+		InstanceID: instanceID,
 	}
 
-	_, err = createBoxVM(ctx, clients, vmName, *nic.ID, config, tags)
+	_, err = createInstanceVM(ctx, clients, vmName, *nic.ID, config, tags)
 	if err != nil {
-		return "", fmt.Errorf("creating box VM: %w", err)
+		return "", fmt.Errorf("creating instance VM: %w", err)
 	}
 
-	return boxID, nil
+	return instanceID, nil
 }
 
-func createBoxNSG(ctx context.Context, clients *AzureClients, nsgName string) (*armnetwork.SecurityGroup, error) {
+func createInstanceNSG(ctx context.Context, clients *AzureClients, nsgName string) (*armnetwork.SecurityGroup, error) {
 
 	nsgParams := armnetwork.SecurityGroup{
-		Location: to.Ptr(location),
+		Location: to.Ptr(Location),
 		Properties: &armnetwork.SecurityGroupPropertiesFormat{
 			SecurityRules: []*armnetwork.SecurityRule{
 				{
@@ -234,9 +178,9 @@ func createBoxNSG(ctx context.Context, clients *AzureClients, nsgName string) (*
 	return &nsg.SecurityGroup, nil
 }
 
-func createBoxNIC(ctx context.Context, clients *AzureClients, nicName string, nsgID *string) (*armnetwork.Interface, error) {
+func createInstanceNIC(ctx context.Context, clients *AzureClients, nicName string, nsgID *string) (*armnetwork.Interface, error) {
 	nicParams := armnetwork.Interface{
-		Location: to.Ptr(location),
+		Location: to.Ptr(Location),
 		Properties: &armnetwork.InterfacePropertiesFormat{
 			NetworkSecurityGroup: &armnetwork.SecurityGroup{
 				ID: nsgID,
@@ -272,22 +216,16 @@ func createBoxNIC(ctx context.Context, clients *AzureClients, nicName string, ns
 	return &result.Interface, nil
 }
 
-func createBoxVM(ctx context.Context, clients *AzureClients, vmName string, nicID string, config *VMConfig, tags BoxTags) (*armcompute.VirtualMachine, error) {
+func createInstanceVM(ctx context.Context, clients *AzureClients, vmName string, nicID string, config *VMConfig, tags InstanceTags) (*armcompute.VirtualMachine, error) {
 	namer := NewResourceNamer(clients.Suffix)
 	tagsMap := map[string]*string{
-		"status":     to.Ptr(tags.Status),
-		"created_at": to.Ptr(tags.CreatedAt),
-		"box_id":     to.Ptr(tags.BoxID),
-	}
-
-	// Generate initialization script with SSH key
-	initScript, err := GenerateBoxInitScript(config.SSHPublicKey)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate box init script: %w", err)
+		"status":      to.Ptr(tags.Status),
+		"created_at":  to.Ptr(tags.CreatedAt),
+		"instance_id": to.Ptr(tags.InstanceID),
 	}
 
 	vmParams := armcompute.VirtualMachine{
-		Location: to.Ptr(location),
+		Location: to.Ptr(Location),
 		Tags:     tagsMap,
 		Properties: &armcompute.VirtualMachineProperties{
 			HardwareProfile: &armcompute.HardwareProfile{
@@ -301,18 +239,16 @@ func createBoxVM(ctx context.Context, clients *AzureClients, vmName string, nicI
 					Version:   to.Ptr(VMVersion),
 				},
 				OSDisk: &armcompute.OSDisk{
-					Name:         to.Ptr(namer.BoxOSDiskName(tags.BoxID)),
+					Name:         to.Ptr(namer.BoxOSDiskName(tags.InstanceID)),
 					CreateOption: to.Ptr(armcompute.DiskCreateOptionTypesFromImage),
 					ManagedDisk: &armcompute.ManagedDiskParameters{
-						StorageAccountType: to.Ptr(armcompute.StorageAccountTypesPremiumLRS), // Using Premium SSD for better nested VM performance
+						StorageAccountType: to.Ptr(armcompute.StorageAccountTypesPremiumLRS),
 					},
 				},
 			},
 			OSProfile: &armcompute.OSProfile{
-				ComputerName:  to.Ptr(namer.BoxComputerName(tags.BoxID)),
+				ComputerName:  to.Ptr(namer.BoxComputerName(tags.InstanceID)),
 				AdminUsername: to.Ptr(config.AdminUsername),
-				// Where can I see the logs of running the script belopw AI?
-				CustomData: to.Ptr(initScript),
 				LinuxConfiguration: &armcompute.LinuxConfiguration{
 					DisablePasswordAuthentication: to.Ptr(true),
 					SSH: &armcompute.SSHConfiguration{
@@ -371,15 +307,15 @@ func DeallocateBox(ctx context.Context, clients *AzureClients, vmID string) erro
 	return nil
 }
 
-// FindBoxesByStatus returns box IDs matching the given status.
+// FindInstancesByStatus returns instance IDs matching the given status.
 // It filters VMs based on their status tag and returns their resource IDs.
-func FindBoxesByStatus(ctx context.Context, clients *AzureClients, status string) ([]string, error) {
+func FindInstancesByStatus(ctx context.Context, clients *AzureClients, status string) ([]string, error) {
 	filter := fmt.Sprintf("tagName eq 'status' and tagValue eq '%s'", status)
 
 	pager := clients.ComputeClient.NewListPager(clients.ResourceGroupName, &armcompute.VirtualMachinesClientListOptions{
 		Filter: &filter,
 	})
-	var boxes []string
+	var instances []string
 
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
@@ -389,17 +325,17 @@ func FindBoxesByStatus(ctx context.Context, clients *AzureClients, status string
 
 		for _, vm := range page.Value {
 			if vm.Tags != nil && *vm.Tags["status"] == status {
-				boxes = append(boxes, *vm.ID)
+				instances = append(instances, *vm.ID)
 			}
 		}
 	}
 
-	return boxes, nil
+	return instances, nil
 }
 
-// boxResourceInfo holds information about resources associated with a box
-type boxResourceInfo struct {
-	boxID        string
+// instanceResourceInfo holds information about resources associated with an instance
+type instanceResourceInfo struct {
+	instanceID   string
 	nicID        string
 	nicName      string
 	nsgName      string
@@ -407,10 +343,10 @@ type boxResourceInfo struct {
 	dataDiskName string
 }
 
-// DeleteBox completely removes a box VM and all its associated resources.
+// DeleteInstance completely removes an instance VM and all its associated resources.
 // This includes the VM, its OS disk, data disk (if any), NIC, and NSG.
 // This function is used for both temporary cleanup and pool shrinking operations.
-func DeleteBox(ctx context.Context, clients *AzureClients, resourceGroupName, vmName string) error {
+func DeleteInstance(ctx context.Context, clients *AzureClients, resourceGroupName, vmName string) error {
 	// Get VM and extract resource information
 	vm, err := clients.ComputeClient.Get(ctx, resourceGroupName, vmName, nil)
 	if err != nil {
@@ -418,7 +354,7 @@ func DeleteBox(ctx context.Context, clients *AzureClients, resourceGroupName, vm
 	}
 
 	// Extract resource information from VM or generate from naming patterns
-	resourceInfo := extractBoxResourceInfo(vm, vmName, resourceGroupName, err == nil)
+	resourceInfo := extractInstanceResourceInfo(vm, vmName, resourceGroupName, err == nil)
 
 	log.Printf("Deleting box %s with resources: NIC=%s, NSG=%s, OSDisk=%s, DataDisk=%s",
 		vmName, resourceInfo.nicName, resourceInfo.nsgName, resourceInfo.osDiskName, resourceInfo.dataDiskName)
@@ -434,17 +370,17 @@ func DeleteBox(ctx context.Context, clients *AzureClients, resourceGroupName, vm
 	return nil
 }
 
-// extractBoxResourceInfo extracts resource information from VM or generates from naming patterns
-func extractBoxResourceInfo(vm armcompute.VirtualMachinesClientGetResponse, vmName, resourceGroupName string, vmExists bool) boxResourceInfo {
-	info := boxResourceInfo{}
+// extractInstanceResourceInfo extracts resource information from VM or generates from naming patterns
+func extractInstanceResourceInfo(vm armcompute.VirtualMachinesClientGetResponse, vmName, resourceGroupName string, vmExists bool) instanceResourceInfo {
+	info := instanceResourceInfo{}
 
 	if vmExists && vm.Properties != nil {
 		extractResourcesFromVM(&info, vm)
 	}
 
-	// Extract box ID from VM name if not found in tags
-	if info.boxID == "" {
-		info.boxID = extractBoxIDFromVMName(vmName)
+	// Extract instance ID from VM name if not found in tags
+	if info.instanceID == "" {
+		info.instanceID = extractInstanceIDFromVMName(vmName)
 	}
 
 	// Generate missing resource names using naming patterns
@@ -454,10 +390,10 @@ func extractBoxResourceInfo(vm armcompute.VirtualMachinesClientGetResponse, vmNa
 }
 
 // extractResourcesFromVM extracts resource information from VM properties
-func extractResourcesFromVM(info *boxResourceInfo, vm armcompute.VirtualMachinesClientGetResponse) {
-	// Extract box ID from tags
-	if vm.Tags != nil && vm.Tags["box_id"] != nil {
-		info.boxID = *vm.Tags["box_id"]
+func extractResourcesFromVM(info *instanceResourceInfo, vm armcompute.VirtualMachinesClientGetResponse) {
+	// Extract instance ID from tags
+	if vm.Tags != nil && vm.Tags["instance_id"] != nil {
+		info.instanceID = *vm.Tags["instance_id"]
 	}
 
 	// Get NIC ID
@@ -476,8 +412,8 @@ func extractResourcesFromVM(info *boxResourceInfo, vm armcompute.VirtualMachines
 	}
 }
 
-// extractBoxIDFromVMName extracts box ID from VM name using naming pattern
-func extractBoxIDFromVMName(vmName string) string {
+// extractInstanceIDFromVMName extracts instance ID from VM name using naming pattern
+func extractInstanceIDFromVMName(vmName string) string {
 	parts := strings.Split(vmName, "-")
 	if len(parts) >= 4 {
 		return parts[len(parts)-2]
@@ -486,20 +422,20 @@ func extractBoxIDFromVMName(vmName string) string {
 }
 
 // generateMissingResourceNames generates missing resource names using naming patterns
-func generateMissingResourceNames(info *boxResourceInfo, resourceGroupName string) {
-	if info.boxID == "" {
+func generateMissingResourceNames(info *instanceResourceInfo, resourceGroupName string) {
+	if info.instanceID == "" {
 		return
 	}
 
 	namer := NewResourceNamer(extractSuffix(resourceGroupName))
-	info.nicName = namer.BoxNICName(info.boxID)
-	info.nsgName = namer.BoxNSGName(info.boxID)
+	info.nicName = namer.BoxNICName(info.instanceID)
+	info.nsgName = namer.BoxNSGName(info.instanceID)
 
 	if info.osDiskName == "" {
-		info.osDiskName = namer.BoxOSDiskName(info.boxID)
+		info.osDiskName = namer.BoxOSDiskName(info.instanceID)
 	}
 	if info.dataDiskName == "" {
-		info.dataDiskName = namer.BoxDataDiskName(info.boxID)
+		info.dataDiskName = namer.BoxDataDiskName(info.instanceID)
 	}
 }
 

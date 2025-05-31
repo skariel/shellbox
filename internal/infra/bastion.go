@@ -59,7 +59,7 @@ func compileBastionServer() error {
 func createBastionPublicIP(ctx context.Context, clients *AzureClients) (*armnetwork.PublicIPAddress, error) {
 	namer := NewResourceNamer(clients.Suffix)
 	ipPoller, err := clients.PublicIPClient.BeginCreateOrUpdate(ctx, clients.ResourceGroupName, namer.BastionPublicIPName(), armnetwork.PublicIPAddress{
-		Location: to.Ptr(location),
+		Location: to.Ptr(Location),
 		SKU: &armnetwork.PublicIPAddressSKU{
 			Name: to.Ptr(armnetwork.PublicIPAddressSKUNameStandard),
 		},
@@ -81,7 +81,7 @@ func createBastionPublicIP(ctx context.Context, clients *AzureClients) (*armnetw
 func createBastionNIC(ctx context.Context, clients *AzureClients, publicIPID *string) (*armnetwork.Interface, error) {
 	namer := NewResourceNamer(clients.Suffix)
 	nicPoller, err := clients.NICClient.BeginCreateOrUpdate(ctx, clients.ResourceGroupName, namer.BastionNICName(), armnetwork.Interface{
-		Location: to.Ptr(location),
+		Location: to.Ptr(Location),
 		Properties: &armnetwork.InterfacePropertiesFormat{
 			IPConfigurations: []*armnetwork.InterfaceIPConfiguration{
 				{
@@ -112,7 +112,7 @@ func createBastionNIC(ctx context.Context, clients *AzureClients, publicIPID *st
 func createBastionVM(ctx context.Context, clients *AzureClients, config *VMConfig, nicID string, customData string) (*armcompute.VirtualMachine, error) {
 	namer := NewResourceNamer(clients.Suffix)
 	vmPoller, err := clients.ComputeClient.BeginCreateOrUpdate(ctx, clients.ResourceGroupName, namer.BastionVMName(), armcompute.VirtualMachine{
-		Location: to.Ptr(location),
+		Location: to.Ptr(Location),
 		Identity: &armcompute.VirtualMachineIdentity{
 			Type: to.Ptr(armcompute.ResourceIdentityTypeSystemAssigned),
 		},

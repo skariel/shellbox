@@ -2,16 +2,126 @@ package infra
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"log"
+	"os/exec"
 	"shellbox/internal/sshutil"
 	"strings"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 )
+
+// QEMUScriptConfig holds configuration for generating QEMU initialization scripts
+type QEMUScriptConfig struct {
+	SSHPublicKey  string
+	WorkingDir    string // "~" for home directory, "/mnt/userdata" for data volume
+	SSHPort       int
+	MountDataDisk bool // Whether to mount and format a data disk first
+}
+
+// GenerateQEMUInitScript creates a QEMU initialization script with the given configuration
+func GenerateQEMUInitScript(config QEMUScriptConfig) (string, error) {
+	var mountSection string
+	if config.MountDataDisk {
+		mountSection = `
+# Wait for data disk to be available
+while [ ! -e /dev/disk/azure/scsi1/lun0 ]; do
+    echo "Waiting for data disk..."
+    sleep 5
+done
+
+# Format and mount data disk
+sudo mkfs.ext4 /dev/disk/azure/scsi1/lun0
+sudo mkdir -p /mnt/userdata
+sudo mount /dev/disk/azure/scsi1/lun0 /mnt/userdata
+echo '/dev/disk/azure/scsi1/lun0 /mnt/userdata ext4 defaults 0 2' | sudo tee -a /etc/fstab
+`
+	}
+
+	var ownershipSection string
+	if config.WorkingDir == "/mnt/userdata" {
+		ownershipSection = `
+# Set ownership for data volume
+sudo chown -R $USER:$USER /mnt/userdata/
+`
+	}
+
+	script := fmt.Sprintf(`#!/bin/bash
+
+echo "\$nrconf{restart} = 'a';" | sudo tee /etc/needrestart/conf.d/50-autorestart.conf
+%s
+# Install QEMU and dependencies
+sudo apt update
+sudo apt install qemu-utils qemu-system-x86 qemu-kvm qemu-system libvirt-daemon-system libvirt-clients bridge-utils genisoimage whois libguestfs-tools -y
+
+sudo usermod -aG kvm,libvirt $USER
+sudo systemctl enable --now libvirtd
+
+# Create QEMU environment
+mkdir -p %s/qemu-disks %s/qemu-memory
+%s
+# Download and prepare Ubuntu image
+cd %s/
+wget https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-amd64.img
+cp ubuntu-24.04-server-cloudimg-amd64.img qemu-disks/ubuntu-base.qcow2
+qemu-img resize qemu-disks/ubuntu-base.qcow2 64G
+
+# Create cloud-init configuration for SSH access
+cat > user-data << 'EOFMARKER'
+#cloud-config
+hostname: ubuntu
+users:
+  - name: ubuntu
+    ssh_authorized_keys:
+      - '%s'
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+package_update: true
+packages:
+  - openssh-server
+ssh_pwauth: false
+ssh:
+  install-server: yes
+  permit_root_login: false
+  password_authentication: false
+EOFMARKER
+
+cat > meta-data << 'EOFMARKER'
+instance-id: ubuntu-inst-1
+local-hostname: ubuntu
+EOFMARKER
+
+genisoimage -output qemu-disks/cloud-init.iso -volid cidata -joliet -rock user-data meta-data
+
+# Start QEMU VM with SSH-ready configuration
+sudo qemu-system-x86_64 \
+   -enable-kvm \
+   -m 24G \
+   -mem-prealloc \
+   -mem-path %s/qemu-memory/ubuntu-mem \
+   -smp 8 \
+   -cpu host \
+   -drive file=%s/qemu-disks/ubuntu-base.qcow2,format=qcow2 \
+   -drive file=%s/qemu-disks/cloud-init.iso,format=raw \
+   -nographic \
+   -nic user,model=virtio,hostfwd=tcp::%d-:22,dns=8.8.8.8`,
+		mountSection,
+		config.WorkingDir, config.WorkingDir,
+		ownershipSection,
+		config.WorkingDir,
+		config.SSHPublicKey,
+		config.WorkingDir,
+		config.WorkingDir, config.WorkingDir,
+		config.SSHPort)
+
+	return base64.StdEncoding.EncodeToString([]byte(script)), nil
+}
 
 // GoldenSnapshotInfo contains information about the created golden snapshot
 type GoldenSnapshotInfo struct {
@@ -26,13 +136,22 @@ type GoldenSnapshotInfo struct {
 // CreateGoldenSnapshotIfNotExists creates a golden snapshot containing a pre-configured QEMU environment.
 // This snapshot serves as the base for all user volumes, ensuring consistent and fast provisioning.
 // The function is idempotent - it will find and return existing snapshots rather than creating duplicates.
-func CreateGoldenSnapshotIfNotExists(ctx context.Context, clients *AzureClients, resourceGroupName, location string) (*GoldenSnapshotInfo, error) {
-	namer := NewResourceNamer(extractSuffix(resourceGroupName))
-	snapshotName := namer.GoldenSnapshotName()
+// Golden snapshots are stored in a persistent resource group to avoid recreation between deployments.
+func CreateGoldenSnapshotIfNotExists(ctx context.Context, clients *AzureClients, resourceGroupName, _ string) (*GoldenSnapshotInfo, error) {
+	// Ensure the persistent resource group exists
+	if err := ensureGoldenSnapshotResourceGroup(ctx, clients); err != nil {
+		return nil, fmt.Errorf("failed to ensure golden snapshot resource group: %w", err)
+	}
 
-	// Check if golden snapshot already exists
-	log.Printf("Checking for existing golden snapshot: %s", snapshotName)
-	existing, err := clients.SnapshotsClient.Get(ctx, resourceGroupName, snapshotName, nil)
+	// Generate content-based snapshot name for this QEMU configuration
+	snapshotName, err := generateGoldenSnapshotName()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate snapshot name: %w", err)
+	}
+
+	// Check if golden snapshot already exists in the persistent resource group
+	log.Printf("Checking for existing golden snapshot: %s in %s", snapshotName, GoldenSnapshotResourceGroup)
+	existing, err := clients.SnapshotsClient.Get(ctx, GoldenSnapshotResourceGroup, snapshotName, nil)
 	if err == nil {
 		log.Printf("Found existing golden snapshot: %s", snapshotName)
 		return &GoldenSnapshotInfo{
@@ -50,7 +169,7 @@ func CreateGoldenSnapshotIfNotExists(ctx context.Context, clients *AzureClients,
 	tempBoxName := fmt.Sprintf("temp-golden-%d", time.Now().Unix())
 	log.Printf("Creating temporary box VM: %s", tempBoxName)
 
-	tempBox, err := createBoxWithDataVolume(ctx, clients, resourceGroupName, location, tempBoxName)
+	tempBox, err := createBoxWithDataVolume(ctx, clients, resourceGroupName, tempBoxName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create temporary box for golden snapshot: %w", err)
 	}
@@ -59,18 +178,18 @@ func CreateGoldenSnapshotIfNotExists(ctx context.Context, clients *AzureClients,
 	log.Printf("Waiting for QEMU setup to complete on temporary box...")
 	if err := waitForQEMUSetup(ctx, clients, tempBox); err != nil {
 		// Cleanup temp resources on failure
-		if cleanupErr := DeleteBox(ctx, clients, resourceGroupName, tempBoxName); cleanupErr != nil {
+		if cleanupErr := DeleteInstance(ctx, clients, resourceGroupName, tempBoxName); cleanupErr != nil {
 			log.Printf("Warning: failed to cleanup temporary box during error recovery: %v", cleanupErr)
 		}
 		return nil, fmt.Errorf("failed waiting for QEMU setup: %w", err)
 	}
 
-	// Create snapshot from the data volume
+	// Create snapshot from the data volume in the persistent resource group
 	log.Printf("Creating snapshot from data volume...")
-	snapshotInfo, err := createSnapshotFromDataVolume(ctx, clients, resourceGroupName, location, snapshotName, tempBox.DataDiskID)
+	snapshotInfo, err := createSnapshotFromDataVolume(ctx, clients, GoldenSnapshotResourceGroup, snapshotName, tempBox.DataDiskID)
 	if err != nil {
 		// Cleanup temp resources on failure
-		if cleanupErr := DeleteBox(ctx, clients, resourceGroupName, tempBoxName); cleanupErr != nil {
+		if cleanupErr := DeleteInstance(ctx, clients, resourceGroupName, tempBoxName); cleanupErr != nil {
 			log.Printf("Warning: failed to cleanup temporary box during error recovery: %v", cleanupErr)
 		}
 		return nil, fmt.Errorf("failed to create snapshot: %w", err)
@@ -78,7 +197,7 @@ func CreateGoldenSnapshotIfNotExists(ctx context.Context, clients *AzureClients,
 
 	// Cleanup temporary resources
 	log.Printf("Cleaning up temporary resources...")
-	if err := DeleteBox(ctx, clients, resourceGroupName, tempBoxName); err != nil {
+	if err := DeleteInstance(ctx, clients, resourceGroupName, tempBoxName); err != nil {
 		log.Printf("Warning: failed to cleanup temporary box %s: %v", tempBoxName, err)
 		// Don't fail the operation - snapshot was created successfully
 	}
@@ -99,7 +218,7 @@ type tempBoxInfo struct {
 }
 
 // createBoxWithDataVolume creates a temporary box VM with a data volume for QEMU setup
-func createBoxWithDataVolume(ctx context.Context, clients *AzureClients, resourceGroupName, location, vmName string) (*tempBoxInfo, error) {
+func createBoxWithDataVolume(ctx context.Context, clients *AzureClients, resourceGroupName, vmName string) (*tempBoxInfo, error) {
 	namer := NewResourceNamer(extractSuffix(resourceGroupName))
 
 	// Create data disk first
@@ -107,7 +226,7 @@ func createBoxWithDataVolume(ctx context.Context, clients *AzureClients, resourc
 	log.Printf("Creating data disk: %s", dataDiskName)
 
 	dataDisk, err := clients.DisksClient.BeginCreateOrUpdate(ctx, resourceGroupName, dataDiskName, armcompute.Disk{
-		Location: to.Ptr(location),
+		Location: to.Ptr(Location),
 		Properties: &armcompute.DiskProperties{
 			DiskSizeGB: to.Ptr[int32](DefaultVolumeSizeGB),
 			CreationData: &armcompute.CreationData{
@@ -135,13 +254,13 @@ func createBoxWithDataVolume(ctx context.Context, clients *AzureClients, resourc
 	nicName := namer.BoxNICName(boxID)
 
 	// Create NSG using existing function
-	nsgResult, err := createBoxNSG(ctx, clients, nsgName)
+	nsgResult, err := createInstanceNSG(ctx, clients, nsgName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create NSG: %w", err)
 	}
 
 	// Create NIC using existing function
-	nicResult, err := createBoxNIC(ctx, clients, nicName, nsgResult.ID)
+	nicResult, err := createInstanceNIC(ctx, clients, nicName, nsgResult.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create NIC: %w", err)
 	}
@@ -153,7 +272,7 @@ func createBoxWithDataVolume(ctx context.Context, clients *AzureClients, resourc
 	}
 
 	// Create VM with data disk attached using modified function
-	_, err = createBoxVMWithDataDisk(ctx, clients, resourceGroupName, location, vmName, *nicResult.ID, *diskResult.ID, sshPublicKey)
+	_, err = createBoxVMWithDataDisk(ctx, clients, resourceGroupName, vmName, *nicResult.ID, *diskResult.ID, sshPublicKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create VM: %w", err)
 	}
@@ -168,31 +287,47 @@ func createBoxWithDataVolume(ctx context.Context, clients *AzureClients, resourc
 	}, nil
 }
 
-// waitForQEMUSetup waits for the VM to be accessible via SSH and QEMU setup to complete
+// waitForQEMUSetup waits for the QEMU VM to be accessible via SSH on port 2222
 func waitForQEMUSetup(ctx context.Context, _ *AzureClients, tempBox *tempBoxInfo) error {
-	log.Printf("Waiting for QEMU setup to complete on %s (%s)...", tempBox.VMName, tempBox.PrivateIP)
+	log.Printf("Waiting for QEMU VM to be SSH-ready on %s (%s)...", tempBox.VMName, tempBox.PrivateIP)
 
-	// Use existing retry pattern to verify QEMU setup completion
+	// Test SSH connectivity to the QEMU VM - this is the definitive test
+	log.Printf("Testing SSH connectivity to QEMU VM on port %d...", BoxSSHPort)
 	return RetryOperation(ctx, func(ctx context.Context) error {
-		// Check if the QEMU setup completion marker file exists
-		err := sshutil.ExecuteCommand(ctx,
-			"test -f /mnt/userdata/qemu-setup-complete",
+		// Test SSH connection directly to the QEMU VM from bastion
+		// We need to execute this test from the bastion, not from within the instance
+		// Since sshutil.ExecuteCommand is for remote execution, let's execute locally
+		cmd := exec.CommandContext(ctx, "ssh",
+			"-o", "ConnectTimeout=5",
+			"-o", "StrictHostKeyChecking=no",
+			"-p", fmt.Sprintf("%d", BoxSSHPort),
+			fmt.Sprintf("ubuntu@%s", tempBox.PrivateIP),
+			"echo 'SSH test successful'")
+		if output, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("QEMU VM SSH not yet ready: %w: %s", err, string(output))
+		}
+
+		// Stop the QEMU VM to preserve the SSH-ready state
+		log.Printf("QEMU VM SSH confirmed working, stopping VM to preserve state...")
+		stopErr := sshutil.ExecuteCommand(ctx,
+			"sudo pkill qemu-system-x86_64",
 			AdminUsername,
 			tempBox.PrivateIP)
-		if err != nil {
-			return fmt.Errorf("QEMU setup not yet complete: %w", err)
+		if stopErr != nil {
+			log.Printf("Warning: failed to stop QEMU VM: %v", stopErr)
 		}
-		log.Printf("QEMU setup verified complete on %s", tempBox.VMName)
+
+		log.Printf("QEMU VM SSH-ready state prepared on %s", tempBox.VMName)
 		return nil
-	}, 10*time.Minute, 30*time.Second, "QEMU setup completion")
+	}, 15*time.Minute, 30*time.Second, "QEMU VM SSH connectivity")
 }
 
 // createSnapshotFromDataVolume creates a snapshot from the specified data volume
-func createSnapshotFromDataVolume(ctx context.Context, clients *AzureClients, resourceGroupName, location, snapshotName, dataDiskID string) (*GoldenSnapshotInfo, error) {
+func createSnapshotFromDataVolume(ctx context.Context, clients *AzureClients, resourceGroupName, snapshotName, dataDiskID string) (*GoldenSnapshotInfo, error) {
 	log.Printf("Creating snapshot %s from disk %s", snapshotName, dataDiskID)
 
 	snapshot, err := clients.SnapshotsClient.BeginCreateOrUpdate(ctx, resourceGroupName, snapshotName, armcompute.Snapshot{
-		Location: to.Ptr(location),
+		Location: to.Ptr(Location),
 		Properties: &armcompute.SnapshotProperties{
 			CreationData: &armcompute.CreationData{
 				CreateOption:     to.Ptr(armcompute.DiskCreateOptionCopy),
@@ -224,7 +359,7 @@ func createSnapshotFromDataVolume(ctx context.Context, clients *AzureClients, re
 }
 
 // createBoxVMWithDataDisk creates a VM with both OS and data disks attached
-func createBoxVMWithDataDisk(ctx context.Context, clients *AzureClients, resourceGroupName, location, vmName, nicID, dataDiskID, sshPublicKey string) (*armcompute.VirtualMachine, error) {
+func createBoxVMWithDataDisk(ctx context.Context, clients *AzureClients, resourceGroupName, vmName, nicID, dataDiskID, sshPublicKey string) (*armcompute.VirtualMachine, error) {
 	// Generate initialization script for data volume setup
 	initScript, err := generateDataVolumeInitScript()
 	if err != nil {
@@ -232,7 +367,7 @@ func createBoxVMWithDataDisk(ctx context.Context, clients *AzureClients, resourc
 	}
 
 	vmParams := armcompute.VirtualMachine{
-		Location: to.Ptr(location),
+		Location: to.Ptr(Location),
 		Properties: &armcompute.VirtualMachineProperties{
 			HardwareProfile: &armcompute.HardwareProfile{
 				VMSize: to.Ptr(armcompute.VirtualMachineSizeTypes(VMSize)),
@@ -305,46 +440,29 @@ func createBoxVMWithDataDisk(ctx context.Context, clients *AzureClients, resourc
 	return &result.VirtualMachine, nil
 }
 
-// generateDataVolumeInitScript creates an init script that sets up QEMU on the data volume
+// generateDataVolumeInitScript creates an init script that sets up and starts QEMU VM on the data volume
 func generateDataVolumeInitScript() (string, error) {
-	script := `#!/bin/bash
+	// Load SSH key for the golden snapshot QEMU VM
+	_, sshPublicKey, err := sshutil.LoadKeyPair(BastionSSHKeyPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to load SSH key: %w", err)
+	}
 
-echo "\$nrconf{restart} = 'a';" | sudo tee /etc/needrestart/conf.d/50-autorestart.conf
+	// Use unified QEMU script generation with data volume configuration
+	config := QEMUScriptConfig{
+		SSHPublicKey:  sshPublicKey,
+		WorkingDir:    "/mnt/userdata",
+		SSHPort:       BoxSSHPort,
+		MountDataDisk: true,
+	}
 
-# Wait for data disk to be available
-while [ ! -e /dev/disk/azure/scsi1/lun0 ]; do
-    echo "Waiting for data disk..."
-    sleep 5
-done
+	scriptContent, err := GenerateQEMUInitScript(config)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate unified QEMU script: %w", err)
+	}
 
-# Format and mount data disk
-sudo mkfs.ext4 /dev/disk/azure/scsi1/lun0
-sudo mkdir -p /mnt/userdata
-sudo mount /dev/disk/azure/scsi1/lun0 /mnt/userdata
-echo '/dev/disk/azure/scsi1/lun0 /mnt/userdata ext4 defaults 0 2' | sudo tee -a /etc/fstab
-
-# Install QEMU and dependencies
-sudo apt update
-sudo apt install qemu-utils qemu-system-x86 qemu-kvm qemu-system libvirt-daemon-system libvirt-clients bridge-utils genisoimage whois libguestfs-tools -y
-
-sudo usermod -aG kvm,libvirt $USER
-sudo systemctl enable --now libvirtd
-
-# Create QEMU environment on data volume
-sudo mkdir -p /mnt/userdata/qemu-disks /mnt/userdata/qemu-memory
-sudo chown -R $USER:$USER /mnt/userdata/
-
-# Download and prepare Ubuntu image on data volume
-cd /mnt/userdata/
-wget https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-amd64.img
-cp ubuntu-24.04-server-cloudimg-amd64.img qemu-disks/ubuntu-base.qcow2
-qemu-img resize qemu-disks/ubuntu-base.qcow2 16G
-
-# Mark setup complete
-touch /mnt/userdata/qemu-setup-complete
-`
-
-	return base64.StdEncoding.EncodeToString([]byte(script)), nil
+	// Return the script as-is - SSH connectivity test is sufficient
+	return scriptContent, nil
 }
 
 // extractDiskNameFromID extracts the disk name from a full Azure resource ID
@@ -361,4 +479,57 @@ func extractSuffix(resourceGroupName string) string {
 		return resourceGroupName[len(prefix):]
 	}
 	return resourceGroupName
+}
+
+// ensureGoldenSnapshotResourceGroup creates the persistent resource group for golden snapshots if it doesn't exist
+func ensureGoldenSnapshotResourceGroup(ctx context.Context, clients *AzureClients) error {
+	log.Printf("Ensuring persistent resource group exists: %s", GoldenSnapshotResourceGroup)
+
+	// Check if resource group already exists
+	_, err := clients.ResourceClient.Get(ctx, GoldenSnapshotResourceGroup, nil)
+	if err == nil {
+		log.Printf("Persistent resource group already exists: %s", GoldenSnapshotResourceGroup)
+		return nil
+	}
+
+	// Create the resource group
+	log.Printf("Creating persistent resource group: %s", GoldenSnapshotResourceGroup)
+	_, err = clients.ResourceClient.CreateOrUpdate(ctx, GoldenSnapshotResourceGroup, armresources.ResourceGroup{
+		Location: to.Ptr(Location),
+		Tags: map[string]*string{
+			"purpose": to.Ptr("golden-snapshots"),
+			"created": to.Ptr(time.Now().Format(time.RFC3339)),
+		},
+	}, nil)
+
+	if err != nil {
+		return fmt.Errorf("failed to create persistent resource group: %w", err)
+	}
+
+	log.Printf("Created persistent resource group: %s", GoldenSnapshotResourceGroup)
+	return nil
+}
+
+// generateGoldenSnapshotName creates a content-based name for the golden snapshot
+// This allows us to detect when the QEMU configuration changes and a new snapshot is needed
+func generateGoldenSnapshotName() (string, error) {
+	// Generate a sample QEMU script to hash its content
+	config := QEMUScriptConfig{
+		SSHPublicKey:  "sample-key-for-hashing",
+		WorkingDir:    "/mnt/userdata",
+		SSHPort:       BoxSSHPort,
+		MountDataDisk: true,
+	}
+
+	scriptContent, err := GenerateQEMUInitScript(config)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate script for hashing: %w", err)
+	}
+
+	// Hash the script content to create a unique identifier
+	hasher := sha256.New()
+	hasher.Write([]byte(scriptContent))
+	hash := hex.EncodeToString(hasher.Sum(nil))[:12] // Use first 12 chars
+
+	return fmt.Sprintf("golden-qemu-%s", hash), nil
 }

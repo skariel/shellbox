@@ -13,7 +13,7 @@ import (
 
 // Resource group configuration
 const (
-	location = "westus2"
+	Location = "westus2"
 )
 
 // Network configuration
@@ -85,8 +85,13 @@ const (
 // Query and disk constants
 const (
 	MaxQueryResults      = 10
-	DefaultVolumeSizeGB  = 32
+	DefaultVolumeSizeGB  = 100
 	GoldenSnapshotPrefix = "golden-snapshot"
+)
+
+// Persistent resource group for golden snapshots (shared across deployments)
+const (
+	GoldenSnapshotResourceGroup = "shellbox-golden-images"
 )
 
 // Pool configuration constants for production
