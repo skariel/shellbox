@@ -59,6 +59,7 @@ const (
 const (
 	ResourceRoleInstance = "instance"
 	ResourceRoleVolume   = "volume"
+	ResourceRoleTemp     = "temp"
 )
 
 // Resource statuses

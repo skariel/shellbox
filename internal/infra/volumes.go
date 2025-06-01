@@ -22,6 +22,11 @@ type VolumeTags struct {
 	VolumeID  string
 }
 
+// VolumeConfig represents configuration for creating a volume
+type VolumeConfig struct {
+	DiskSize int32
+}
+
 // VolumeInfo contains information about a created volume
 type VolumeInfo struct {
 	Name       string
@@ -32,10 +37,35 @@ type VolumeInfo struct {
 	Tags       VolumeTags
 }
 
-// CreateVolume creates a new empty managed disk volume with proper tagging.
+// CreateVolume creates a new empty managed disk volume with standard configuration.
+// This is a simplified version that uses a VolumeConfig and generates appropriate defaults.
+// It returns the volume ID and any error encountered.
+func CreateVolume(ctx context.Context, clients *AzureClients, config *VolumeConfig) (string, error) {
+	volumeID := uuid.New().String()
+	namer := NewResourceNamer(clients.Suffix)
+	volumeName := namer.VolumePoolDiskName(volumeID)
+
+	now := time.Now().UTC()
+	tags := VolumeTags{
+		Role:      ResourceRoleVolume,
+		Status:    ResourceStatusFree,
+		CreatedAt: now.Format(time.RFC3339),
+		LastUsed:  now.Format(time.RFC3339),
+		VolumeID:  volumeID,
+	}
+
+	_, err := CreateVolumeWithTags(ctx, clients, clients.ResourceGroupName, volumeName, config.DiskSize, tags)
+	if err != nil {
+		return "", err
+	}
+
+	return volumeID, nil
+}
+
+// CreateVolumeWithTags creates a new empty managed disk volume with proper tagging.
 // This creates a standard empty volume that can be used for temporary purposes
 // or as a base for QEMU setup. It returns volume information and any error encountered.
-func CreateVolume(ctx context.Context, clients *AzureClients, resourceGroupName, volumeName string, sizeGB int32, tags VolumeTags) (*VolumeInfo, error) {
+func CreateVolumeWithTags(ctx context.Context, clients *AzureClients, resourceGroupName, volumeName string, sizeGB int32, tags VolumeTags) (*VolumeInfo, error) {
 	now := time.Now().UTC()
 	if tags.VolumeID == "" {
 		tags.VolumeID = uuid.New().String()

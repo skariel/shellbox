@@ -38,7 +38,7 @@ func TestCreateVolume(t *testing.T) {
 		VolumeID: volumeID,
 	}
 
-	volumeInfo, err := infra.CreateVolume(ctx, env.Clients, env.ResourceGroupName, volumeName, infra.DefaultVolumeSizeGB, tags)
+	volumeInfo, err := infra.CreateVolumeWithTags(ctx, env.Clients, env.ResourceGroupName, volumeName, infra.DefaultVolumeSizeGB, tags)
 	require.NoError(t, err, "should create volume without error")
 
 	// Verify volume properties
@@ -368,7 +368,7 @@ func TestVolumeLifecycle(t *testing.T) {
 		VolumeID: volumeID,
 	}
 
-	volumeInfo, err := infra.CreateVolume(ctx, env.Clients, env.ResourceGroupName, volumeName, infra.DefaultVolumeSizeGB, tags)
+	volumeInfo, err := infra.CreateVolumeWithTags(ctx, env.Clients, env.ResourceGroupName, volumeName, infra.DefaultVolumeSizeGB, tags)
 	require.NoError(t, err, "step 1: should create volume")
 	assert.Equal(t, infra.ResourceStatusFree, volumeInfo.Tags.Status, "volume should start as free")
 
