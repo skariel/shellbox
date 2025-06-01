@@ -7,8 +7,12 @@ import (
 
 // NewLogger creates a standardized JSON logger for the application
 func NewLogger() *slog.Logger {
+	level := slog.LevelInfo
+	if os.Getenv("DEBUG") == "true" {
+		level = slog.LevelDebug
+	}
 	return slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
+		Level: level,
 	}))
 }
 

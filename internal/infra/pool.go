@@ -91,8 +91,8 @@ func (p *BoxPool) MaintainPool(ctx context.Context) {
 			return
 		case <-ticker.C:
 			// Maintain both instance and volume pools
-			go p.maintainInstancePool(ctx)
-			go p.maintainVolumePool(ctx)
+			p.maintainInstancePool(ctx)
+			p.maintainVolumePool(ctx)
 		}
 	}
 }
@@ -281,7 +281,7 @@ func (p *BoxPool) scaleUpVolumes(ctx context.Context, currentSize int) {
 			// Log volume creation event
 			createEvent := EventLogEntity{
 				PartitionKey: now.Format("2006-01-02"),
-				RowKey:       fmt.Sprintf("%s_volume_create", now.Format("20060102T150405")),
+				RowKey:       fmt.Sprintf("%s_volume_create_%s", now.Format("20060102T150405.000"), volumeID),
 				Timestamp:    now,
 				EventType:    "volume_create",
 				BoxID:        volumeID,
