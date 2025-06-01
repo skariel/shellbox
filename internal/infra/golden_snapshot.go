@@ -169,7 +169,7 @@ func CreateGoldenSnapshotIfNotExists(ctx context.Context, clients *AzureClients,
 	tempBoxName := fmt.Sprintf("temp-golden-%d", time.Now().Unix())
 	log.Printf("Creating temporary box VM: %s", tempBoxName)
 
-	tempBox, err := createBoxWithDataVolume(ctx, clients, resourceGroupName, tempBoxName)
+	tempBox, err := createBoxWithDataVolume(ctx, clients, GoldenSnapshotResourceGroup, tempBoxName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create temporary box for golden snapshot: %w", err)
 	}
@@ -178,7 +178,7 @@ func CreateGoldenSnapshotIfNotExists(ctx context.Context, clients *AzureClients,
 	log.Printf("Waiting for QEMU setup to complete on temporary box...")
 	if err := waitForQEMUSetup(ctx, clients, tempBox); err != nil {
 		// Cleanup temp resources on failure
-		if cleanupErr := DeleteInstance(ctx, clients, resourceGroupName, tempBoxName); cleanupErr != nil {
+		if cleanupErr := DeleteInstance(ctx, clients, GoldenSnapshotResourceGroup, tempBoxName); cleanupErr != nil {
 			log.Printf("Warning: failed to cleanup temporary box during error recovery: %v", cleanupErr)
 		}
 		return nil, fmt.Errorf("failed waiting for QEMU setup: %w", err)
@@ -189,7 +189,7 @@ func CreateGoldenSnapshotIfNotExists(ctx context.Context, clients *AzureClients,
 	snapshotInfo, err := createSnapshotFromDataVolume(ctx, clients, GoldenSnapshotResourceGroup, snapshotName, tempBox.DataDiskID)
 	if err != nil {
 		// Cleanup temp resources on failure
-		if cleanupErr := DeleteInstance(ctx, clients, resourceGroupName, tempBoxName); cleanupErr != nil {
+		if cleanupErr := DeleteInstance(ctx, clients, GoldenSnapshotResourceGroup, tempBoxName); cleanupErr != nil {
 			log.Printf("Warning: failed to cleanup temporary box during error recovery: %v", cleanupErr)
 		}
 		return nil, fmt.Errorf("failed to create snapshot: %w", err)
@@ -197,7 +197,7 @@ func CreateGoldenSnapshotIfNotExists(ctx context.Context, clients *AzureClients,
 
 	// Cleanup temporary resources
 	log.Printf("Cleaning up temporary resources...")
-	if err := DeleteInstance(ctx, clients, resourceGroupName, tempBoxName); err != nil {
+	if err := DeleteInstance(ctx, clients, GoldenSnapshotResourceGroup, tempBoxName); err != nil {
 		log.Printf("Warning: failed to cleanup temporary box %s: %v", tempBoxName, err)
 		// Don't fail the operation - snapshot was created successfully
 	}

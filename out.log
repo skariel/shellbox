@@ -1,13 +1,13 @@
-{"time":"2025-05-31T22:50:07.742022895Z","level":"INFO","msg":"waiting for role assignment to propagate"}
-{"time":"2025-05-31T22:50:13.408359656Z","level":"INFO","msg":"operation completed successfully","operation":"verify role assignment"}
-{"time":"2025-05-31T22:50:13.408563411Z","level":"INFO","msg":"role assignment active"}
-{"time":"2025-05-31T22:50:13.409227692Z","level":"WARN","msg":"Table Storage config not available","error":"failed to read Table Storage config file: open .tablestorage.json: no such file or directory"}
-{"time":"2025-05-31T22:50:13.40929964Z","level":"INFO","msg":"using resource group","name":"shellbox-sk7777"}
-{"time":"2025-05-31T22:50:13.409331591Z","level":"INFO","msg":"current configuration","config":"Network Configuration:\n  VNet: shellbox-sk7777-vnet (10.0.0.0/8)\n  Bastion Subnet: shellbox-sk7777-bastion-subnet (10.0.0.0/24)\n  Boxes Subnet: shellbox-sk7777-boxes-subnet (10.1.0.0/16)\n  NSG Rules:\n    - AllowSSHFromInternet: Allow Internet->* (Inbound)\n    - AllowCustomSSHFromInternet: Allow Internet->* (Inbound)\n    - AllowHTTPSFromInternet: Allow Internet->* (Inbound)\n    - AllowToBoxesSubnet: Allow *->10.1.0.0/16 (Outbound)\n    - AllowToInternet: Allow *->Internet (Outbound)\n\n  Resource Group Suffix: sk7777"}
-{"time":"2025-05-31T22:50:13.409340173Z","level":"INFO","msg":"upserting networking infra"}
-{"time":"2025-05-31T22:50:37.901254709Z","level":"INFO","msg":"done upserting"}
-{"time":"2025-05-31T22:50:37.901429913Z","level":"INFO","msg":"creating bastion"}
-{"time":"2025-05-31T22:51:47.261134968Z","level":"INFO","msg":"operation completed successfully","operation":"assign role to bastion VM"}
-{"time":"2025-05-31T22:51:54.989123551Z","level":"INFO","msg":"operation completed successfully","operation":"copy server binary to bastion"}
-{"time":"2025-05-31T22:52:00.745348474Z","level":"INFO","msg":"operation completed successfully","operation":"start server on bastion"}
-{"time":"2025-05-31T22:52:00.745395107Z","level":"INFO","msg":"infrastructure deployment complete","bastion_ip":"20.125.25.208"}
+{"time":"2025-05-31T23:05:00.967413086Z","level":"INFO","msg":"waiting for role assignment to propagate"}
+{"time":"2025-05-31T23:05:06.661146458Z","level":"INFO","msg":"operation completed successfully","operation":"verify role assignment"}
+{"time":"2025-05-31T23:05:06.661785885Z","level":"INFO","msg":"role assignment active"}
+{"time":"2025-05-31T23:05:06.664851976Z","level":"WARN","msg":"Table Storage config not available","error":"failed to read Table Storage config file: open .tablestorage.json: no such file or directory"}
+{"time":"2025-05-31T23:05:06.665277756Z","level":"INFO","msg":"using resource group","name":"shellbox-sk8888"}
+{"time":"2025-05-31T23:05:06.665329826Z","level":"INFO","msg":"current configuration","config":"Network Configuration:\n  VNet: shellbox-sk8888-vnet (10.0.0.0/8)\n  Bastion Subnet: shellbox-sk8888-bastion-subnet (10.0.0.0/24)\n  Boxes Subnet: shellbox-sk8888-boxes-subnet (10.1.0.0/16)\n  NSG Rules:\n    - AllowSSHFromInternet: Allow Internet->* (Inbound)\n    - AllowCustomSSHFromInternet: Allow Internet->* (Inbound)\n    - AllowHTTPSFromInternet: Allow Internet->* (Inbound)\n    - AllowToBoxesSubnet: Allow *->10.1.0.0/16 (Outbound)\n    - AllowToInternet: Allow *->Internet (Outbound)\n\n  Resource Group Suffix: sk8888"}
+{"time":"2025-05-31T23:05:06.665352081Z","level":"INFO","msg":"upserting networking infra"}
+{"time":"2025-05-31T23:05:31.731188436Z","level":"INFO","msg":"done upserting"}
+{"time":"2025-05-31T23:05:31.731390031Z","level":"INFO","msg":"creating bastion"}
+{"time":"2025-05-31T23:06:43.442581299Z","level":"INFO","msg":"operation completed successfully","operation":"assign role to bastion VM"}
+{"time":"2025-05-31T23:06:53.917347616Z","level":"INFO","msg":"operation completed successfully","operation":"copy server binary to bastion"}
+{"time":"2025-05-31T23:06:59.626611934Z","level":"INFO","msg":"operation completed successfully","operation":"start server on bastion"}
+{"time":"2025-05-31T23:06:59.626708658Z","level":"INFO","msg":"infrastructure deployment complete","bastion_ip":"4.155.96.86"}

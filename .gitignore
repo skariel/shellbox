@@ -2,4 +2,4 @@ go.mod
 go.sum
 *.nogit
 .env
-.aider*
+*.log
