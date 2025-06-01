@@ -15,9 +15,10 @@ import (
 // VolumeTags represents searchable metadata for volume disks.
 // These tags are used to track volume status and lifecycle.
 type VolumeTags struct {
-	Role      string // temp, user, golden
-	Status    string // ready, attached, creating
+	Role      string // volume, temp, golden
+	Status    string // free, attached
 	CreatedAt string
+	LastUsed  string
 	VolumeID  string
 }
 
@@ -35,11 +36,15 @@ type VolumeInfo struct {
 // This creates a standard empty volume that can be used for temporary purposes
 // or as a base for QEMU setup. It returns volume information and any error encountered.
 func CreateVolume(ctx context.Context, clients *AzureClients, resourceGroupName, volumeName string, sizeGB int32, tags VolumeTags) (*VolumeInfo, error) {
+	now := time.Now().UTC()
 	if tags.VolumeID == "" {
 		tags.VolumeID = uuid.New().String()
 	}
 	if tags.CreatedAt == "" {
-		tags.CreatedAt = time.Now().UTC().Format(time.RFC3339)
+		tags.CreatedAt = now.Format(time.RFC3339)
+	}
+	if tags.LastUsed == "" {
+		tags.LastUsed = now.Format(time.RFC3339)
 	}
 
 	log.Printf("Creating volume: %s (size: %dGB, role: %s)", volumeName, sizeGB, tags.Role)
@@ -83,11 +88,15 @@ func CreateVolume(ctx context.Context, clients *AzureClients, resourceGroupName,
 // This is used to create user volumes from golden snapshots or restore from backups.
 // It returns volume information and any error encountered.
 func CreateVolumeFromSnapshot(ctx context.Context, clients *AzureClients, resourceGroupName, volumeName, snapshotID string, tags VolumeTags) (*VolumeInfo, error) {
+	now := time.Now().UTC()
 	if tags.VolumeID == "" {
 		tags.VolumeID = uuid.New().String()
 	}
 	if tags.CreatedAt == "" {
-		tags.CreatedAt = time.Now().UTC().Format(time.RFC3339)
+		tags.CreatedAt = now.Format(time.RFC3339)
+	}
+	if tags.LastUsed == "" {
+		tags.LastUsed = now.Format(time.RFC3339)
 	}
 
 	log.Printf("Creating volume from snapshot: %s -> %s (role: %s)", snapshotID, volumeName, tags.Role)
@@ -170,7 +179,7 @@ func FindVolumesByRole(ctx context.Context, clients *AzureClients, resourceGroup
 
 		for _, disk := range page.Value {
 			if disk.Tags != nil {
-				if roleTag, exists := disk.Tags["role"]; exists && *roleTag == role {
+				if roleTag, exists := disk.Tags[TagKeyRole]; exists && *roleTag == role {
 					volumes = append(volumes, *disk.Name)
 				}
 			}
@@ -183,9 +192,10 @@ func FindVolumesByRole(ctx context.Context, clients *AzureClients, resourceGroup
 // volumeTagsToMap converts VolumeTags struct to Azure tags map format
 func volumeTagsToMap(tags VolumeTags) map[string]*string {
 	return map[string]*string{
-		"role":       to.Ptr(tags.Role),
-		"status":     to.Ptr(tags.Status),
-		"created_at": to.Ptr(tags.CreatedAt),
-		"volume_id":  to.Ptr(tags.VolumeID),
+		TagKeyRole:     to.Ptr(tags.Role),
+		TagKeyStatus:   to.Ptr(tags.Status),
+		TagKeyCreated:  to.Ptr(tags.CreatedAt),
+		TagKeyLastUsed: to.Ptr(tags.LastUsed),
+		"volume_id":    to.Ptr(tags.VolumeID),
 	}
 }

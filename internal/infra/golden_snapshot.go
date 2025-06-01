@@ -222,16 +222,43 @@ type tempBoxInfo struct {
 func createBoxWithDataVolume(ctx context.Context, clients *AzureClients, resourceGroupName, vmName string) (*tempBoxInfo, error) {
 	namer := NewResourceNamer(extractSuffix(resourceGroupName))
 
-	// Create data volume using volume utilities
+	// Create data volume using golden-specific tagging
 	dataDiskName := fmt.Sprintf("%s-data", vmName)
-	volumeTags := VolumeTags{
-		Role:   "temp",
-		Status: "creating",
+	now := time.Now().UTC()
+
+	// Use separate disk creation to avoid pool tag namespace
+	diskParams := armcompute.Disk{
+		Location: to.Ptr(Location),
+		Properties: &armcompute.DiskProperties{
+			DiskSizeGB: to.Ptr(int32(DefaultVolumeSizeGB)),
+			CreationData: &armcompute.CreationData{
+				CreateOption: to.Ptr(armcompute.DiskCreateOptionEmpty),
+			},
+		},
+		Tags: map[string]*string{
+			GoldenTagKeyRole:    to.Ptr("temp-data-disk"),
+			GoldenTagKeyPurpose: to.Ptr("golden-snapshot-creation"),
+			GoldenTagKeyCreated: to.Ptr(now.Format(time.RFC3339)),
+			GoldenTagKeyStage:   to.Ptr("creating"),
+		},
 	}
 
-	volumeInfo, err := CreateVolume(ctx, clients, resourceGroupName, dataDiskName, DefaultVolumeSizeGB, volumeTags)
+	// Create data disk directly with golden-specific tags
+	poller, err := clients.DisksClient.BeginCreateOrUpdate(ctx, resourceGroupName, dataDiskName, diskParams, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to start data volume creation: %w", err)
+	}
+
+	result, err := poller.PollUntilDone(ctx, &DefaultPollOptions)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create data volume: %w", err)
+	}
+
+	volumeInfo := &VolumeInfo{
+		Name:       *result.Name,
+		ResourceID: *result.ID,
+		Location:   *result.Location,
+		SizeGB:     *result.Properties.DiskSizeGB,
 	}
 
 	// Use existing box creation functions but with a custom boxID
@@ -324,8 +351,10 @@ func createSnapshotFromDataVolume(ctx context.Context, clients *AzureClients, re
 			},
 		},
 		Tags: map[string]*string{
-			TagKeyRole:    to.Ptr("golden-snapshot"),
-			TagKeyCreated: to.Ptr(time.Now().Format(time.RFC3339)),
+			GoldenTagKeyRole:    to.Ptr("golden-snapshot"),
+			GoldenTagKeyPurpose: to.Ptr("qemu-base-image"),
+			GoldenTagKeyCreated: to.Ptr(time.Now().Format(time.RFC3339)),
+			GoldenTagKeyStage:   to.Ptr("ready"),
 		},
 	}, nil)
 	if err != nil {
@@ -411,8 +440,10 @@ func createBoxVMWithDataDisk(ctx context.Context, clients *AzureClients, resourc
 			},
 		},
 		Tags: map[string]*string{
-			TagKeyRole:    to.Ptr("temp"),
-			TagKeyCreated: to.Ptr(time.Now().Format(time.RFC3339)),
+			GoldenTagKeyRole:    to.Ptr("temp-vm"),
+			GoldenTagKeyPurpose: to.Ptr("golden-snapshot-creation"),
+			GoldenTagKeyCreated: to.Ptr(time.Now().Format(time.RFC3339)),
+			GoldenTagKeyStage:   to.Ptr("creating"),
 		},
 	}
 
@@ -486,8 +517,9 @@ func ensureGoldenSnapshotResourceGroup(ctx context.Context, clients *AzureClient
 	_, err = clients.ResourceClient.CreateOrUpdate(ctx, GoldenSnapshotResourceGroup, armresources.ResourceGroup{
 		Location: to.Ptr(Location),
 		Tags: map[string]*string{
-			"purpose": to.Ptr("golden-snapshots"),
-			"created": to.Ptr(time.Now().Format(time.RFC3339)),
+			GoldenTagKeyPurpose: to.Ptr("golden-snapshots"),
+			GoldenTagKeyCreated: to.Ptr(time.Now().Format(time.RFC3339)),
+			GoldenTagKeyRole:    to.Ptr("persistent-resource-group"),
 		},
 	}, nil)
 

@@ -17,8 +17,10 @@ import (
 // InstanceTags represents searchable metadata for instance VMs.
 // These tags are used to track VM status and lifecycle.
 type InstanceTags struct {
-	Status     string // ready, allocated, deallocated
+	Role       string // instance
+	Status     string // free, connected
 	CreatedAt  string
+	LastUsed   string
 	InstanceID string
 }
 
@@ -46,9 +48,12 @@ func CreateInstance(ctx context.Context, clients *AzureClients, config *VMConfig
 	}
 
 	// Create the VM (instance only, no volumes)
+	now := time.Now().UTC()
 	tags := InstanceTags{
-		Status:     "ready",
-		CreatedAt:  time.Now().UTC().Format(time.RFC3339),
+		Role:       ResourceRoleInstance,
+		Status:     ResourceStatusFree,
+		CreatedAt:  now.Format(time.RFC3339),
+		LastUsed:   now.Format(time.RFC3339),
 		InstanceID: instanceID,
 	}
 
@@ -219,9 +224,11 @@ func createInstanceNIC(ctx context.Context, clients *AzureClients, nicName strin
 func createInstanceVM(ctx context.Context, clients *AzureClients, vmName string, nicID string, config *VMConfig, tags InstanceTags) (*armcompute.VirtualMachine, error) {
 	namer := NewResourceNamer(clients.Suffix)
 	tagsMap := map[string]*string{
-		"status":      to.Ptr(tags.Status),
-		"created_at":  to.Ptr(tags.CreatedAt),
-		"instance_id": to.Ptr(tags.InstanceID),
+		TagKeyRole:     to.Ptr(tags.Role),
+		TagKeyStatus:   to.Ptr(tags.Status),
+		TagKeyCreated:  to.Ptr(tags.CreatedAt),
+		TagKeyLastUsed: to.Ptr(tags.LastUsed),
+		"instance_id":  to.Ptr(tags.InstanceID),
 	}
 
 	vmParams := armcompute.VirtualMachine{
@@ -324,7 +331,7 @@ func FindInstancesByStatus(ctx context.Context, clients *AzureClients, status st
 		}
 
 		for _, vm := range page.Value {
-			if vm.Tags != nil && *vm.Tags["status"] == status {
+			if vm.Tags != nil && vm.Tags[TagKeyStatus] != nil && *vm.Tags[TagKeyStatus] == status {
 				instances = append(instances, *vm.ID)
 			}
 		}

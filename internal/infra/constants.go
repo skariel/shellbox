@@ -68,12 +68,20 @@ const (
 	ResourceStatusAttached  = "attached"
 )
 
-// Tag keys
+// Tag keys for pool resources
 const (
 	TagKeyRole     = "shellbox:role"
 	TagKeyStatus   = "shellbox:status"
 	TagKeyCreated  = "shellbox:created"
 	TagKeyLastUsed = "shellbox:lastused"
+)
+
+// Tag keys for golden snapshot resources (separate namespace)
+const (
+	GoldenTagKeyRole    = "golden:role"
+	GoldenTagKeyPurpose = "golden:purpose"
+	GoldenTagKeyCreated = "golden:created"
+	GoldenTagKeyStage   = "golden:stage"
 )
 
 // Azure resource types for Resource Graph queries
