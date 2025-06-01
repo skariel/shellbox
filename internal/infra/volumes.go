@@ -1,0 +1,191 @@
+package infra
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"time"
+
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
+	"github.com/google/uuid"
+)
+
+// VolumeTags represents searchable metadata for volume disks.
+// These tags are used to track volume status and lifecycle.
+type VolumeTags struct {
+	Role      string // temp, user, golden
+	Status    string // ready, attached, creating
+	CreatedAt string
+	VolumeID  string
+}
+
+// VolumeInfo contains information about a created volume
+type VolumeInfo struct {
+	Name       string
+	ResourceID string
+	Location   string
+	SizeGB     int32
+	VolumeID   string
+	Tags       VolumeTags
+}
+
+// CreateVolume creates a new empty managed disk volume with proper tagging.
+// This creates a standard empty volume that can be used for temporary purposes
+// or as a base for QEMU setup. It returns volume information and any error encountered.
+func CreateVolume(ctx context.Context, clients *AzureClients, resourceGroupName, volumeName string, sizeGB int32, tags VolumeTags) (*VolumeInfo, error) {
+	if tags.VolumeID == "" {
+		tags.VolumeID = uuid.New().String()
+	}
+	if tags.CreatedAt == "" {
+		tags.CreatedAt = time.Now().UTC().Format(time.RFC3339)
+	}
+
+	log.Printf("Creating volume: %s (size: %dGB, role: %s)", volumeName, sizeGB, tags.Role)
+
+	diskParams := armcompute.Disk{
+		Location: to.Ptr(Location),
+		Properties: &armcompute.DiskProperties{
+			DiskSizeGB: to.Ptr(sizeGB),
+			CreationData: &armcompute.CreationData{
+				CreateOption: to.Ptr(armcompute.DiskCreateOptionEmpty),
+			},
+		},
+		Tags: volumeTagsToMap(tags),
+	}
+
+	pollOptions := &runtime.PollUntilDoneOptions{
+		Frequency: 2 * time.Second,
+	}
+
+	poller, err := clients.DisksClient.BeginCreateOrUpdate(ctx, resourceGroupName, volumeName, diskParams, nil)
+	if err != nil {
+		return nil, fmt.Errorf("starting volume creation: %w", err)
+	}
+
+	result, err := poller.PollUntilDone(ctx, pollOptions)
+	if err != nil {
+		return nil, fmt.Errorf("creating volume: %w", err)
+	}
+
+	return &VolumeInfo{
+		Name:       *result.Name,
+		ResourceID: *result.ID,
+		Location:   *result.Location,
+		SizeGB:     *result.Properties.DiskSizeGB,
+		VolumeID:   tags.VolumeID,
+		Tags:       tags,
+	}, nil
+}
+
+// CreateVolumeFromSnapshot creates a new managed disk volume from an existing snapshot.
+// This is used to create user volumes from golden snapshots or restore from backups.
+// It returns volume information and any error encountered.
+func CreateVolumeFromSnapshot(ctx context.Context, clients *AzureClients, resourceGroupName, volumeName, snapshotID string, tags VolumeTags) (*VolumeInfo, error) {
+	if tags.VolumeID == "" {
+		tags.VolumeID = uuid.New().String()
+	}
+	if tags.CreatedAt == "" {
+		tags.CreatedAt = time.Now().UTC().Format(time.RFC3339)
+	}
+
+	log.Printf("Creating volume from snapshot: %s -> %s (role: %s)", snapshotID, volumeName, tags.Role)
+
+	diskParams := armcompute.Disk{
+		Location: to.Ptr(Location),
+		Properties: &armcompute.DiskProperties{
+			CreationData: &armcompute.CreationData{
+				CreateOption:     to.Ptr(armcompute.DiskCreateOptionCopy),
+				SourceResourceID: to.Ptr(snapshotID),
+			},
+		},
+		Tags: volumeTagsToMap(tags),
+	}
+
+	pollOptions := &runtime.PollUntilDoneOptions{
+		Frequency: 2 * time.Second,
+	}
+
+	poller, err := clients.DisksClient.BeginCreateOrUpdate(ctx, resourceGroupName, volumeName, diskParams, nil)
+	if err != nil {
+		return nil, fmt.Errorf("starting volume creation from snapshot: %w", err)
+	}
+
+	result, err := poller.PollUntilDone(ctx, pollOptions)
+	if err != nil {
+		return nil, fmt.Errorf("creating volume from snapshot: %w", err)
+	}
+
+	return &VolumeInfo{
+		Name:       *result.Name,
+		ResourceID: *result.ID,
+		Location:   *result.Location,
+		SizeGB:     *result.Properties.DiskSizeGB,
+		VolumeID:   tags.VolumeID,
+		Tags:       tags,
+	}, nil
+}
+
+// DeleteVolume completely removes a managed disk volume.
+// This function handles cleanup for temporary volumes, user volumes, or any managed disk.
+// It returns an error if the deletion fails.
+func DeleteVolume(ctx context.Context, clients *AzureClients, resourceGroupName, volumeName string) error {
+	if volumeName == "" {
+		log.Printf("Volume name is empty, skipping deletion")
+		return nil
+	}
+
+	log.Printf("Deleting volume: %s", volumeName)
+
+	pollOptions := &runtime.PollUntilDoneOptions{
+		Frequency: 2 * time.Second,
+	}
+
+	poller, err := clients.DisksClient.BeginDelete(ctx, resourceGroupName, volumeName, nil)
+	if err != nil {
+		return fmt.Errorf("starting volume deletion: %w", err)
+	}
+
+	_, err = poller.PollUntilDone(ctx, pollOptions)
+	if err != nil {
+		return fmt.Errorf("deleting volume: %w", err)
+	}
+
+	log.Printf("Successfully deleted volume: %s", volumeName)
+	return nil
+}
+
+// FindVolumesByRole returns volume names matching the given role tag.
+// It filters disks based on their role tag and returns their names for further operations.
+func FindVolumesByRole(ctx context.Context, clients *AzureClients, resourceGroupName, role string) ([]string, error) {
+	var volumes []string
+
+	pager := clients.DisksClient.NewListByResourceGroupPager(resourceGroupName, nil)
+	for pager.More() {
+		page, err := pager.NextPage(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("listing volumes: %w", err)
+		}
+
+		for _, disk := range page.Value {
+			if disk.Tags != nil {
+				if roleTag, exists := disk.Tags["role"]; exists && *roleTag == role {
+					volumes = append(volumes, *disk.Name)
+				}
+			}
+		}
+	}
+
+	return volumes, nil
+}
+
+// volumeTagsToMap converts VolumeTags struct to Azure tags map format
+func volumeTagsToMap(tags VolumeTags) map[string]*string {
+	return map[string]*string{
+		"role":       to.Ptr(tags.Role),
+		"status":     to.Ptr(tags.Status),
+		"created_at": to.Ptr(tags.CreatedAt),
+		"volume_id":  to.Ptr(tags.VolumeID),
+	}
+}
