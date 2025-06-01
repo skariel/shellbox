@@ -66,7 +66,6 @@ func CreateInstance(ctx context.Context, clients *AzureClients, config *VMConfig
 }
 
 func createInstanceNSG(ctx context.Context, clients *AzureClients, nsgName string) (*armnetwork.SecurityGroup, error) {
-
 	nsgParams := armnetwork.SecurityGroup{
 		Location: to.Ptr(Location),
 		Properties: &armnetwork.SecurityGroupPropertiesFormat{

@@ -136,7 +136,7 @@ func (p *BoxPool) maintainVolumePool(ctx context.Context) {
 }
 
 func (p *BoxPool) scaleUpInstances(ctx context.Context, currentSize int) {
-	instancesToCreate := p.poolConfig.MinFreeInstances - currentSize
+	instancesToCreate := max(0, p.poolConfig.MinFreeInstances-currentSize)
 	slog.Info("creating instances to maintain pool size", "count", instancesToCreate)
 
 	var wg sync.WaitGroup
@@ -247,7 +247,7 @@ func (p *BoxPool) scaleDownInstances(ctx context.Context, currentSize int) {
 }
 
 func (p *BoxPool) scaleUpVolumes(ctx context.Context, currentSize int) {
-	volumesToCreate := p.poolConfig.MinFreeVolumes - currentSize
+	volumesToCreate := max(0, p.poolConfig.MinFreeVolumes-currentSize)
 	slog.Info("creating volumes to maintain pool size", "count", volumesToCreate)
 
 	var wg sync.WaitGroup

@@ -7,9 +7,10 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
-	"shellbox/internal/sshutil"
 	"strings"
 	"time"
+
+	"shellbox/internal/sshutil"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization"
@@ -75,7 +76,6 @@ func createBastionPublicIP(ctx context.Context, clients *AzureClients) (*armnetw
 		return nil, fmt.Errorf("failed to poll IP creation: %w", err)
 	}
 	return &res.PublicIPAddress, nil
-
 }
 
 func createBastionNIC(ctx context.Context, clients *AzureClients, publicIPID *string) (*armnetwork.Interface, error) {
@@ -198,7 +198,7 @@ func copyTableStorageConfig(ctx context.Context, clients *AzureClients, config *
 
 	// Create temporary local file
 	tempFile := "/tmp/tablestorage.json"
-	if err := os.WriteFile(tempFile, []byte(tableStorageConfigContent), 0600); err != nil {
+	if err := os.WriteFile(tempFile, []byte(tableStorageConfigContent), 0o600); err != nil {
 		return fmt.Errorf("failed to create temporary Table Storage config file: %w", err)
 	}
 	defer os.Remove(tempFile) // Clean up when done
@@ -305,5 +305,4 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *VMConfig)
 	}
 
 	return *publicIP.Properties.IPAddress
-
 }

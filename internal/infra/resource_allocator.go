@@ -2,6 +2,7 @@ package infra
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 )
@@ -159,7 +160,7 @@ func (ra *ResourceAllocator) ReleaseResources(ctx context.Context, instanceID, v
 	}
 
 	if len(errs) > 0 {
-		return fmt.Errorf("errors during resource release: %v", errs)
+		return errors.Join(errs...)
 	}
 
 	slog.Info("resources released", "instance_id", instanceID, "volume_id", volumeID)

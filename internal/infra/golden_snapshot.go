@@ -8,9 +8,10 @@ import (
 	"fmt"
 	"log"
 	"os/exec"
-	"shellbox/internal/sshutil"
 	"strings"
 	"time"
+
+	"shellbox/internal/sshutil"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
@@ -522,7 +523,6 @@ func ensureGoldenSnapshotResourceGroup(ctx context.Context, clients *AzureClient
 			GoldenTagKeyRole:    to.Ptr("persistent-resource-group"),
 		},
 	}, nil)
-
 	if err != nil {
 		return fmt.Errorf("failed to create persistent resource group: %w", err)
 	}

@@ -2,6 +2,7 @@ package sshserver
 
 import (
 	"bytes"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -149,5 +150,6 @@ func createCobraCommand(result *CommandResult) *cobra.Command {
 // Simple implementation - could be enhanced for quotes, escaping, etc.
 func parseArgs(cmdLine string) []string {
 	args := strings.Fields(strings.TrimSpace(cmdLine))
-	return args
+	// Use slices.Clip for memory efficiency if args will be long-lived
+	return slices.Clip(args)
 }

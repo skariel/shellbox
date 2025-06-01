@@ -36,7 +36,7 @@ func LoadKeyPair(keyPath string) (privateKey, publicKey string, err error) {
 		privateKey = string(pem.EncodeToMemory(privateKeyPEM))
 
 		// Save private key
-		if err := os.WriteFile(expandedPath, []byte(privateKey), 0600); err != nil {
+		if err := os.WriteFile(expandedPath, []byte(privateKey), 0o600); err != nil {
 			return "", "", fmt.Errorf("writing private key file: %w", err)
 		}
 

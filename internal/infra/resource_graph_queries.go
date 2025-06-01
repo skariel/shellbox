@@ -192,9 +192,8 @@ func (rq *ResourceGraphQueries) executeCountQuery(ctx context.Context, query str
 			to.Ptr(rq.subscriptionID),
 		},
 	}, nil)
-
 	if err != nil {
-		return nil, fmt.Errorf("Resource Graph query failed: %w", err)
+		return nil, fmt.Errorf("resource Graph query failed: %w", err)
 	}
 
 	counts := &ResourceCounts{}
@@ -243,9 +242,8 @@ func (rq *ResourceGraphQueries) executeResourceQuery(ctx context.Context, query 
 			to.Ptr(rq.subscriptionID),
 		},
 	}, nil)
-
 	if err != nil {
-		return nil, fmt.Errorf("Resource Graph query failed: %w", err)
+		return nil, fmt.Errorf("resource Graph query failed: %w", err)
 	}
 
 	var resources []ResourceInfo
