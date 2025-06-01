@@ -61,10 +61,11 @@ type BoxPool struct {
 	vmConfig        *VMConfig
 	poolConfig      PoolConfig
 	resourceQueries *ResourceGraphQueries
+	goldenSnapshot  *GoldenSnapshotInfo
 	lastScaleDown   time.Time // Track last scale down to enforce cooldown
 }
 
-func NewBoxPool(clients *AzureClients, vmConfig *VMConfig, poolConfig PoolConfig) *BoxPool {
+func NewBoxPool(clients *AzureClients, vmConfig *VMConfig, poolConfig PoolConfig, goldenSnapshot *GoldenSnapshotInfo) *BoxPool {
 	resourceQueries := NewResourceGraphQueries(
 		clients.ResourceGraphClient,
 		clients.SubscriptionID,
@@ -76,6 +77,7 @@ func NewBoxPool(clients *AzureClients, vmConfig *VMConfig, poolConfig PoolConfig
 		vmConfig:        vmConfig,
 		poolConfig:      poolConfig,
 		resourceQueries: resourceQueries,
+		goldenSnapshot:  goldenSnapshot,
 	}
 }
 
@@ -254,8 +256,6 @@ func (p *BoxPool) scaleUpVolumes(ctx context.Context, currentSize int) {
 		go func() {
 			defer wg.Done()
 
-			// Create volume from golden snapshot (future enhancement)
-			// For now, create empty volume as placeholder
 			namer := NewResourceNamer(p.clients.Suffix)
 			volumeID := uuid.New().String()
 			volumeName := namer.VolumePoolDiskName(volumeID)
@@ -269,13 +269,14 @@ func (p *BoxPool) scaleUpVolumes(ctx context.Context, currentSize int) {
 				VolumeID:  volumeID,
 			}
 
-			_, err := CreateVolume(ctx, p.clients, p.clients.ResourceGroupName, volumeName, DefaultVolumeSizeGB, tags)
+			_, err := CreateVolumeFromSnapshot(ctx, p.clients, p.clients.ResourceGroupName,
+				volumeName, p.goldenSnapshot.ResourceID, tags)
 			if err != nil {
-				slog.Error("failed to create volume", "error", err)
+				slog.Error("failed to create volume from golden snapshot", "error", err)
 				return
 			}
 
-			slog.Info("created volume", "volumeID", volumeID)
+			slog.Info("created volume from golden snapshot", "volumeID", volumeID)
 
 			// Log volume creation event
 			createEvent := EventLogEntity{

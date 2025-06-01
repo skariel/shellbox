@@ -199,3 +199,35 @@ func volumeTagsToMap(tags VolumeTags) map[string]*string {
 		"volume_id":    to.Ptr(tags.VolumeID),
 	}
 }
+
+// UpdateVolumeStatus updates the status tag of a volume
+func UpdateVolumeStatus(ctx context.Context, clients *AzureClients, volumeID, status string) error {
+	namer := NewResourceNamer(clients.Suffix)
+	volumeName := namer.VolumePoolDiskName(volumeID)
+
+	// Get current volume
+	volume, err := clients.DisksClient.Get(ctx, clients.ResourceGroupName, volumeName, nil)
+	if err != nil {
+		return fmt.Errorf("failed to get volume for status update: %w", err)
+	}
+
+	// Update status tag
+	if volume.Tags == nil {
+		volume.Tags = make(map[string]*string)
+	}
+	volume.Tags[TagKeyStatus] = to.Ptr(status)
+	volume.Tags[TagKeyLastUsed] = to.Ptr(time.Now().UTC().Format(time.RFC3339))
+
+	// Update the volume
+	poller, err := clients.DisksClient.BeginCreateOrUpdate(ctx, clients.ResourceGroupName, volumeName, volume.Disk, nil)
+	if err != nil {
+		return fmt.Errorf("failed to start volume status update: %w", err)
+	}
+
+	_, err = poller.PollUntilDone(ctx, &DefaultPollOptions)
+	if err != nil {
+		return fmt.Errorf("failed to update volume status: %w", err)
+	}
+
+	return nil
+}

@@ -23,8 +23,8 @@ import (
 type Server struct {
 	port         int
 	boxSSHConfig *ssh.ClientConfig
-	boxAddr      string
 	clients      *infra.AzureClients
+	allocator    *infra.ResourceAllocator
 	logger       *slog.Logger
 }
 
@@ -40,11 +40,19 @@ func New(port int, clients *infra.AzureClients) (*Server, error) {
 		return nil, fmt.Errorf("failed to parse private key: %w", err)
 	}
 
+	// Create resource allocator
+	resourceQueries := infra.NewResourceGraphQueries(
+		clients.ResourceGraphClient,
+		clients.SubscriptionID,
+		clients.ResourceGroupName,
+	)
+	allocator := infra.NewResourceAllocator(clients, resourceQueries)
+
 	return &Server{
-		port:    port,
-		boxAddr: "10.1.0.4",
-		clients: clients,
-		logger:  infra.NewLogger(),
+		port:      port,
+		clients:   clients,
+		allocator: allocator,
+		logger:    infra.NewLogger(),
 		boxSSHConfig: &ssh.ClientConfig{
 			User: "ubuntu",
 			Auth: []ssh.AuthMethod{
@@ -60,37 +68,17 @@ func New(port int, clients *infra.AzureClients) (*Server, error) {
 	}, nil
 }
 
-// dialBox establishes connection to the box
-func (s *Server) dialBox() (*ssh.Client, error) {
-	return ssh.Dial("tcp", fmt.Sprintf("%s:%d", s.boxAddr, infra.BoxSSHPort), s.boxSSHConfig)
+// dialBoxAtIP establishes connection to the box at specified IP
+func (s *Server) dialBoxAtIP(boxIP string) (*ssh.Client, error) {
+	return ssh.Dial("tcp", fmt.Sprintf("%s:%d", boxIP, infra.BoxSSHPort), s.boxSSHConfig)
 }
 
 // handleSCP handles SCP file transfer sessions
-func (s *Server) handleSCP(sess gssh.Session) error {
-	// Connect to box
-	client, err := s.dialBox()
-	if err != nil {
-		s.logger.Error("Failed to connect to box", "error", err)
-		return fmt.Errorf("error connecting to box: %w", err)
-	}
-	defer client.Close()
-
-	// Create new session for SCP
-	boxSession, err := client.NewSession()
-	if err != nil {
-		s.logger.Error("Failed to create box session", "error", err)
-		return fmt.Errorf("error creating session: %w", err)
-	}
-	defer boxSession.Close()
-
-	// Connect pipes - gliderlabs/ssh Session implements io.Reader/io.Writer directly
-	boxSession.Stdin = sess
-	boxSession.Stdout = sess
-	boxSession.Stderr = sess.Stderr()
-
-	// Execute the same SCP command on the box
-	cmd := strings.Join(sess.Command(), " ")
-	return boxSession.Run(cmd)
+func (s *Server) handleSCP(_ gssh.Session) error {
+	// TODO: For now, SCP will need resource allocation similar to shell sessions
+	// This is a simplified version that will need enhancement
+	s.logger.Warn("SCP not yet supported with dynamic allocation")
+	return fmt.Errorf("SCP not yet supported with dynamic allocation")
 }
 
 func (s *Server) handleSession(sess gssh.Session) {
@@ -146,41 +134,46 @@ func (s *Server) handleShellSession(sess gssh.Session) {
 		s.logger.Warn("Failed to log session start event", "error", err)
 	}
 
-	client, err := s.dialBox()
+	// Allocate resources for this user session
+	s.logger.Info("allocating resources", "session_id", sessionID)
+	ctx := context.Background()
+	resources, err := s.allocator.AllocateResourcesForUser(ctx, userKeyHash)
 	if err != nil {
-		s.logger.Error("Failed to connect to box", "error", err)
-		fmt.Fprintf(sess.Stderr(), "Error connecting to box: %v\n", err)
+		s.logger.Error("Failed to allocate resources", "error", err, "session_id", sessionID)
+		fmt.Fprintf(sess.Stderr(), "Error allocating resources: %v\n", err)
+		return
+	}
 
-		// Log failed box connection
-		failEvent := infra.EventLogEntity{
-			PartitionKey: now.Format("2006-01-02"),
-			RowKey:       fmt.Sprintf("%s_box_connect_fail", time.Now().Format("20060102T150405")),
-			Timestamp:    time.Now(),
-			EventType:    "box_connect_fail",
-			SessionID:    sessionID,
-			UserKey:      userKeyHash,
-			Details:      fmt.Sprintf(`{"error":"%s"}`, err.Error()),
+	// Ensure cleanup on session end
+	defer func() {
+		s.logger.Info("releasing resources", "session_id", sessionID)
+		if err := s.allocator.ReleaseResources(ctx, resources.InstanceID, resources.VolumeID); err != nil {
+			s.logger.Error("Failed to release resources", "error", err, "session_id", sessionID)
 		}
-		if err := infra.WriteEventLog(context.Background(), s.clients, failEvent); err != nil {
-			s.logger.Warn("Failed to log box connection failure", "error", err)
-		}
+	}()
+
+	// Connect to allocated instance
+	client, err := s.dialBoxAtIP(resources.InstanceIP)
+	if err != nil {
+		s.logger.Error("Failed to connect to allocated instance", "error", err, "session_id", sessionID)
+		fmt.Fprintf(sess.Stderr(), "Error connecting to allocated instance: %v\n", err)
 		return
 	}
 	defer client.Close()
 
-	// Log successful box connection
+	// Log successful resource allocation and connection
 	connectEvent := infra.EventLogEntity{
 		PartitionKey: now.Format("2006-01-02"),
-		RowKey:       fmt.Sprintf("%s_box_connect", time.Now().Format("20060102T150405")),
+		RowKey:       fmt.Sprintf("%s_resource_connect", time.Now().Format("20060102T150405")),
 		Timestamp:    time.Now(),
-		EventType:    "box_connect",
+		EventType:    "resource_connect",
 		SessionID:    sessionID,
 		UserKey:      userKeyHash,
-		BoxID:        s.boxAddr, // Using box address as ID for now
-		Details:      fmt.Sprintf(`{"box_addr":"%s"}`, s.boxAddr),
+		BoxID:        resources.InstanceID,
+		Details:      fmt.Sprintf(`{"instance_ip":"%s","volume_id":"%s"}`, resources.InstanceIP, resources.VolumeID),
 	}
-	if err := infra.WriteEventLog(context.Background(), s.clients, connectEvent); err != nil {
-		s.logger.Warn("Failed to log box connection", "error", err)
+	if err := infra.WriteEventLog(ctx, s.clients, connectEvent); err != nil {
+		s.logger.Warn("Failed to log resource connection", "error", err)
 	}
 
 	boxSession, err := client.NewSession()

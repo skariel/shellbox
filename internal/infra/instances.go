@@ -535,3 +535,104 @@ func deleteNSG(ctx context.Context, clients *AzureClients, resourceGroupName, ns
 		log.Printf("Successfully deleted NSG: %s", nsgName)
 	}
 }
+
+// UpdateInstanceStatus updates the status tag of an instance
+func UpdateInstanceStatus(ctx context.Context, clients *AzureClients, instanceID, status string) error {
+	namer := NewResourceNamer(clients.Suffix)
+	vmName := namer.BoxVMName(instanceID)
+
+	// Get current VM
+	vm, err := clients.ComputeClient.Get(ctx, clients.ResourceGroupName, vmName, nil)
+	if err != nil {
+		return fmt.Errorf("failed to get VM for status update: %w", err)
+	}
+
+	// Update status tag
+	if vm.Tags == nil {
+		vm.Tags = make(map[string]*string)
+	}
+	vm.Tags[TagKeyStatus] = to.Ptr(status)
+	vm.Tags[TagKeyLastUsed] = to.Ptr(time.Now().UTC().Format(time.RFC3339))
+
+	// Update the VM
+	poller, err := clients.ComputeClient.BeginCreateOrUpdate(ctx, clients.ResourceGroupName, vmName, vm.VirtualMachine, nil)
+	if err != nil {
+		return fmt.Errorf("failed to start VM status update: %w", err)
+	}
+
+	_, err = poller.PollUntilDone(ctx, &DefaultPollOptions)
+	if err != nil {
+		return fmt.Errorf("failed to update VM status: %w", err)
+	}
+
+	return nil
+}
+
+// GetInstancePrivateIP retrieves the private IP address of an instance
+func GetInstancePrivateIP(ctx context.Context, clients *AzureClients, instanceID string) (string, error) {
+	namer := NewResourceNamer(clients.Suffix)
+	nicName := namer.BoxNICName(instanceID)
+
+	nic, err := clients.NICClient.Get(ctx, clients.ResourceGroupName, nicName, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to get NIC for instance %s: %w", instanceID, err)
+	}
+
+	if len(nic.Properties.IPConfigurations) == 0 {
+		return "", fmt.Errorf("no IP configurations found for instance %s", instanceID)
+	}
+
+	privateIP := nic.Properties.IPConfigurations[0].Properties.PrivateIPAddress
+	if privateIP == nil {
+		return "", fmt.Errorf("no private IP found for instance %s", instanceID)
+	}
+
+	return *privateIP, nil
+}
+
+// AttachVolumeToInstance attaches a volume to an instance VM as a data disk
+func AttachVolumeToInstance(ctx context.Context, clients *AzureClients, instanceID, volumeID string) error {
+	namer := NewResourceNamer(clients.Suffix)
+	vmName := namer.BoxVMName(instanceID)
+	volumeName := namer.VolumePoolDiskName(volumeID)
+
+	// Get current VM
+	vm, err := clients.ComputeClient.Get(ctx, clients.ResourceGroupName, vmName, nil)
+	if err != nil {
+		return fmt.Errorf("failed to get VM for volume attachment: %w", err)
+	}
+
+	// Get volume resource ID
+	volume, err := clients.DisksClient.Get(ctx, clients.ResourceGroupName, volumeName, nil)
+	if err != nil {
+		return fmt.Errorf("failed to get volume for attachment: %w", err)
+	}
+
+	// Add data disk to VM
+	dataDisk := &armcompute.DataDisk{
+		Name:         to.Ptr(volumeName),
+		CreateOption: to.Ptr(armcompute.DiskCreateOptionTypesAttach),
+		Lun:          to.Ptr[int32](0),
+		ManagedDisk: &armcompute.ManagedDiskParameters{
+			ID: volume.ID,
+		},
+	}
+
+	if vm.Properties.StorageProfile.DataDisks == nil {
+		vm.Properties.StorageProfile.DataDisks = []*armcompute.DataDisk{}
+	}
+	vm.Properties.StorageProfile.DataDisks = append(vm.Properties.StorageProfile.DataDisks, dataDisk)
+
+	// Update the VM
+	poller, err := clients.ComputeClient.BeginCreateOrUpdate(ctx, clients.ResourceGroupName, vmName, vm.VirtualMachine, nil)
+	if err != nil {
+		return fmt.Errorf("failed to start volume attachment: %w", err)
+	}
+
+	_, err = poller.PollUntilDone(ctx, &DefaultPollOptions)
+	if err != nil {
+		return fmt.Errorf("failed to attach volume: %w", err)
+	}
+
+	return nil
+}

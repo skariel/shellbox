@@ -74,7 +74,8 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	pool := infra.NewBoxPool(clients, vmConfig, poolConfig)
+	logger.Info("starting pool management")
+	pool := infra.NewBoxPool(clients, vmConfig, poolConfig, goldenSnapshot)
 	go pool.MaintainPool(ctx)
 
 	// Start SSH server
