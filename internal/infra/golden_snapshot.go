@@ -58,7 +58,7 @@ echo "\$nrconf{restart} = 'a';" | sudo tee /etc/needrestart/conf.d/50-autorestar
 %s
 # Install QEMU and dependencies
 sudo apt update
-sudo apt install qemu-utils qemu-system-x86 qemu-kvm qemu-system libvirt-daemon-system libvirt-clients bridge-utils genisoimage whois libguestfs-tools -y
+sudo apt install qemu-utils qemu-system-x86 qemu-kvm qemu-system libvirt-daemon-system libvirt-clients bridge-utils genisoimage whois libguestfs-tools socat -y
 
 sudo usermod -aG kvm,libvirt $USER
 sudo systemctl enable --now libvirtd
@@ -99,7 +99,7 @@ EOFMARKER
 
 genisoimage -output qemu-disks/cloud-init.iso -volid cidata -joliet -rock user-data meta-data
 
-# Start QEMU VM with SSH-ready configuration
+# Start QEMU VM with SSH-ready configuration and monitor socket
 sudo qemu-system-x86_64 \
    -enable-kvm \
    -m 24G \
@@ -110,6 +110,7 @@ sudo qemu-system-x86_64 \
    -drive file=%s/qemu-disks/ubuntu-base.qcow2,format=qcow2 \
    -drive file=%s/qemu-disks/cloud-init.iso,format=raw \
    -nographic \
+   -monitor unix:/tmp/qemu-monitor.sock,server,nowait \
    -nic user,model=virtio,hostfwd=tcp::%d-:22,dns=8.8.8.8`,
 		mountSection,
 		config.WorkingDir, config.WorkingDir,
@@ -137,7 +138,7 @@ type GoldenSnapshotInfo struct {
 // This snapshot serves as the base for all user volumes, ensuring consistent and fast provisioning.
 // The function is idempotent - it will find and return existing snapshots rather than creating duplicates.
 // Golden snapshots are stored in a persistent resource group to avoid recreation between deployments.
-func CreateGoldenSnapshotIfNotExists(ctx context.Context, clients *AzureClients, resourceGroupName, _ string) (*GoldenSnapshotInfo, error) {
+func CreateGoldenSnapshotIfNotExists(ctx context.Context, clients *AzureClients, _, _ string) (*GoldenSnapshotInfo, error) {
 	// Ensure the persistent resource group exists
 	if err := ensureGoldenSnapshotResourceGroup(ctx, clients); err != nil {
 		return nil, fmt.Errorf("failed to ensure golden snapshot resource group: %w", err)
@@ -221,31 +222,16 @@ type tempBoxInfo struct {
 func createBoxWithDataVolume(ctx context.Context, clients *AzureClients, resourceGroupName, vmName string) (*tempBoxInfo, error) {
 	namer := NewResourceNamer(extractSuffix(resourceGroupName))
 
-	// Create data disk first
+	// Create data volume using volume utilities
 	dataDiskName := fmt.Sprintf("%s-data", vmName)
-	log.Printf("Creating data disk: %s", dataDiskName)
-
-	dataDisk, err := clients.DisksClient.BeginCreateOrUpdate(ctx, resourceGroupName, dataDiskName, armcompute.Disk{
-		Location: to.Ptr(Location),
-		Properties: &armcompute.DiskProperties{
-			DiskSizeGB: to.Ptr[int32](DefaultVolumeSizeGB),
-			CreationData: &armcompute.CreationData{
-				CreateOption: to.Ptr(armcompute.DiskCreateOptionEmpty),
-			},
-		},
-		Tags: map[string]*string{
-			TagKeyRole:    to.Ptr(ResourceRoleVolume),
-			TagKeyStatus:  to.Ptr("temp"),
-			TagKeyCreated: to.Ptr(time.Now().Format(time.RFC3339)),
-		},
-	}, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create data disk: %w", err)
+	volumeTags := VolumeTags{
+		Role:   "temp",
+		Status: "creating",
 	}
 
-	diskResult, err := dataDisk.PollUntilDone(ctx, &DefaultPollOptions)
+	volumeInfo, err := CreateVolume(ctx, clients, resourceGroupName, dataDiskName, DefaultVolumeSizeGB, volumeTags)
 	if err != nil {
-		return nil, fmt.Errorf("failed waiting for data disk creation: %w", err)
+		return nil, fmt.Errorf("failed to create data volume: %w", err)
 	}
 
 	// Use existing box creation functions but with a custom boxID
@@ -272,14 +258,14 @@ func createBoxWithDataVolume(ctx context.Context, clients *AzureClients, resourc
 	}
 
 	// Create VM with data disk attached using modified function
-	_, err = createBoxVMWithDataDisk(ctx, clients, resourceGroupName, vmName, *nicResult.ID, *diskResult.ID, sshPublicKey)
+	_, err = createBoxVMWithDataDisk(ctx, clients, resourceGroupName, vmName, *nicResult.ID, volumeInfo.ResourceID, sshPublicKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create VM: %w", err)
 	}
 
 	return &tempBoxInfo{
 		VMName:     vmName,
-		DataDiskID: *diskResult.ID,
+		DataDiskID: volumeInfo.ResourceID,
 		PrivateIP:  *nicResult.Properties.IPConfigurations[0].Properties.PrivateIPAddress,
 		NICName:    nicName,
 		NSGName:    nsgName,
@@ -307,14 +293,17 @@ func waitForQEMUSetup(ctx context.Context, _ *AzureClients, tempBox *tempBoxInfo
 			return fmt.Errorf("QEMU VM SSH not yet ready: %w: %s", err, string(output))
 		}
 
-		// Stop the QEMU VM to preserve the SSH-ready state
-		log.Printf("QEMU VM SSH confirmed working, stopping VM to preserve state...")
-		stopErr := sshutil.ExecuteCommand(ctx,
-			"sudo pkill qemu-system-x86_64",
-			AdminUsername,
-			tempBox.PrivateIP)
+		// Save the QEMU VM state and cleanly shut down to preserve the SSH-ready state
+		log.Printf("QEMU VM SSH confirmed working, saving VM state...")
+		saveCmd := `echo -e "savevm ssh-ready\nquit" | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock`
+		stopErr := sshutil.ExecuteCommand(ctx, saveCmd, AdminUsername, tempBox.PrivateIP)
 		if stopErr != nil {
-			log.Printf("Warning: failed to stop QEMU VM: %v", stopErr)
+			log.Printf("Warning: failed to save QEMU VM state: %v", stopErr)
+			// Fallback to force quit if savevm fails
+			fallbackErr := sshutil.ExecuteCommand(ctx, "sudo pkill qemu-system-x86_64", AdminUsername, tempBox.PrivateIP)
+			if fallbackErr != nil {
+				log.Printf("Warning: fallback pkill also failed: %v", fallbackErr)
+			}
 		}
 
 		log.Printf("QEMU VM SSH-ready state prepared on %s", tempBox.VMName)
