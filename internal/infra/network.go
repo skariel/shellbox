@@ -38,6 +38,7 @@ type AzureClients struct {
 	ResourceClient               *armresources.ResourceGroupsClient
 	NetworkClient                *armnetwork.VirtualNetworksClient
 	NSGClient                    *armnetwork.SecurityGroupsClient
+	SubnetsClient                *armnetwork.SubnetsClient
 	ComputeClient                *armcompute.VirtualMachinesClient
 	PublicIPClient               *armnetwork.PublicIPAddressesClient
 	NICClient                    *armnetwork.InterfacesClient

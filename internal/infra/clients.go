@@ -39,6 +39,9 @@ func createAzureClients(clients *AzureClients) {
 	clients.NSGClient, err = armnetwork.NewSecurityGroupsClient(clients.SubscriptionID, clients.Cred, nil)
 	FatalOnError(err, "failed to create NSG client")
 
+	clients.SubnetsClient, err = armnetwork.NewSubnetsClient(clients.SubscriptionID, clients.Cred, nil)
+	FatalOnError(err, "failed to create subnets client")
+
 	clients.PublicIPClient, err = armnetwork.NewPublicIPAddressesClient(clients.SubscriptionID, clients.Cred, nil)
 	FatalOnError(err, "failed to create Public IP client")
 
