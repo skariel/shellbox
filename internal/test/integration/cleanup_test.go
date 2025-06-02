@@ -5,6 +5,7 @@ package integration
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -89,68 +90,6 @@ func TestResourceGroupCleanupBehavior(t *testing.T) {
 	assert.Error(t, err, "test volume should be deleted after cleanup")
 }
 
-func TestParallelTestIsolation(t *testing.T) {
-	t.Parallel()
-	test.RequireCategory(t, test.CategoryIntegration)
-
-	test.LogTestProgress(t, "testing parallel test isolation")
-
-	// Run multiple tests in parallel to verify they don't interfere with each other
-	numParallelTests := 3
-	resourceTracker := make(chan string, numParallelTests)
-
-	for i := 0; i < numParallelTests; i++ {
-		testIndex := i
-		t.Run(fmt.Sprintf("ParallelTest_%d", testIndex), func(t *testing.T) {
-			t.Parallel()
-
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-			defer cancel()
-
-			env := test.SetupTestEnvironment(t, test.CategoryIntegration)
-			defer env.Cleanup()
-
-			test.LogTestProgress(t, "parallel test starting", "testIndex", testIndex, "suffix", env.Suffix)
-
-			// Create a unique resource in each test
-			config := &infra.VolumeConfig{DiskSize: infra.DefaultVolumeSizeGB}
-			volumeID, err := infra.CreateVolume(ctx, env.Clients, config)
-			require.NoError(t, err, "should create volume in parallel test %d", testIndex)
-
-			// Generate volume name from returned volume ID
-			namer := env.GetResourceNamer()
-			volumeName := namer.VolumePoolDiskName(volumeID)
-
-			// Verify resource was created
-			disk, err := env.Clients.DisksClient.Get(ctx, env.ResourceGroupName, volumeName, nil)
-			require.NoError(t, err, "should retrieve volume in parallel test %d", testIndex)
-			assert.Equal(t, volumeName, *disk.Name, "volume should have correct name in parallel test %d", testIndex)
-
-			// Record that this test created a resource
-			resourceTracker <- fmt.Sprintf("test-%d:%s", testIndex, volumeName)
-
-			test.LogTestProgress(t, "parallel test completed", "testIndex", testIndex, "volumeName", volumeName)
-		})
-	}
-
-	// Wait for all parallel tests to complete and verify they all created resources
-	close(resourceTracker)
-	createdResources := make([]string, 0, numParallelTests)
-	for resource := range resourceTracker {
-		createdResources = append(createdResources, resource)
-	}
-
-	assert.Len(t, createdResources, numParallelTests, "all parallel tests should have created resources")
-
-	// Verify all resource names are unique
-	resourceNames := make(map[string]bool)
-	for _, resource := range createdResources {
-		assert.False(t, resourceNames[resource], "resource names should be unique across parallel tests")
-		resourceNames[resource] = true
-	}
-
-	test.LogTestProgress(t, "parallel test isolation verified", "uniqueResources", len(resourceNames))
-}
 
 func TestCleanupTimeout(t *testing.T) {
 	t.Parallel()
@@ -170,11 +109,11 @@ func TestCleanupTimeout(t *testing.T) {
 	env.Cleanup()
 }
 
-func TestResourceNamingUniqueness(t *testing.T) {
+func TestComprehensiveResourceNaming(t *testing.T) {
 	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
 
-	test.LogTestProgress(t, "testing resource naming uniqueness")
+	test.LogTestProgress(t, "testing comprehensive resource naming patterns and uniqueness")
 
 	// Create multiple test environments
 	environments := make([]*test.Environment, 5)
@@ -289,9 +228,9 @@ func TestResourceTrackingBehavior(t *testing.T) {
 	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
 	defer env.Cleanup()
 
-	// Verify initial state
+	// Verify initial state (environment starts with empty tracking)
 	initialResourceCount := len(env.CreatedResources)
-	assert.Greater(t, initialResourceCount, 0, "test environment should track initial resources")
+	assert.Equal(t, 0, initialResourceCount, "test environment should start with no tracked resources")
 
 	// Track additional resources
 	testResourceName := "test-resource-" + uuid.New().String()

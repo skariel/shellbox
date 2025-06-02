@@ -18,45 +18,45 @@ import (
 	"shellbox/internal/test"
 )
 
-func TestCreateTableStorageResources(t *testing.T) {
+func TestTableStorageCreationAndIdempotency(t *testing.T) {
 	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
 
 	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
 	defer env.Cleanup()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
 
 	namer := env.GetResourceNamer()
 	storageAccountName := namer.SharedStorageAccountName()
 	tableNames := []string{namer.EventLogTableName(), namer.ResourceRegistryTableName()}
 
-	test.LogTestProgress(t, "creating table storage resources", "accountName", storageAccountName, "tableNames", tableNames)
+	test.LogTestProgress(t, "creating table storage resources (first time)", "accountName", storageAccountName, "tableNames", tableNames)
 
-	// Create table storage resources
-	result := infra.CreateTableStorageResources(ctx, env.Clients, storageAccountName, tableNames)
-	require.NoError(t, result.Error, "should create table storage resources without error")
-	require.NotEmpty(t, result.ConnectionString, "should return valid connection string")
+	// Create table storage resources first time
+	result1 := infra.CreateTableStorageResources(ctx, env.Clients, storageAccountName, tableNames)
+	require.NoError(t, result1.Error, "should create table storage resources without error")
+	require.NotEmpty(t, result1.ConnectionString, "should return valid connection string")
 
 	// Verify connection string format
-	assert.Contains(t, result.ConnectionString, "DefaultEndpointsProtocol=https", "connection string should use HTTPS")
-	assert.Contains(t, result.ConnectionString, fmt.Sprintf("AccountName=%s", storageAccountName), "connection string should contain account name")
-	assert.Contains(t, result.ConnectionString, "EndpointSuffix=core.windows.net", "connection string should contain endpoint suffix")
+	assert.Contains(t, result1.ConnectionString, "DefaultEndpointsProtocol=https", "connection string should use HTTPS")
+	assert.Contains(t, result1.ConnectionString, fmt.Sprintf("AccountName=%s", storageAccountName), "connection string should contain account name")
+	assert.Contains(t, result1.ConnectionString, "EndpointSuffix=core.windows.net", "connection string should contain endpoint suffix")
 
 	test.LogTestProgress(t, "verifying table client creation from connection string")
 
 	// Test that we can create a client from the connection string
-	tableClient, err := aztables.NewServiceClientFromConnectionString(result.ConnectionString, nil)
+	tableClient1, err := aztables.NewServiceClientFromConnectionString(result1.ConnectionString, nil)
 	require.NoError(t, err, "should be able to create table client from connection string")
-	require.NotNil(t, tableClient, "table client should not be nil")
+	require.NotNil(t, tableClient1, "table client should not be nil")
 
 	test.LogTestProgress(t, "verifying tables were created")
 
 	// Verify that required tables exist by attempting to query them
 	expectedTables := tableNames
 	for _, tableName := range expectedTables {
-		specificTableClient := tableClient.NewClient(tableName)
+		specificTableClient := tableClient1.NewClient(tableName)
 
 		// Try to list entities to verify table exists (will return empty list if table is empty)
 		pager := specificTableClient.NewListEntitiesPager(nil)
@@ -64,7 +64,35 @@ func TestCreateTableStorageResources(t *testing.T) {
 		assert.NoError(t, err, "table %s should exist and be queryable", tableName)
 	}
 
-	test.LogTestProgress(t, "table storage creation test completed")
+	test.LogTestProgress(t, "testing table storage idempotency (second creation)")
+
+	// Create table storage second time (should be idempotent)
+	result2 := infra.CreateTableStorageResources(ctx, env.Clients, storageAccountName, tableNames)
+	require.NoError(t, result2.Error, "second creation should succeed (idempotent)")
+
+	// Connection strings should be the same
+	assert.Equal(t, result1.ConnectionString, result2.ConnectionString, "connection strings should be identical")
+
+	// Verify tables still exist and are functional after second creation
+	tableClient2, err := aztables.NewServiceClientFromConnectionString(result2.ConnectionString, nil)
+	require.NoError(t, err, "should create table client after idempotent creation")
+
+	env.Clients.TableStorageConnectionString = result2.ConnectionString
+	env.Clients.TableClient = tableClient2
+
+	// Test writing to tables after second creation to verify functionality
+	testEntity := infra.EventLogEntity{
+		PartitionKey: "idempotency-test",
+		RowKey:       "test-event",
+		Timestamp:    time.Now().UTC(),
+		EventType:    "idempotency_test",
+		Details:      "Testing table storage creation and idempotency",
+	}
+
+	err = infra.WriteEventLog(ctx, env.Clients, testEntity)
+	assert.NoError(t, err, "should be able to write to tables after idempotent creation")
+
+	test.LogTestProgress(t, "table storage creation and idempotency test completed")
 }
 
 func TestTableStorageEntityOperations(t *testing.T) {
@@ -480,53 +508,4 @@ func TestTableStorageErrorHandling(t *testing.T) {
 	assert.Error(t, result.Error, "should error with invalid storage account name")
 
 	test.LogTestProgress(t, "error handling tests completed")
-}
-
-func TestTableStorageIdempotency(t *testing.T) {
-	t.Parallel()
-	test.RequireCategory(t, test.CategoryIntegration)
-
-	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
-	defer env.Cleanup()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
-	defer cancel()
-
-	namer := env.GetResourceNamer()
-	storageAccountName := namer.SharedStorageAccountName()
-	tableNames := []string{namer.EventLogTableName(), namer.ResourceRegistryTableName()}
-
-	test.LogTestProgress(t, "testing table storage idempotency")
-
-	// Create table storage first time
-	result1 := infra.CreateTableStorageResources(ctx, env.Clients, storageAccountName, tableNames)
-	require.NoError(t, result1.Error, "first creation should succeed")
-
-	// Create table storage second time (should be idempotent)
-	result2 := infra.CreateTableStorageResources(ctx, env.Clients, storageAccountName, tableNames)
-	require.NoError(t, result2.Error, "second creation should succeed (idempotent)")
-
-	// Connection strings should be the same
-	assert.Equal(t, result1.ConnectionString, result2.ConnectionString, "connection strings should be identical")
-
-	// Verify tables still exist and are functional
-	tableClient, err := aztables.NewServiceClientFromConnectionString(result2.ConnectionString, nil)
-	require.NoError(t, err, "should create table client")
-
-	env.Clients.TableStorageConnectionString = result2.ConnectionString
-	env.Clients.TableClient = tableClient
-
-	// Test writing to tables after second creation
-	testEntity := infra.EventLogEntity{
-		PartitionKey: "idempotency-test",
-		RowKey:       "test-event",
-		Timestamp:    time.Now().UTC(),
-		EventType:    "idempotency_test",
-		Details:      "Testing idempotency",
-	}
-
-	err = infra.WriteEventLog(ctx, env.Clients, testEntity)
-	assert.NoError(t, err, "should be able to write to tables after idempotent creation")
-
-	test.LogTestProgress(t, "idempotency test completed")
 }

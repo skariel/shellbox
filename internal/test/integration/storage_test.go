@@ -17,104 +17,100 @@ import (
 	"shellbox/internal/test"
 )
 
-func TestCreateVolume(t *testing.T) {
+func TestVolumeCreationAndDeletion(t *testing.T) {
 	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
 
 	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
 	defer env.Cleanup()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 	defer cancel()
 
-	volumeID := uuid.New().String()
-	namer := env.GetResourceNamer()
-	volumeName := namer.VolumePoolDiskName(volumeID)
-
-	test.LogTestProgress(t, "creating empty volume", "volumeID", volumeID, "name", volumeName)
-
-	// Create volume with default settings
-	tags := infra.VolumeTags{
-		Role:     infra.ResourceRoleVolume,
-		Status:   infra.ResourceStatusFree,
-		VolumeID: volumeID,
+	testCases := []struct {
+		name   string
+		sizeGB int32
+		useAPI bool // true for CreateVolume API, false for CreateVolumeWithTags
+	}{
+		{"DefaultSize_API", infra.DefaultVolumeSizeGB, true},
+		{"DefaultSize_WithTags", infra.DefaultVolumeSizeGB, false},
+		{"CustomSize_250GB", 250, true},
+		{"CustomSize_500GB", 500, true},
 	}
 
-	volumeInfo, err := infra.CreateVolumeWithTags(ctx, env.Clients, env.ResourceGroupName, volumeName, infra.DefaultVolumeSizeGB, tags)
-	require.NoError(t, err, "should create volume without error")
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			volumeID := uuid.New().String()
+			namer := env.GetResourceNamer()
+			volumeName := namer.VolumePoolDiskName(volumeID)
 
-	// Verify volume properties
-	assert.Equal(t, volumeName, volumeInfo.Name, "volume should have correct name")
-	assert.Equal(t, int32(infra.DefaultVolumeSizeGB), volumeInfo.SizeGB, "volume should have correct size")
-	assert.Equal(t, infra.Location, volumeInfo.Location, "volume should be in correct location")
-	assert.NotEmpty(t, volumeInfo.ResourceID, "volume should have resource ID")
-	assert.Equal(t, volumeID, volumeInfo.VolumeID, "volume should have correct volume ID")
+			test.LogTestProgress(t, "creating volume", "volumeID", volumeID, "name", volumeName, "sizeGB", tc.sizeGB, "useAPI", tc.useAPI)
 
-	// Verify volume tags
-	assert.Equal(t, infra.ResourceRoleVolume, volumeInfo.Tags.Role, "volume should have correct role tag")
-	assert.Equal(t, infra.ResourceStatusFree, volumeInfo.Tags.Status, "volume should have correct status tag")
-	assert.NotEmpty(t, volumeInfo.Tags.CreatedAt, "volume should have created timestamp")
-	assert.NotEmpty(t, volumeInfo.Tags.LastUsed, "volume should have last used timestamp")
+			var err error
+			var returnedVolumeID string
 
-	test.LogTestProgress(t, "verifying volume can be retrieved")
+			if tc.useAPI {
+				// Use CreateVolume API
+				config := &infra.VolumeConfig{DiskSize: tc.sizeGB}
+				returnedVolumeID, err = infra.CreateVolume(ctx, env.Clients, config)
+				require.NoError(t, err, "should create volume without error")
+				assert.NotEmpty(t, returnedVolumeID, "volume ID should be returned")
+				// Update volume name with returned ID
+				volumeName = namer.VolumePoolDiskName(returnedVolumeID)
+			} else {
+				// Use CreateVolumeWithTags API
+				tags := infra.VolumeTags{
+					Role:     infra.ResourceRoleVolume,
+					Status:   infra.ResourceStatusFree,
+					VolumeID: volumeID,
+				}
+				volumeInfo, err := infra.CreateVolumeWithTags(ctx, env.Clients, env.ResourceGroupName, volumeName, tc.sizeGB, tags)
+				require.NoError(t, err, "should create volume without error")
 
-	// Verify volume can be retrieved directly
-	disk, err := env.Clients.DisksClient.Get(ctx, env.ResourceGroupName, volumeName, nil)
-	require.NoError(t, err, "should be able to retrieve created volume")
-	assert.Equal(t, volumeName, *disk.Name, "retrieved volume should have correct name")
-	assert.Equal(t, int32(infra.DefaultVolumeSizeGB), *disk.Properties.DiskSizeGB, "retrieved volume should have correct size")
+				// Verify volume properties from returned info
+				assert.Equal(t, volumeName, volumeInfo.Name, "volume should have correct name")
+				assert.Equal(t, tc.sizeGB, volumeInfo.SizeGB, "volume should have correct size")
+				assert.Equal(t, infra.Location, volumeInfo.Location, "volume should be in correct location")
+				assert.NotEmpty(t, volumeInfo.ResourceID, "volume should have resource ID")
+				assert.Equal(t, volumeID, volumeInfo.VolumeID, "volume should have correct volume ID")
 
-	// Verify tags are correctly set
-	require.NotNil(t, disk.Tags, "volume should have tags")
-	assert.Equal(t, infra.ResourceRoleVolume, *disk.Tags[infra.TagKeyRole], "volume should have correct role tag")
-	assert.Equal(t, infra.ResourceStatusFree, *disk.Tags[infra.TagKeyStatus], "volume should have correct status tag")
-	assert.Equal(t, volumeID, *disk.Tags["volume_id"], "volume should have correct volume ID tag")
+				// Verify volume tags from returned info
+				assert.Equal(t, infra.ResourceRoleVolume, volumeInfo.Tags.Role, "volume should have correct role tag")
+				assert.Equal(t, infra.ResourceStatusFree, volumeInfo.Tags.Status, "volume should have correct status tag")
+				assert.NotEmpty(t, volumeInfo.Tags.CreatedAt, "volume should have created timestamp")
+				assert.NotEmpty(t, volumeInfo.Tags.LastUsed, "volume should have last used timestamp")
+			}
 
-	test.LogTestProgress(t, "testing volume deletion")
+			test.LogTestProgress(t, "verifying volume can be retrieved")
 
-	// Test volume deletion
-	err = infra.DeleteVolume(ctx, env.Clients, env.ResourceGroupName, volumeName)
-	require.NoError(t, err, "should delete volume without error")
+			// Verify volume can be retrieved directly
+			disk, err := env.Clients.DisksClient.Get(ctx, env.ResourceGroupName, volumeName, nil)
+			require.NoError(t, err, "should be able to retrieve created volume")
+			assert.Equal(t, volumeName, *disk.Name, "retrieved volume should have correct name")
+			assert.Equal(t, tc.sizeGB, *disk.Properties.DiskSizeGB, "retrieved volume should have correct size")
 
-	// Verify volume is deleted
-	_, err = env.Clients.DisksClient.Get(ctx, env.ResourceGroupName, volumeName, nil)
-	assert.Error(t, err, "should not be able to retrieve deleted volume")
-}
+			// Verify tags are correctly set
+			require.NotNil(t, disk.Tags, "volume should have tags")
+			assert.Equal(t, infra.ResourceRoleVolume, *disk.Tags[infra.TagKeyRole], "volume should have correct role tag")
+			if !tc.useAPI {
+				// Only volumes created with CreateVolumeWithTags have these specific tags
+				assert.Equal(t, infra.ResourceStatusFree, *disk.Tags[infra.TagKeyStatus], "volume should have correct status tag")
+				assert.Equal(t, volumeID, *disk.Tags["volume_id"], "volume should have correct volume ID tag")
+			}
 
-func TestCreateVolumeWithCustomSize(t *testing.T) {
-	t.Parallel()
-	test.RequireCategory(t, test.CategoryIntegration)
+			test.LogTestProgress(t, "testing volume deletion")
 
-	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
-	defer env.Cleanup()
+			// Test volume deletion
+			err = infra.DeleteVolume(ctx, env.Clients, env.ResourceGroupName, volumeName)
+			require.NoError(t, err, "should delete volume without error")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-	defer cancel()
+			// Verify volume is deleted
+			_, err = env.Clients.DisksClient.Get(ctx, env.ResourceGroupName, volumeName, nil)
+			assert.Error(t, err, "should not be able to retrieve deleted volume")
 
-	customSize := int32(250) // 250GB
-
-	test.LogTestProgress(t, "creating volume with custom size", "size", customSize)
-
-	// Create volume with custom size
-	config := &infra.VolumeConfig{DiskSize: customSize}
-	volumeID, err := infra.CreateVolume(ctx, env.Clients, config)
-	require.NoError(t, err, "should create volume with custom size without error")
-
-	// Verify volume was created
-	assert.NotEmpty(t, volumeID, "volume ID should be returned")
-
-	// Generate volume name from the returned volume ID
-	namer := env.GetResourceNamer()
-	volumeName := namer.VolumePoolDiskName(volumeID)
-
-	// Verify through direct retrieval
-	disk, err := env.Clients.DisksClient.Get(ctx, env.ResourceGroupName, volumeName, nil)
-	require.NoError(t, err, "should be able to retrieve custom-sized volume")
-	assert.Equal(t, customSize, *disk.Properties.DiskSizeGB, "retrieved volume should have custom size")
-
-	// Clean up
-	err = infra.DeleteVolume(ctx, env.Clients, env.ResourceGroupName, volumeName)
-	require.NoError(t, err, "should delete custom-sized volume without error")
+			test.LogTestProgress(t, "volume test completed", "size", tc.sizeGB)
+		})
+	}
 }
 
 func TestFindVolumesByRole(t *testing.T) {

@@ -161,14 +161,14 @@ func (suite *NamingTestSuite) TestStorageNaming() {
 	sharedStorageAccount := namer.SharedStorageAccountName()
 	assert.Equal(suite.T(), "shellboxtest536567", sharedStorageAccount, "Shared storage account should be fixed name")
 
-	// Test table naming
+	// Test table naming (table names have cleaned suffixes with no hyphens)
 	eventLogTable := namer.EventLogTableName()
 	assert.Contains(suite.T(), eventLogTable, "EventLog", "EventLog table should contain EventLog")
-	assert.Contains(suite.T(), eventLogTable, suffix, "EventLog table should contain suffix")
+	assert.Contains(suite.T(), eventLogTable, "storagetest", "EventLog table should contain cleaned suffix")
 
 	resourceRegistryTable := namer.ResourceRegistryTableName()
 	assert.Contains(suite.T(), resourceRegistryTable, "ResourceRegistry", "ResourceRegistry table should contain ResourceRegistry")
-	assert.Contains(suite.T(), resourceRegistryTable, suffix, "ResourceRegistry table should contain suffix")
+	assert.Contains(suite.T(), resourceRegistryTable, "storagetest", "ResourceRegistry table should contain cleaned suffix")
 
 	// Test disk naming
 	bastionOSDisk := namer.BastionOSDiskName()
