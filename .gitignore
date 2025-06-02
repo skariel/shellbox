@@ -5,3 +5,4 @@ go.sum
 *.log
 server
 deploy
+integration.test

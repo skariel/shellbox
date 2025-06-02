@@ -19,7 +19,7 @@ import (
 // RetryTestSuite tests the retry mechanism functionality
 type RetryTestSuite struct {
 	suite.Suite
-	env *test.TestEnvironment
+	env *test.Environment
 }
 
 // SetupSuite runs once before all tests in the suite

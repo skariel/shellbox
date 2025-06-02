@@ -3,7 +3,7 @@ package infra
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -356,14 +356,13 @@ func DeleteInstance(ctx context.Context, clients *AzureClients, resourceGroupNam
 	// Get VM and extract resource information
 	vm, err := clients.ComputeClient.Get(ctx, resourceGroupName, vmName, nil)
 	if err != nil {
-		log.Printf("VM %s not found, proceeding with cleanup of other resources: %v", vmName, err)
+		slog.Warn("VM not found, proceeding with cleanup of other resources", "vmName", vmName, "error", err)
 	}
 
 	// Extract resource information from VM or generate from naming patterns
 	resourceInfo := extractInstanceResourceInfo(vm, vmName, resourceGroupName, err == nil)
 
-	log.Printf("Deleting box %s with resources: NIC=%s, NSG=%s, OSDisk=%s, DataDisk=%s",
-		vmName, resourceInfo.nicName, resourceInfo.nsgName, resourceInfo.osDiskName, resourceInfo.dataDiskName)
+	slog.Info("Deleting box with resources", "vmName", vmName, "nicName", resourceInfo.nicName, "nsgName", resourceInfo.nsgName, "osDiskName", resourceInfo.osDiskName, "dataDiskName", resourceInfo.dataDiskName)
 
 	// Delete resources in order: VM, data disk, OS disk, NIC, NSG
 	deleteVM(ctx, clients, resourceGroupName, vmName, err == nil)
@@ -372,7 +371,7 @@ func DeleteInstance(ctx context.Context, clients *AzureClients, resourceGroupNam
 	deleteNIC(ctx, clients, resourceGroupName, resourceInfo.nicName, resourceInfo.nicID)
 	deleteNSG(ctx, clients, resourceGroupName, resourceInfo.nsgName)
 
-	log.Printf("Box deletion completed: %s", vmName)
+	slog.Info("Box deletion completed", "vmName", vmName)
 	return nil
 }
 
@@ -451,18 +450,18 @@ func deleteVM(ctx context.Context, clients *AzureClients, resourceGroupName, vmN
 		return
 	}
 
-	log.Printf("Deleting VM: %s", vmName)
+	slog.Info("Deleting VM", "vmName", vmName)
 	vmDelete, err := clients.ComputeClient.BeginDelete(ctx, resourceGroupName, vmName, nil)
 	if err != nil {
-		log.Printf("Failed to start VM deletion %s: %v", vmName, err)
+		slog.Error("Failed to start VM deletion", "vmName", vmName, "error", err)
 		return
 	}
 
 	_, err = vmDelete.PollUntilDone(ctx, nil)
 	if err != nil {
-		log.Printf("Failed waiting for VM deletion %s: %v", vmName, err)
+		slog.Error("Failed waiting for VM deletion", "vmName", vmName, "error", err)
 	} else {
-		log.Printf("Successfully deleted VM: %s", vmName)
+		slog.Info("Successfully deleted VM", "vmName", vmName)
 	}
 }
 
@@ -472,18 +471,18 @@ func deleteDisk(ctx context.Context, clients *AzureClients, resourceGroupName, d
 		return
 	}
 
-	log.Printf("Deleting %s: %s", diskType, diskName)
+	slog.Info("Deleting disk", "diskType", diskType, "diskName", diskName)
 	diskDelete, err := clients.DisksClient.BeginDelete(ctx, resourceGroupName, diskName, nil)
 	if err != nil {
-		log.Printf("Failed to start %s deletion %s: %v", diskType, diskName, err)
+		slog.Error("Failed to start disk deletion", "diskType", diskType, "diskName", diskName, "error", err)
 		return
 	}
 
 	_, err = diskDelete.PollUntilDone(ctx, nil)
 	if err != nil {
-		log.Printf("Failed waiting for %s deletion %s: %v", diskType, diskName, err)
+		slog.Error("Failed waiting for disk deletion", "diskType", diskType, "diskName", diskName, "error", err)
 	} else {
-		log.Printf("Successfully deleted %s: %s", diskType, diskName)
+		slog.Info("Successfully deleted disk", "diskType", diskType, "diskName", diskName)
 	}
 }
 
@@ -499,18 +498,18 @@ func deleteNIC(ctx context.Context, clients *AzureClients, resourceGroupName, ni
 		return
 	}
 
-	log.Printf("Deleting NIC: %s", targetNICName)
+	slog.Info("Deleting NIC", "nicName", targetNICName)
 	nicDelete, err := clients.NICClient.BeginDelete(ctx, resourceGroupName, targetNICName, nil)
 	if err != nil {
-		log.Printf("Failed to start NIC deletion %s: %v", targetNICName, err)
+		slog.Error("Failed to start NIC deletion", "nicName", targetNICName, "error", err)
 		return
 	}
 
 	_, err = nicDelete.PollUntilDone(ctx, nil)
 	if err != nil {
-		log.Printf("Failed waiting for NIC deletion %s: %v", targetNICName, err)
+		slog.Error("Failed waiting for NIC deletion", "nicName", targetNICName, "error", err)
 	} else {
-		log.Printf("Successfully deleted NIC: %s", targetNICName)
+		slog.Info("Successfully deleted NIC", "nicName", targetNICName)
 	}
 }
 
@@ -520,18 +519,18 @@ func deleteNSG(ctx context.Context, clients *AzureClients, resourceGroupName, ns
 		return
 	}
 
-	log.Printf("Deleting NSG: %s", nsgName)
+	slog.Info("Deleting NSG", "nsgName", nsgName)
 	nsgDelete, err := clients.NSGClient.BeginDelete(ctx, resourceGroupName, nsgName, nil)
 	if err != nil {
-		log.Printf("Failed to start NSG deletion %s: %v", nsgName, err)
+		slog.Error("Failed to start NSG deletion", "nsgName", nsgName, "error", err)
 		return
 	}
 
 	_, err = nsgDelete.PollUntilDone(ctx, nil)
 	if err != nil {
-		log.Printf("Failed waiting for NSG deletion %s: %v", nsgName, err)
+		slog.Error("Failed waiting for NSG deletion", "nsgName", nsgName, "error", err)
 	} else {
-		log.Printf("Successfully deleted NSG: %s", nsgName)
+		slog.Info("Successfully deleted NSG", "nsgName", nsgName)
 	}
 }
 

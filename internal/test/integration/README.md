@@ -107,7 +107,7 @@ export TEST_CLEANUP_TIMEOUT="15m"
 export TEST_PARALLEL_LIMIT="1"
 export TEST_RESOURCE_GROUP_PREFIX="nettest"
 export TEST_LOCATION="westus2"
-export SKIP_AZURE_TESTS="false"
+# Note: Azure tests always run - no skip option
 ```
 
 ## Test Duration and Resources

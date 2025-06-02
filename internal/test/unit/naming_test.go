@@ -16,7 +16,7 @@ import (
 // NamingTestSuite tests the resource naming functionality
 type NamingTestSuite struct {
 	suite.Suite
-	env *test.TestEnvironment
+	env *test.Environment
 }
 
 // SetupSuite runs once before all tests in the suite
@@ -154,9 +154,21 @@ func (suite *NamingTestSuite) TestStorageNaming() {
 
 	// Test storage account naming (Azure storage accounts cannot contain hyphens)
 	storageAccount := namer.StorageAccountName()
-	assert.Contains(suite.T(), storageAccount, "shellbox", "Storage account should contain shellbox")
-	assert.Contains(suite.T(), storageAccount, "storage-test", "Storage account should contain the suffix")
-	// Note: Azure storage accounts can contain hyphens in names, just not in certain contexts
+	assert.Contains(suite.T(), storageAccount, "sb", "Storage account should contain sb prefix")
+	assert.Contains(suite.T(), storageAccount, "storagetest", "Storage account should contain cleaned suffix")
+
+	// Test shared storage account naming
+	sharedStorageAccount := namer.SharedStorageAccountName()
+	assert.Equal(suite.T(), "shellboxtest", sharedStorageAccount, "Shared storage account should be fixed name")
+
+	// Test table naming
+	eventLogTable := namer.EventLogTableName()
+	assert.Contains(suite.T(), eventLogTable, "EventLog", "EventLog table should contain EventLog")
+	assert.Contains(suite.T(), eventLogTable, suffix, "EventLog table should contain suffix")
+
+	resourceRegistryTable := namer.ResourceRegistryTableName()
+	assert.Contains(suite.T(), resourceRegistryTable, "ResourceRegistry", "ResourceRegistry table should contain ResourceRegistry")
+	assert.Contains(suite.T(), resourceRegistryTable, suffix, "ResourceRegistry table should contain suffix")
 
 	// Test disk naming
 	bastionOSDisk := namer.BastionOSDiskName()
@@ -200,6 +212,9 @@ func (suite *NamingTestSuite) TestValidResourceNames() {
 		namer.VolumePoolDiskName("test-uuid"),
 		namer.GoldenSnapshotName(),
 		namer.StorageAccountName(),
+		namer.SharedStorageAccountName(),
+		namer.EventLogTableName(),
+		namer.ResourceRegistryTableName(),
 	}
 
 	for _, name := range names {
@@ -221,7 +236,7 @@ func (suite *NamingTestSuite) TestFrameworkItself() {
 	require.NotEmpty(suite.T(), suite.env.Suffix, "Test environment should have a suffix")
 
 	// Test configuration loading
-	config := test.LoadTestConfig()
+	config := test.LoadConfig()
 	require.NotNil(suite.T(), config, "Test config should load successfully")
 
 	// Test category checking

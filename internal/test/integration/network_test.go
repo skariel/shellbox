@@ -17,6 +17,7 @@ import (
 )
 
 func TestCreateVirtualNetwork(t *testing.T) {
+	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
 
 	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
@@ -68,6 +69,7 @@ func TestCreateVirtualNetwork(t *testing.T) {
 }
 
 func TestCreateNetworkSecurityGroup(t *testing.T) {
+	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
 
 	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
@@ -135,6 +137,7 @@ func TestCreateNetworkSecurityGroup(t *testing.T) {
 }
 
 func TestCreateSubnet(t *testing.T) {
+	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
 
 	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
@@ -206,6 +209,7 @@ func TestCreateSubnet(t *testing.T) {
 }
 
 func TestNetworkSecurityGroupWithSubnet(t *testing.T) {
+	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
 
 	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
@@ -284,6 +288,7 @@ func TestNetworkSecurityGroupWithSubnet(t *testing.T) {
 }
 
 func TestNetworkInfrastructureIntegration(t *testing.T) {
+	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
 
 	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
@@ -343,6 +348,7 @@ func TestNetworkInfrastructureIntegration(t *testing.T) {
 }
 
 func TestNetworkInfrastructureIdempotency(t *testing.T) {
+	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
 
 	env := test.SetupTestEnvironment(t, test.CategoryIntegration)

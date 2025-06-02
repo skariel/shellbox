@@ -6,7 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
-	"log"
+	"log/slog"
 	"os/exec"
 	"strings"
 	"time"
@@ -152,10 +152,10 @@ func CreateGoldenSnapshotIfNotExists(ctx context.Context, clients *AzureClients,
 	}
 
 	// Check if golden snapshot already exists in the persistent resource group
-	log.Printf("Checking for existing golden snapshot: %s in %s", snapshotName, GoldenSnapshotResourceGroup)
+	slog.Info("Checking for existing golden snapshot", "snapshotName", snapshotName, "resourceGroup", GoldenSnapshotResourceGroup)
 	existing, err := clients.SnapshotsClient.Get(ctx, GoldenSnapshotResourceGroup, snapshotName, nil)
 	if err == nil {
-		log.Printf("Found existing golden snapshot: %s", snapshotName)
+		slog.Info("Found existing golden snapshot", "snapshotName", snapshotName)
 		return &GoldenSnapshotInfo{
 			Name:        *existing.Name,
 			ResourceID:  *existing.ID,
@@ -165,11 +165,11 @@ func CreateGoldenSnapshotIfNotExists(ctx context.Context, clients *AzureClients,
 		}, nil
 	}
 
-	log.Printf("Golden snapshot not found, creating new one: %s", snapshotName)
+	slog.Info("Golden snapshot not found, creating new one", "snapshotName", snapshotName)
 
 	// Create temporary box VM with data volume for QEMU setup
 	tempBoxName := fmt.Sprintf("temp-golden-%d", time.Now().Unix())
-	log.Printf("Creating temporary box VM: %s", tempBoxName)
+	slog.Info("Creating temporary box VM", "tempBoxName", tempBoxName)
 
 	tempBox, err := createBoxWithDataVolume(ctx, clients, GoldenSnapshotResourceGroup, tempBoxName)
 	if err != nil {
@@ -177,34 +177,34 @@ func CreateGoldenSnapshotIfNotExists(ctx context.Context, clients *AzureClients,
 	}
 
 	// Wait for the VM to be ready and QEMU setup to complete
-	log.Printf("Waiting for QEMU setup to complete on temporary box...")
+	slog.Info("Waiting for QEMU setup to complete on temporary box")
 	if err := waitForQEMUSetup(ctx, clients, tempBox); err != nil {
 		// Cleanup temp resources on failure
 		if cleanupErr := DeleteInstance(ctx, clients, GoldenSnapshotResourceGroup, tempBoxName); cleanupErr != nil {
-			log.Printf("Warning: failed to cleanup temporary box during error recovery: %v", cleanupErr)
+			slog.Warn("Failed to cleanup temporary box during error recovery", "error", cleanupErr)
 		}
 		return nil, fmt.Errorf("failed waiting for QEMU setup: %w", err)
 	}
 
 	// Create snapshot from the data volume in the persistent resource group
-	log.Printf("Creating snapshot from data volume...")
+	slog.Info("Creating snapshot from data volume")
 	snapshotInfo, err := createSnapshotFromDataVolume(ctx, clients, GoldenSnapshotResourceGroup, snapshotName, tempBox.DataDiskID)
 	if err != nil {
 		// Cleanup temp resources on failure
 		if cleanupErr := DeleteInstance(ctx, clients, GoldenSnapshotResourceGroup, tempBoxName); cleanupErr != nil {
-			log.Printf("Warning: failed to cleanup temporary box during error recovery: %v", cleanupErr)
+			slog.Warn("Failed to cleanup temporary box during error recovery", "error", cleanupErr)
 		}
 		return nil, fmt.Errorf("failed to create snapshot: %w", err)
 	}
 
 	// Cleanup temporary resources
-	log.Printf("Cleaning up temporary resources...")
+	slog.Info("Cleaning up temporary resources")
 	if err := DeleteInstance(ctx, clients, GoldenSnapshotResourceGroup, tempBoxName); err != nil {
-		log.Printf("Warning: failed to cleanup temporary box %s: %v", tempBoxName, err)
+		slog.Warn("Failed to cleanup temporary box", "tempBoxName", tempBoxName, "error", err)
 		// Don't fail the operation - snapshot was created successfully
 	}
 
-	log.Printf("Golden snapshot created successfully: %s", snapshotName)
+	slog.Info("Golden snapshot created successfully", "snapshotName", snapshotName)
 	return snapshotInfo, nil
 }
 
@@ -303,10 +303,10 @@ func createBoxWithDataVolume(ctx context.Context, clients *AzureClients, resourc
 
 // waitForQEMUSetup waits for the QEMU VM to be accessible via SSH on port 2222
 func waitForQEMUSetup(ctx context.Context, _ *AzureClients, tempBox *tempBoxInfo) error {
-	log.Printf("Waiting for QEMU VM to be SSH-ready on %s (%s)...", tempBox.VMName, tempBox.PrivateIP)
+	slog.Info("Waiting for QEMU VM to be SSH-ready", "vmName", tempBox.VMName, "privateIP", tempBox.PrivateIP)
 
 	// Test SSH connectivity to the QEMU VM - this is the definitive test
-	log.Printf("Testing SSH connectivity to QEMU VM on port %d...", BoxSSHPort)
+	slog.Info("Testing SSH connectivity to QEMU VM", "port", BoxSSHPort)
 	return RetryOperation(ctx, func(ctx context.Context) error {
 		// Test SSH connection directly to the QEMU VM from bastion
 		// We need to execute this test from the bastion, not from within the instance
@@ -322,26 +322,26 @@ func waitForQEMUSetup(ctx context.Context, _ *AzureClients, tempBox *tempBoxInfo
 		}
 
 		// Save the QEMU VM state and cleanly shut down to preserve the SSH-ready state
-		log.Printf("QEMU VM SSH confirmed working, saving VM state...")
+		slog.Info("QEMU VM SSH confirmed working, saving VM state")
 		saveCmd := `echo -e "savevm ssh-ready\nquit" | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock`
 		stopErr := sshutil.ExecuteCommand(ctx, saveCmd, AdminUsername, tempBox.PrivateIP)
 		if stopErr != nil {
-			log.Printf("Warning: failed to save QEMU VM state: %v", stopErr)
+			slog.Warn("Failed to save QEMU VM state", "error", stopErr)
 			// Fallback to force quit if savevm fails
 			fallbackErr := sshutil.ExecuteCommand(ctx, "sudo pkill qemu-system-x86_64", AdminUsername, tempBox.PrivateIP)
 			if fallbackErr != nil {
-				log.Printf("Warning: fallback pkill also failed: %v", fallbackErr)
+				slog.Warn("Fallback pkill also failed", "error", fallbackErr)
 			}
 		}
 
-		log.Printf("QEMU VM SSH-ready state prepared on %s", tempBox.VMName)
+		slog.Info("QEMU VM SSH-ready state prepared", "vmName", tempBox.VMName)
 		return nil
 	}, 15*time.Minute, 30*time.Second, "QEMU VM SSH connectivity")
 }
 
 // createSnapshotFromDataVolume creates a snapshot from the specified data volume
 func createSnapshotFromDataVolume(ctx context.Context, clients *AzureClients, resourceGroupName, snapshotName, dataDiskID string) (*GoldenSnapshotInfo, error) {
-	log.Printf("Creating snapshot %s from disk %s", snapshotName, dataDiskID)
+	slog.Info("Creating snapshot", "snapshotName", snapshotName, "dataDiskID", dataDiskID)
 
 	snapshot, err := clients.SnapshotsClient.BeginCreateOrUpdate(ctx, resourceGroupName, snapshotName, armcompute.Snapshot{
 		Location: to.Ptr(Location),
@@ -504,17 +504,17 @@ func extractSuffix(resourceGroupName string) string {
 
 // ensureGoldenSnapshotResourceGroup creates the persistent resource group for golden snapshots if it doesn't exist
 func ensureGoldenSnapshotResourceGroup(ctx context.Context, clients *AzureClients) error {
-	log.Printf("Ensuring persistent resource group exists: %s", GoldenSnapshotResourceGroup)
+	slog.Info("Ensuring persistent resource group exists", "resourceGroup", GoldenSnapshotResourceGroup)
 
 	// Check if resource group already exists
 	_, err := clients.ResourceClient.Get(ctx, GoldenSnapshotResourceGroup, nil)
 	if err == nil {
-		log.Printf("Persistent resource group already exists: %s", GoldenSnapshotResourceGroup)
+		slog.Info("Persistent resource group already exists", "resourceGroup", GoldenSnapshotResourceGroup)
 		return nil
 	}
 
 	// Create the resource group
-	log.Printf("Creating persistent resource group: %s", GoldenSnapshotResourceGroup)
+	slog.Info("Creating persistent resource group", "resourceGroup", GoldenSnapshotResourceGroup)
 	_, err = clients.ResourceClient.CreateOrUpdate(ctx, GoldenSnapshotResourceGroup, armresources.ResourceGroup{
 		Location: to.Ptr(Location),
 		Tags: map[string]*string{
@@ -527,7 +527,7 @@ func ensureGoldenSnapshotResourceGroup(ctx context.Context, clients *AzureClient
 		return fmt.Errorf("failed to create persistent resource group: %w", err)
 	}
 
-	log.Printf("Created persistent resource group: %s", GoldenSnapshotResourceGroup)
+	slog.Info("Created persistent resource group", "resourceGroup", GoldenSnapshotResourceGroup)
 	return nil
 }
 

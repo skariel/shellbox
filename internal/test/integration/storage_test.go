@@ -13,10 +13,12 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"shellbox/internal/infra"
+	"shellbox/internal/sshutil"
 	"shellbox/internal/test"
 )
 
 func TestCreateVolume(t *testing.T) {
+	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
 
 	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
@@ -43,7 +45,7 @@ func TestCreateVolume(t *testing.T) {
 
 	// Verify volume properties
 	assert.Equal(t, volumeName, volumeInfo.Name, "volume should have correct name")
-	assert.Equal(t, infra.DefaultVolumeSizeGB, volumeInfo.SizeGB, "volume should have correct size")
+	assert.Equal(t, int32(infra.DefaultVolumeSizeGB), volumeInfo.SizeGB, "volume should have correct size")
 	assert.Equal(t, infra.Location, volumeInfo.Location, "volume should be in correct location")
 	assert.NotEmpty(t, volumeInfo.ResourceID, "volume should have resource ID")
 	assert.Equal(t, volumeID, volumeInfo.VolumeID, "volume should have correct volume ID")
@@ -60,7 +62,7 @@ func TestCreateVolume(t *testing.T) {
 	disk, err := env.Clients.DisksClient.Get(ctx, env.ResourceGroupName, volumeName, nil)
 	require.NoError(t, err, "should be able to retrieve created volume")
 	assert.Equal(t, volumeName, *disk.Name, "retrieved volume should have correct name")
-	assert.Equal(t, infra.DefaultVolumeSizeGB, *disk.Properties.DiskSizeGB, "retrieved volume should have correct size")
+	assert.Equal(t, int32(infra.DefaultVolumeSizeGB), *disk.Properties.DiskSizeGB, "retrieved volume should have correct size")
 
 	// Verify tags are correctly set
 	require.NotNil(t, disk.Tags, "volume should have tags")
@@ -80,6 +82,7 @@ func TestCreateVolume(t *testing.T) {
 }
 
 func TestCreateVolumeWithCustomSize(t *testing.T) {
+	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
 
 	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
@@ -88,25 +91,21 @@ func TestCreateVolumeWithCustomSize(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
-	volumeID := uuid.New().String()
-	namer := env.GetResourceNamer()
-	volumeName := namer.VolumePoolDiskName(volumeID)
 	customSize := int32(250) // 250GB
 
 	test.LogTestProgress(t, "creating volume with custom size", "size", customSize)
 
 	// Create volume with custom size
-	tags := infra.VolumeTags{
-		Role:     infra.ResourceRoleVolume,
-		Status:   infra.ResourceStatusFree,
-		VolumeID: volumeID,
-	}
-
-	volumeInfo, err := infra.CreateVolume(ctx, env.Clients, env.ResourceGroupName, volumeName, customSize, tags)
+	config := &infra.VolumeConfig{DiskSize: customSize}
+	volumeID, err := infra.CreateVolume(ctx, env.Clients, config)
 	require.NoError(t, err, "should create volume with custom size without error")
 
-	// Verify custom size
-	assert.Equal(t, customSize, volumeInfo.SizeGB, "volume should have custom size")
+	// Verify volume was created
+	assert.NotEmpty(t, volumeID, "volume ID should be returned")
+
+	// Generate volume name from the returned volume ID
+	namer := env.GetResourceNamer()
+	volumeName := namer.VolumePoolDiskName(volumeID)
 
 	// Verify through direct retrieval
 	disk, err := env.Clients.DisksClient.Get(ctx, env.ResourceGroupName, volumeName, nil)
@@ -119,6 +118,7 @@ func TestCreateVolumeWithCustomSize(t *testing.T) {
 }
 
 func TestFindVolumesByRole(t *testing.T) {
+	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
 
 	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
@@ -137,32 +137,45 @@ func TestFindVolumesByRole(t *testing.T) {
 		role     string
 		name     string
 	}{
-		{uuid.New().String(), infra.ResourceRoleVolume, ""},
-		{uuid.New().String(), infra.ResourceRoleVolume, ""},
-		{uuid.New().String(), "temp", ""},
+		{"", infra.ResourceRoleVolume, ""},
+		{"", infra.ResourceRoleVolume, ""},
+		{"", "temp", ""},
 	}
 
-	// Set volume names
+	// Create all volumes and capture their IDs
 	for i := range volumes {
-		volumes[i].name = namer.VolumePoolDiskName(volumes[i].volumeID)
-	}
+		if volumes[i].role == infra.ResourceRoleVolume {
+			// Use CreateVolume for standard volumes
+			config := &infra.VolumeConfig{DiskSize: infra.DefaultVolumeSizeGB}
+			volumeID, err := infra.CreateVolume(ctx, env.Clients, config)
+			require.NoError(t, err, "should create volume without error")
 
-	// Create all volumes
-	for _, vol := range volumes {
-		tags := infra.VolumeTags{
-			Role:     vol.role,
-			Status:   infra.ResourceStatusFree,
-			VolumeID: vol.volumeID,
+			volumes[i].volumeID = volumeID
+			volumes[i].name = namer.VolumePoolDiskName(volumeID)
+		} else {
+			// Use CreateVolumeWithTags for custom roles
+			volumeID := uuid.New().String()
+			volumeName := namer.VolumePoolDiskName(volumeID)
+			tags := infra.VolumeTags{
+				Role:      volumes[i].role,
+				Status:    infra.ResourceStatusFree,
+				CreatedAt: time.Now().UTC().Format(time.RFC3339),
+				LastUsed:  time.Now().UTC().Format(time.RFC3339),
+				VolumeID:  volumeID,
+			}
+
+			_, err := infra.CreateVolumeWithTags(ctx, env.Clients, env.ResourceGroupName, volumeName, infra.DefaultVolumeSizeGB, tags)
+			require.NoError(t, err, "should create volume with custom role without error")
+
+			volumes[i].volumeID = volumeID
+			volumes[i].name = volumeName
 		}
-
-		_, err := infra.CreateVolume(ctx, env.Clients, env.ResourceGroupName, vol.name, infra.DefaultVolumeSizeGB, tags)
-		require.NoError(t, err, "should create volume %s without error", vol.name)
 	}
 
 	test.LogTestProgress(t, "finding volumes by role")
 
-	// Find volumes by role
-	volumeRoleNames, err := infra.FindVolumesByRole(ctx, env.Clients, env.ResourceGroupName, infra.ResourceRoleVolume)
+	// Find volumes by role (filter by test suffix for isolation)
+	volumeRoleNames, err := infra.FindVolumesByRole(ctx, env.Clients, env.ResourceGroupName, infra.ResourceRoleVolume, env.Suffix)
 	require.NoError(t, err, "should find volumes by role without error")
 
 	// Should find exactly 2 volumes with "volume" role
@@ -174,14 +187,14 @@ func TestFindVolumesByRole(t *testing.T) {
 		assert.Contains(t, volumeRoleNames, expectedName, "should find volume %s", expectedName)
 	}
 
-	// Find temp volumes
-	tempVolumeNames, err := infra.FindVolumesByRole(ctx, env.Clients, env.ResourceGroupName, "temp")
+	// Find temp volumes (filter by test suffix for isolation)
+	tempVolumeNames, err := infra.FindVolumesByRole(ctx, env.Clients, env.ResourceGroupName, "temp", env.Suffix)
 	require.NoError(t, err, "should find temp volumes without error")
 	assert.Len(t, tempVolumeNames, 1, "should find exactly 1 temp volume")
 	assert.Contains(t, tempVolumeNames, volumes[2].name, "should find temp volume")
 
-	// Find non-existent role
-	nonExistentNames, err := infra.FindVolumesByRole(ctx, env.Clients, env.ResourceGroupName, "nonexistent")
+	// Find non-existent role (filter by test suffix for isolation)
+	nonExistentNames, err := infra.FindVolumesByRole(ctx, env.Clients, env.ResourceGroupName, "nonexistent", env.Suffix)
 	require.NoError(t, err, "should handle non-existent role without error")
 	assert.Len(t, nonExistentNames, 0, "should find no volumes with non-existent role")
 
@@ -195,6 +208,7 @@ func TestFindVolumesByRole(t *testing.T) {
 }
 
 func TestUpdateVolumeStatus(t *testing.T) {
+	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
 
 	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
@@ -203,21 +217,15 @@ func TestUpdateVolumeStatus(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
-	volumeID := uuid.New().String()
-	namer := env.GetResourceNamer()
-	volumeName := namer.VolumePoolDiskName(volumeID)
-
 	test.LogTestProgress(t, "creating volume for status update test")
 
 	// Create initial volume
-	tags := infra.VolumeTags{
-		Role:     infra.ResourceRoleVolume,
-		Status:   infra.ResourceStatusFree,
-		VolumeID: volumeID,
-	}
-
-	_, err := infra.CreateVolume(ctx, env.Clients, env.ResourceGroupName, volumeName, infra.DefaultVolumeSizeGB, tags)
+	config := &infra.VolumeConfig{DiskSize: infra.DefaultVolumeSizeGB}
+	volumeID, err := infra.CreateVolume(ctx, env.Clients, config)
 	require.NoError(t, err, "should create volume without error")
+
+	namer := env.GetResourceNamer()
+	volumeName := namer.VolumePoolDiskName(volumeID)
 
 	// Verify initial status
 	disk, err := env.Clients.DisksClient.Get(ctx, env.ResourceGroupName, volumeName, nil)
@@ -255,6 +263,7 @@ func TestUpdateVolumeStatus(t *testing.T) {
 }
 
 func TestVolumeAttachmentToInstance(t *testing.T) {
+	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
 
 	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
@@ -268,36 +277,35 @@ func TestVolumeAttachmentToInstance(t *testing.T) {
 	// First create network infrastructure (required for VM creation)
 	infra.CreateNetworkInfrastructure(ctx, env.Clients, env.Config.UseAzureCLI)
 
-	volumeID := uuid.New().String()
-	instanceID := uuid.New().String()
-	namer := env.GetResourceNamer()
-	volumeName := namer.VolumePoolDiskName(volumeID)
-	vmName := namer.BoxVMName(instanceID)
+	test.LogTestProgress(t, "creating volume for attachment test")
+
+	// Create volume
+	config := &infra.VolumeConfig{DiskSize: infra.DefaultVolumeSizeGB}
+	volumeID, err := infra.CreateVolume(ctx, env.Clients, config)
+	require.NoError(t, err, "should create volume without error")
 
 	test.LogTestProgress(t, "creating volume for attachment test", "volumeID", volumeID)
 
-	// Create volume
-	tags := infra.VolumeTags{
-		Role:     infra.ResourceRoleVolume,
-		Status:   infra.ResourceStatusFree,
-		VolumeID: volumeID,
+	// Create instance (VM) for attachment
+	// Load SSH public key using the same function as production
+	_, sshPublicKey, err := sshutil.LoadKeyPair("/home/ubuntu/.ssh/id_ed25519")
+	require.NoError(t, err, "should load SSH key")
+
+	vmConfig := &infra.VMConfig{
+		AdminUsername: infra.AdminUsername,
+		SSHPublicKey:  sshPublicKey,
+		VMSize:        "Standard_B2s", // Smaller size for faster testing
 	}
 
-	_, err := infra.CreateVolume(ctx, env.Clients, env.ResourceGroupName, volumeName, infra.DefaultVolumeSizeGB, tags)
-	require.NoError(t, err, "should create volume without error")
+	instanceID, err := infra.CreateInstance(ctx, env.Clients, vmConfig)
+	require.NoError(t, err, "should create instance without error")
 
 	test.LogTestProgress(t, "creating instance for attachment test", "instanceID", instanceID)
 
-	// Create instance (VM) for attachment
-	vmConfig := &infra.VMConfig{
-		AdminUsername: infra.AdminUsername,
-		SSHPublicKey:  "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC...", // Mock SSH key for testing
-		VMSize:        "Standard_B2s",                               // Smaller size for faster testing
-	}
-
-	createdInstanceID, err := infra.CreateInstance(ctx, env.Clients, vmConfig)
-	require.NoError(t, err, "should create instance without error")
-	assert.Equal(t, instanceID, createdInstanceID, "created instance ID should match")
+	// Get resource names using the actual instance ID
+	namer := env.GetResourceNamer()
+	vmName := namer.BoxVMName(instanceID)
+	volumeName := namer.VolumePoolDiskName(volumeID)
 
 	// Wait for VM to be fully provisioned
 	test.LogTestProgress(t, "waiting for instance to be fully provisioned")
@@ -347,6 +355,7 @@ func TestVolumeAttachmentToInstance(t *testing.T) {
 }
 
 func TestVolumeLifecycle(t *testing.T) {
+	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
 
 	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
@@ -384,7 +393,7 @@ func TestVolumeLifecycle(t *testing.T) {
 
 	// 4. Find volume by role
 	test.LogTestProgress(t, "step 4: finding volume by role")
-	volumeNames, err := infra.FindVolumesByRole(ctx, env.Clients, env.ResourceGroupName, infra.ResourceRoleVolume)
+	volumeNames, err := infra.FindVolumesByRole(ctx, env.Clients, env.ResourceGroupName, infra.ResourceRoleVolume, env.Suffix)
 	require.NoError(t, err, "step 4: should find volumes by role")
 	assert.Contains(t, volumeNames, volumeName, "step 4: should find our volume")
 
@@ -411,6 +420,7 @@ func TestVolumeLifecycle(t *testing.T) {
 }
 
 func TestVolumeErrorHandling(t *testing.T) {
+	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
 
 	env := test.SetupTestEnvironment(t, test.CategoryIntegration)

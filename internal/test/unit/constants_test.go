@@ -21,7 +21,7 @@ import (
 // ConstantsTestSuite tests the constants and configuration validation
 type ConstantsTestSuite struct {
 	suite.Suite
-	env *test.TestEnvironment
+	env *test.Environment
 }
 
 // SetupSuite runs once before all tests in the suite

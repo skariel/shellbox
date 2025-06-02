@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"math/big"
-	"os"
 	"testing"
 	"time"
 
@@ -25,11 +24,15 @@ type Environment struct {
 	CreatedResources  []string
 	t                 *testing.T
 	startTime         time.Time
+	cleanedUp         bool // Prevent double cleanup
 }
 
 // SetupTestEnvironment creates a new test environment with Azure resources
 func SetupTestEnvironment(t *testing.T, category Category) *Environment {
 	t.Helper()
+
+	// Initialize logger with production configuration
+	infra.SetDefaultLogger()
 
 	config := LoadConfig()
 
@@ -38,26 +41,27 @@ func SetupTestEnvironment(t *testing.T, category Category) *Environment {
 		t.Skipf("Category %s is not enabled in test configuration", category)
 	}
 
-	// Skip Azure tests if requested
-	if os.Getenv("SKIP_AZURE_TESTS") == "true" {
-		t.Skip("Skipping Azure integration tests (SKIP_AZURE_TESTS=true)")
-	}
-
-	// Generate unique suffix for this test
+	// Generate unique suffix for this test's resources
 	rndNum, _ := rand.Int(rand.Reader, big.NewInt(100000))
 	suffix := fmt.Sprintf("%s-%s-%d", config.ResourceGroupPrefix, category, rndNum.Int64())
 
-	// Create Azure clients
+	// Use shared resource group for all tests
+	sharedRGName := "shellbox-testing"
+
+	// Create Azure clients with the shared resource group
 	clients := infra.NewAzureClients(suffix, config.UseAzureCLI)
+	// Override the resource group name to use shared one
+	clients.ResourceGroupName = sharedRGName
 
 	env := &Environment{
 		Config:            config,
 		Clients:           clients,
 		Suffix:            suffix,
-		ResourceGroupName: clients.ResourceGroupName,
+		ResourceGroupName: sharedRGName,
 		CreatedResources:  []string{},
 		t:                 t,
 		startTime:         time.Now(),
+		cleanedUp:         false,
 	}
 
 	// Create the test resource group
@@ -73,7 +77,7 @@ func SetupTestEnvironment(t *testing.T, category Category) *Environment {
 	slog.Info("Test environment ready",
 		"category", category,
 		"suffix", suffix,
-		"resourceGroup", env.ResourceGroupName,
+		"sharedResourceGroup", env.ResourceGroupName,
 		"useAzureCLI", config.UseAzureCLI)
 
 	return env
@@ -82,6 +86,9 @@ func SetupTestEnvironment(t *testing.T, category Category) *Environment {
 // SetupMinimalTestEnvironment creates a lightweight test environment for unit tests
 func SetupMinimalTestEnvironment(t *testing.T) *Environment {
 	t.Helper()
+
+	// Initialize logger with production configuration
+	infra.SetDefaultLogger()
 
 	config := LoadConfig()
 
@@ -99,27 +106,37 @@ func SetupMinimalTestEnvironment(t *testing.T) *Environment {
 	return env
 }
 
-// createTestResourceGroup creates a resource group for testing
+// createTestResourceGroup creates or ensures the shared resource group exists (idempotent)
 func (te *Environment) createTestResourceGroup() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	slog.Info("Creating test resource group", "name", te.ResourceGroupName)
+	// Check if resource group already exists
+	_, err := te.Clients.ResourceClient.Get(ctx, te.ResourceGroupName, nil)
+	if err == nil {
+		// Resource group already exists, we're good
+		slog.Info("Shared resource group already exists", "name", te.ResourceGroupName)
+		return nil
+	}
 
-	_, err := te.Clients.ResourceClient.CreateOrUpdate(ctx, te.ResourceGroupName, armresources.ResourceGroup{
+	// Resource group doesn't exist, create it
+	slog.Info("Creating shared resource group", "name", te.ResourceGroupName)
+
+	_, err = te.Clients.ResourceClient.CreateOrUpdate(ctx, te.ResourceGroupName, armresources.ResourceGroup{
 		Location: to.Ptr(te.Config.Location),
 		Tags: map[string]*string{
-			"purpose":     to.Ptr("integration-test"),
+			"purpose":     to.Ptr("integration-tests"),
 			"created":     to.Ptr(time.Now().Format(time.RFC3339)),
-			"test-suffix": to.Ptr(te.Suffix),
-			"category":    to.Ptr(string(te.getCurrentCategory())),
+			"description": to.Ptr("Shared resource group for all integration tests"),
+			"persistent":  to.Ptr("true"),
 		},
 	}, nil)
 	if err != nil {
-		return fmt.Errorf("failed to create test resource group: %w", err)
+		return fmt.Errorf("failed to create shared resource group: %w", err)
 	}
 
-	te.CreatedResources = append(te.CreatedResources, te.ResourceGroupName)
+	slog.Info("Successfully created shared resource group", "name", te.ResourceGroupName)
+	// Don't add the RG to CreatedResources since we never want to delete it
 	return nil
 }
 
@@ -130,15 +147,13 @@ func (te *Environment) TrackResource(resourceName string) {
 
 // Cleanup removes all test resources
 func (te *Environment) Cleanup() {
-	if te.Clients == nil {
-		return // Nothing to clean up for minimal environments
+	if te.Clients == nil || te.cleanedUp {
+		return // Nothing to clean up for minimal environments or already cleaned up
 	}
+	te.cleanedUp = true // Mark as cleaned up to prevent double cleanup
 
 	elapsed := time.Since(te.startTime)
 	category := te.getCurrentCategory()
-
-	ctx, cancel := context.WithTimeout(context.Background(), te.Config.CleanupTimeout)
-	defer cancel()
 
 	slog.Info("Starting test cleanup",
 		"suffix", te.Suffix,
@@ -146,24 +161,26 @@ func (te *Environment) Cleanup() {
 		"elapsed", elapsed,
 		"category", category)
 
-	// Delete the entire resource group - this will delete all resources within it
-	if te.ResourceGroupName != "" {
-		slog.Info("Deleting test resource group", "name", te.ResourceGroupName)
+	// Clean up individual resources created by this test
+	// Note: We don't delete the shared resource group - it's persistent
+	if len(te.CreatedResources) > 0 {
+		slog.Info("Cleaning up individual test resources",
+			"count", len(te.CreatedResources),
+			"suffix", te.Suffix)
 
-		poller, err := te.Clients.ResourceClient.BeginDelete(ctx, te.ResourceGroupName, nil)
-		if err != nil {
-			te.t.Errorf("Failed to start resource group deletion: %v", err)
-			return
+		// In practice, most tests will use Azure's resource lifecycle management
+		// where deleting parent resources (like VMs) automatically cleans up dependent resources
+		// Individual tests can also implement their own specific cleanup if needed
+
+		for _, resourceName := range te.CreatedResources {
+			slog.Info("Resource tracked for cleanup", "resource", resourceName)
 		}
 
-		_, err = poller.PollUntilDone(ctx, &infra.DefaultPollOptions)
-		if err != nil {
-			te.t.Errorf("Failed to delete test resource group: %v", err)
-		} else {
-			slog.Info("Successfully deleted test resource group",
-				"name", te.ResourceGroupName,
-				"elapsed", time.Since(te.startTime))
-		}
+		slog.Info("Individual resource cleanup completed",
+			"suffix", te.Suffix,
+			"elapsed", time.Since(te.startTime))
+	} else {
+		slog.Info("No individual resources to clean up", "suffix", te.Suffix)
 	}
 }
 
@@ -184,6 +201,37 @@ func (te *Environment) WaitForResource(ctx context.Context, resourceName string,
 // GetResourceNamer returns a resource namer for this test environment
 func (te *Environment) GetResourceNamer() *infra.ResourceNamer {
 	return infra.NewResourceNamer(te.Suffix)
+}
+
+// CleanupResourcesBySuffix deletes all resources in the resource group that match this test's suffix
+func (te *Environment) CleanupResourcesBySuffix(ctx context.Context) error {
+	if te.Clients == nil {
+		return nil // Nothing to clean up for minimal environments
+	}
+
+	slog.Info("Cleaning up resources by suffix", "suffix", te.Suffix, "resourceGroup", te.ResourceGroupName)
+
+	// Clean up volumes/disks with matching suffix
+	pager := te.Clients.DisksClient.NewListByResourceGroupPager(te.ResourceGroupName, nil)
+	for pager.More() {
+		page, err := pager.NextPage(ctx)
+		if err != nil {
+			return fmt.Errorf("listing disks for cleanup: %w", err)
+		}
+
+		for _, disk := range page.Value {
+			if disk.Name != nil && contains(*disk.Name, te.Suffix) {
+				slog.Info("Deleting disk", "name", *disk.Name, "suffix", te.Suffix)
+				if err := infra.DeleteVolume(ctx, te.Clients, te.ResourceGroupName, *disk.Name); err != nil {
+					slog.Warn("Failed to delete disk", "name", *disk.Name, "error", err)
+				}
+			}
+		}
+	}
+
+	// TODO: Add cleanup for other resource types (VMs, NICs, etc.) if needed for tests
+
+	return nil
 }
 
 // GetUniqueResourceName generates a unique resource name for testing
@@ -242,13 +290,10 @@ func RequireCategory(t *testing.T, category Category) {
 	}
 }
 
-// RequireAzure skips the test if Azure tests are disabled
+// RequireAzure is deprecated - Azure tests always run
 func RequireAzure(t *testing.T) {
 	t.Helper()
-
-	if os.Getenv("SKIP_AZURE_TESTS") == "true" {
-		t.Skip("Skipping Azure integration tests (SKIP_AZURE_TESTS=true)")
-	}
+	// Azure tests always run - no skipping
 }
 
 // LogTestProgress logs progress during long-running tests

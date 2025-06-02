@@ -74,7 +74,7 @@ func (m *MockAzureOperations) GetInstancePrivateIP(ctx context.Context, instance
 // ResourceAllocatorTestSuite tests the resource allocation logic
 type ResourceAllocatorTestSuite struct {
 	suite.Suite
-	env                 *test.TestEnvironment
+	env                 *test.Environment
 	mockResourceQueries *MockResourceGraphQueries
 	mockQEMU            *MockQEMUManager
 	mockAzureOps        *MockAzureOperations

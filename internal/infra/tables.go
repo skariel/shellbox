@@ -3,9 +3,11 @@ package infra
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/data/aztables"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/storage/armstorage"
@@ -18,7 +20,7 @@ type TableStorageResult struct {
 }
 
 // CreateTableStorageResources creates a storage account and tables
-func CreateTableStorageResources(ctx context.Context, clients *AzureClients, accountName string) TableStorageResult {
+func CreateTableStorageResources(ctx context.Context, clients *AzureClients, accountName string, tableNames []string) TableStorageResult {
 	result := TableStorageResult{}
 
 	storageClient, err := armstorage.NewAccountsClient(clients.SubscriptionID, clients.Cred, nil)
@@ -71,16 +73,31 @@ func CreateTableStorageResources(ctx context.Context, clients *AzureClients, acc
 		return result
 	}
 
-	tableNames := []string{tableEventLog, tableResourceRegistry}
+	// Use provided table names, or fall back to legacy defaults if none provided
+	if len(tableNames) == 0 {
+		tableNames = []string{tableEventLog, tableResourceRegistry}
+	}
+
 	for _, tableName := range tableNames {
 		_, err = tablesClient.CreateTable(ctx, tableName, nil)
 		if err != nil {
+			// Check if this is a "table already exists" error (idempotent operation)
+			var respErr *azcore.ResponseError
+			if errors.As(err, &respErr) && respErr.StatusCode == 409 && respErr.ErrorCode == "TableAlreadyExists" {
+				// Table already exists, this is fine for idempotent operations
+				continue
+			}
 			result.Error = fmt.Errorf("failed to create table %s: %w", tableName, err)
 			return result
 		}
 	}
 
 	return result
+}
+
+// CreateTableStorageResourcesLegacy creates a storage account with default table names (backward compatibility)
+func CreateTableStorageResourcesLegacy(ctx context.Context, clients *AzureClients, accountName string) TableStorageResult {
+	return CreateTableStorageResources(ctx, clients, accountName, nil)
 }
 
 // EventLogEntity represents an entry in the EventLog table
@@ -124,10 +141,44 @@ func writeTableEntity(ctx context.Context, clients *AzureClients, tableName stri
 
 // WriteEventLog writes an entry to the EventLog table
 func WriteEventLog(ctx context.Context, clients *AzureClients, event EventLogEntity) error {
-	return writeTableEntity(ctx, clients, tableEventLog, event)
+	namer := NewResourceNamer(clients.Suffix)
+	tableName := namer.EventLogTableName()
+	return writeTableEntity(ctx, clients, tableName, event)
 }
 
 // WriteResourceRegistry writes an entry to the ResourceRegistry table
 func WriteResourceRegistry(ctx context.Context, clients *AzureClients, resource ResourceRegistryEntity) error {
+	namer := NewResourceNamer(clients.Suffix)
+	tableName := namer.ResourceRegistryTableName()
+	return writeTableEntity(ctx, clients, tableName, resource)
+}
+
+// WriteEventLogLegacy writes an entry to the EventLog table using legacy table name (backward compatibility)
+func WriteEventLogLegacy(ctx context.Context, clients *AzureClients, event EventLogEntity) error {
+	return writeTableEntity(ctx, clients, tableEventLog, event)
+}
+
+// WriteResourceRegistryLegacy writes an entry to the ResourceRegistry table using legacy table name (backward compatibility)
+func WriteResourceRegistryLegacy(ctx context.Context, clients *AzureClients, resource ResourceRegistryEntity) error {
 	return writeTableEntity(ctx, clients, tableResourceRegistry, resource)
+}
+
+// CleanupTestTables deletes test tables with the given suffix (for test cleanup)
+func CleanupTestTables(ctx context.Context, clients *AzureClients, suffix string) error {
+	if clients.TableClient == nil {
+		return fmt.Errorf("table client not available")
+	}
+
+	namer := NewResourceNamer(suffix)
+	tableNames := []string{namer.EventLogTableName(), namer.ResourceRegistryTableName()}
+
+	for _, tableName := range tableNames {
+		_, err := clients.TableClient.DeleteTable(ctx, tableName, nil)
+		if err != nil {
+			// Log but don't fail on cleanup errors
+			return fmt.Errorf("failed to delete table %s: %w", tableName, err)
+		}
+	}
+
+	return nil
 }

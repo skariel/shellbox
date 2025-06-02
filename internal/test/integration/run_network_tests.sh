@@ -13,8 +13,7 @@ export TEST_PARALLEL_LIMIT="1"  # Run network tests sequentially to avoid confli
 export TEST_RESOURCE_GROUP_PREFIX="nettest"
 export TEST_LOCATION="westus2"
 
-# Azure configuration
-export SKIP_AZURE_TESTS="${SKIP_AZURE_TESTS:-false}"
+# Azure configuration  
 export AZURE_CLIENT_ID="${AZURE_CLIENT_ID:-}"
 
 # Verbose output for debugging
@@ -30,11 +29,7 @@ echo "  Location: $TEST_LOCATION"
 echo "  Azure CLI Mode: $([ -z "$AZURE_CLIENT_ID" ] && echo "yes" || echo "no")"
 echo ""
 
-# Check if Azure tests should be skipped
-if [ "$SKIP_AZURE_TESTS" = "true" ]; then
-    echo "⚠️  Skipping Azure integration tests (SKIP_AZURE_TESTS=true)"
-    exit 0
-fi
+# Azure tests always run - no skip logic
 
 # Verify Azure CLI authentication if needed
 if [ -z "$AZURE_CLIENT_ID" ]; then
@@ -94,7 +89,6 @@ echo "  $0 infrastructure    # Run full infrastructure tests"
 echo "  $0 naming            # Run naming and configuration tests"
 echo ""
 echo "🔧 Environment variables:"
-echo "  SKIP_AZURE_TESTS=true     # Skip all Azure tests"
 echo "  TEST_TIMEOUT=45m          # Set test timeout"
 echo "  TEST_PARALLEL_LIMIT=2     # Set parallel test limit"
 echo "  VERBOSE=false             # Reduce output verbosity"

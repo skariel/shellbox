@@ -17,6 +17,7 @@ import (
 )
 
 func TestResourceCleanupIsolation(t *testing.T) {
+	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
 
 	test.LogTestProgress(t, "testing resource cleanup and isolation")
@@ -26,7 +27,9 @@ func TestResourceCleanupIsolation(t *testing.T) {
 	env2 := test.SetupTestEnvironment(t, test.CategoryIntegration)
 
 	assert.NotEqual(t, env1.Suffix, env2.Suffix, "test environments should have unique suffixes")
-	assert.NotEqual(t, env1.ResourceGroupName, env2.ResourceGroupName, "test environments should have unique resource group names")
+	// Resource groups are shared, but suffixes should be unique
+	assert.Equal(t, env1.ResourceGroupName, env2.ResourceGroupName, "test environments should use the same shared resource group")
+	assert.Equal(t, "shellbox-testing", env1.ResourceGroupName, "should use shared resource group name")
 
 	// Clean up both environments
 	env1.Cleanup()
@@ -34,6 +37,7 @@ func TestResourceCleanupIsolation(t *testing.T) {
 }
 
 func TestResourceGroupCleanupBehavior(t *testing.T) {
+	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
@@ -52,18 +56,13 @@ func TestResourceGroupCleanupBehavior(t *testing.T) {
 	test.LogTestProgress(t, "creating test resources in resource group")
 
 	// Create some test resources in the resource group
-	volumeID := uuid.New().String()
+	config := &infra.VolumeConfig{DiskSize: infra.DefaultVolumeSizeGB}
+	volumeID, err := infra.CreateVolume(ctx, env.Clients, config)
+	require.NoError(t, err, "should create test volume")
+
+	// Generate volume name from returned volume ID
 	namer := env.GetResourceNamer()
 	volumeName := namer.VolumePoolDiskName(volumeID)
-
-	tags := infra.VolumeTags{
-		Role:     infra.ResourceRoleVolume,
-		Status:   infra.ResourceStatusFree,
-		VolumeID: volumeID,
-	}
-
-	_, err = infra.CreateVolume(ctx, env.Clients, env.ResourceGroupName, volumeName, infra.DefaultVolumeSizeGB, tags)
-	require.NoError(t, err, "should create test volume")
 
 	// Verify resource exists
 	disk, err := env.Clients.DisksClient.Get(ctx, env.ResourceGroupName, volumeName, nil)
@@ -72,21 +71,26 @@ func TestResourceGroupCleanupBehavior(t *testing.T) {
 
 	test.LogTestProgress(t, "performing cleanup")
 
-	// Perform cleanup
+	// Perform suffix-based cleanup to delete resources created by this test
+	err = env.CleanupResourcesBySuffix(ctx)
+	require.NoError(t, err, "should clean up resources by suffix")
+
+	// Perform standard cleanup
 	env.Cleanup()
 
 	test.LogTestProgress(t, "verifying cleanup completed")
 
-	// Verify resource group is deleted (which should delete all resources within it)
+	// Shared resource group should still exist (not deleted)
 	_, err = env.Clients.ResourceClient.Get(ctx, env.ResourceGroupName, nil)
-	assert.Error(t, err, "resource group should be deleted after cleanup")
+	assert.NoError(t, err, "shared resource group should still exist after cleanup")
 
-	// Verify individual resource is also cleaned up
+	// Individual test resource should be cleaned up
 	_, err = env.Clients.DisksClient.Get(ctx, env.ResourceGroupName, volumeName, nil)
 	assert.Error(t, err, "test volume should be deleted after cleanup")
 }
 
 func TestParallelTestIsolation(t *testing.T) {
+	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
 
 	test.LogTestProgress(t, "testing parallel test isolation")
@@ -109,18 +113,13 @@ func TestParallelTestIsolation(t *testing.T) {
 			test.LogTestProgress(t, "parallel test starting", "testIndex", testIndex, "suffix", env.Suffix)
 
 			// Create a unique resource in each test
-			volumeID := uuid.New().String()
+			config := &infra.VolumeConfig{DiskSize: infra.DefaultVolumeSizeGB}
+			volumeID, err := infra.CreateVolume(ctx, env.Clients, config)
+			require.NoError(t, err, "should create volume in parallel test %d", testIndex)
+
+			// Generate volume name from returned volume ID
 			namer := env.GetResourceNamer()
 			volumeName := namer.VolumePoolDiskName(volumeID)
-
-			tags := infra.VolumeTags{
-				Role:     infra.ResourceRoleVolume,
-				Status:   infra.ResourceStatusFree,
-				VolumeID: volumeID,
-			}
-
-			_, err := infra.CreateVolume(ctx, env.Clients, env.ResourceGroupName, volumeName, infra.DefaultVolumeSizeGB, tags)
-			require.NoError(t, err, "should create volume in parallel test %d", testIndex)
 
 			// Verify resource was created
 			disk, err := env.Clients.DisksClient.Get(ctx, env.ResourceGroupName, volumeName, nil)
@@ -154,6 +153,7 @@ func TestParallelTestIsolation(t *testing.T) {
 }
 
 func TestCleanupTimeout(t *testing.T) {
+	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
 
 	test.LogTestProgress(t, "testing cleanup timeout behavior")
@@ -171,12 +171,13 @@ func TestCleanupTimeout(t *testing.T) {
 }
 
 func TestResourceNamingUniqueness(t *testing.T) {
+	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
 
 	test.LogTestProgress(t, "testing resource naming uniqueness")
 
 	// Create multiple test environments
-	environments := make([]*test.TestEnvironment, 5)
+	environments := make([]*test.Environment, 5)
 	for i := 0; i < 5; i++ {
 		environments[i] = test.SetupTestEnvironment(t, test.CategoryIntegration)
 	}
@@ -191,8 +192,8 @@ func TestResourceNamingUniqueness(t *testing.T) {
 		assert.False(t, suffixes[env.Suffix], "suffix %s should be unique", env.Suffix)
 		suffixes[env.Suffix] = true
 
-		// Check resource group name uniqueness
-		assert.False(t, resourceGroupNames[env.ResourceGroupName], "resource group name %s should be unique", env.ResourceGroupName)
+		// All environments should use the same shared resource group
+		assert.Equal(t, "shellbox-testing", env.ResourceGroupName, "all environments should use shared resource group")
 		resourceGroupNames[env.ResourceGroupName] = true
 
 		// Create namer for resource name testing
@@ -233,6 +234,7 @@ func TestResourceNamingUniqueness(t *testing.T) {
 }
 
 func TestCleanupErrorHandling(t *testing.T) {
+	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
 
 	test.LogTestProgress(t, "testing cleanup error handling")
@@ -259,6 +261,7 @@ func TestCleanupErrorHandling(t *testing.T) {
 }
 
 func TestMinimalEnvironmentBehavior(t *testing.T) {
+	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
 
 	test.LogTestProgress(t, "testing minimal environment behavior")
@@ -278,6 +281,7 @@ func TestMinimalEnvironmentBehavior(t *testing.T) {
 }
 
 func TestResourceTrackingBehavior(t *testing.T) {
+	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
 
 	test.LogTestProgress(t, "testing resource tracking behavior")
@@ -318,6 +322,7 @@ func TestResourceTrackingBehavior(t *testing.T) {
 }
 
 func TestUniqueResourceNaming(t *testing.T) {
+	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
 
 	test.LogTestProgress(t, "testing unique resource naming patterns")
@@ -342,6 +347,7 @@ func TestUniqueResourceNaming(t *testing.T) {
 }
 
 func TestConfigurationCategoryHandling(t *testing.T) {
+	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
 
 	test.LogTestProgress(t, "testing configuration category handling")

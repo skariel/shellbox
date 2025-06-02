@@ -51,7 +51,7 @@ type AzureClients struct {
 }
 
 func createResourceGroup(ctx context.Context, clients *AzureClients) {
-	hash, err := generateConfigHash(clients.ResourceGroupName)
+	hash, err := GenerateConfigHash(clients.Suffix)
 	FatalOnError(err, "failed to generate config hash")
 
 	_, err = clients.ResourceClient.CreateOrUpdate(ctx, clients.ResourceGroupName, armresources.ResourceGroup{
@@ -140,12 +140,14 @@ func setSubnetIDsFromVNet(clients *AzureClients, vnetResult armnetwork.VirtualNe
 func InitializeTableStorage(clients *AzureClients, useAzureCli bool) {
 	if useAzureCli {
 		namer := NewResourceNamer(clients.Suffix)
-		storageAccount := namer.StorageAccountName()
+		storageAccount := namer.SharedStorageAccountName()
+		tableNames := []string{namer.EventLogTableName(), namer.ResourceRegistryTableName()}
 
 		result := CreateTableStorageResources(
 			context.Background(),
 			clients,
 			storageAccount,
+			tableNames,
 		)
 		FatalOnError(result.Error, "Table Storage setup error")
 
@@ -154,6 +156,9 @@ func InitializeTableStorage(clients *AzureClients, useAzureCli bool) {
 		err := readTableStorageConfig(clients)
 		FatalOnError(err, "Failed to read Table Storage config")
 	}
+
+	// Create table client from connection string
+	createTableClient(clients)
 }
 
 func CreateNetworkInfrastructure(ctx context.Context, clients *AzureClients, useAzureCli bool) {

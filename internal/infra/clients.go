@@ -68,8 +68,17 @@ func createAzureClients(clients *AzureClients) {
 }
 
 func createTableClient(clients *AzureClients) {
-	if err := readTableStorageConfig(clients); err != nil {
-		slog.Warn("Table Storage config not available", "error", err)
+	// If connection string is not already set, try to read from config file
+	if clients.TableStorageConnectionString == "" {
+		if err := readTableStorageConfig(clients); err != nil {
+			slog.Warn("Table Storage config not available", "error", err)
+			return
+		}
+	}
+
+	// If we still don't have a connection string, can't create client
+	if clients.TableStorageConnectionString == "" {
+		slog.Warn("Table Storage connection string not available")
 		return
 	}
 

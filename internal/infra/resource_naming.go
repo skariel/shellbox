@@ -74,7 +74,21 @@ func (r *ResourceNamer) BoxOSDiskName(boxID string) string {
 }
 
 func (r *ResourceNamer) StorageAccountName() string {
-	return fmt.Sprintf("shellbox%s", r.suffix)
+	// Storage account names must be 3-24 chars, lowercase letters and numbers only
+	// Remove hyphens and truncate suffix if needed
+	cleanSuffix := ""
+	for _, char := range r.suffix {
+		if (char >= 'a' && char <= 'z') || (char >= '0' && char <= '9') {
+			cleanSuffix += string(char)
+		}
+	}
+	// Ensure total length is <= 24 chars
+	prefix := "sb" // shortened from "shellbox"
+	maxSuffixLen := 24 - len(prefix)
+	if len(cleanSuffix) > maxSuffixLen {
+		cleanSuffix = cleanSuffix[:maxSuffixLen]
+	}
+	return fmt.Sprintf("%s%s", prefix, cleanSuffix)
 }
 
 func (r *ResourceNamer) GoldenSnapshotName() string {
@@ -87,4 +101,19 @@ func (r *ResourceNamer) BoxDataDiskName(boxID string) string {
 
 func (r *ResourceNamer) VolumePoolDiskName(volumeID string) string {
 	return fmt.Sprintf("shellbox-%s-volume-%s", r.suffix, volumeID)
+}
+
+// SharedStorageAccountName returns the shared storage account name for testing
+func (r *ResourceNamer) SharedStorageAccountName() string {
+	return TestingStorageAccountBaseName
+}
+
+// EventLogTableName returns the suffixed table name for EventLog
+func (r *ResourceNamer) EventLogTableName() string {
+	return fmt.Sprintf("%s%s", tableEventLogBase, r.suffix)
+}
+
+// ResourceRegistryTableName returns the suffixed table name for ResourceRegistry
+func (r *ResourceNamer) ResourceRegistryTableName() string {
+	return fmt.Sprintf("%s%s", tableResourceRegistryBase, r.suffix)
 }

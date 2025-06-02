@@ -15,10 +15,12 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"shellbox/internal/infra"
+	"shellbox/internal/sshutil"
 	"shellbox/internal/test"
 )
 
 func TestCreateBastionPublicIP(t *testing.T) {
+	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
 
 	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
@@ -51,6 +53,7 @@ func TestCreateBastionPublicIP(t *testing.T) {
 }
 
 func TestCreateBastionNIC(t *testing.T) {
+	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
 
 	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
@@ -98,6 +101,7 @@ func TestCreateBastionNIC(t *testing.T) {
 }
 
 func TestCreateBastionVM(t *testing.T) {
+	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
 
 	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
@@ -140,7 +144,10 @@ func TestCreateBastionVM(t *testing.T) {
 
 	// Create VM config
 	config := infra.DefaultBastionConfig()
-	config.SSHPublicKey = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC7vbqajDsu... test-key"
+	// Load SSH public key using the same function as production
+	_, sshPublicKey, err := sshutil.LoadKeyPair("/home/ubuntu/.ssh/id_ed25519")
+	require.NoError(t, err, "should load SSH key")
+	config.SSHPublicKey = sshPublicKey
 
 	// Create VM
 	vm, err := createBastionVM(ctx, env.Clients, config, *nic.ID, customData)
@@ -199,6 +206,7 @@ func TestCreateBastionVM(t *testing.T) {
 }
 
 func TestBastionConfigGeneration(t *testing.T) {
+	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
 
 	test.LogTestProgress(t, "testing bastion configuration generation")
@@ -237,6 +245,7 @@ func TestBastionConfigGeneration(t *testing.T) {
 }
 
 func TestBastionResourceNaming(t *testing.T) {
+	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
 
 	env := test.SetupMinimalTestEnvironment(t)
@@ -282,6 +291,7 @@ func TestBastionResourceNaming(t *testing.T) {
 }
 
 func TestBastionNetworkConfiguration(t *testing.T) {
+	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
 
 	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
@@ -343,6 +353,7 @@ func TestBastionNetworkConfiguration(t *testing.T) {
 }
 
 func TestBastionDeploymentErrorHandling(t *testing.T) {
+	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
 
 	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
@@ -397,6 +408,7 @@ func TestBastionDeploymentErrorHandling(t *testing.T) {
 }
 
 func TestBastionComponentIntegration(t *testing.T) {
+	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
 
 	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
@@ -430,7 +442,10 @@ func TestBastionComponentIntegration(t *testing.T) {
 
 	// Step 3: Generate configuration
 	config := infra.DefaultBastionConfig()
-	config.SSHPublicKey = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDTest integration-test-key"
+	// Load SSH public key using the same function as production
+	_, sshPublicKey, err := sshutil.LoadKeyPair("/home/ubuntu/.ssh/id_ed25519")
+	require.NoError(t, err, "should load SSH key")
+	config.SSHPublicKey = sshPublicKey
 
 	customData, err := infra.GenerateBastionInitScript()
 	require.NoError(t, err, "should generate init script")

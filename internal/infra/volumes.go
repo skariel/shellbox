@@ -3,7 +3,8 @@ package infra
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
@@ -77,7 +78,7 @@ func CreateVolumeWithTags(ctx context.Context, clients *AzureClients, resourceGr
 		tags.LastUsed = now.Format(time.RFC3339)
 	}
 
-	log.Printf("Creating volume: %s (size: %dGB, role: %s)", volumeName, sizeGB, tags.Role)
+	slog.Info("Creating volume", "name", volumeName, "sizeGB", sizeGB, "role", tags.Role)
 
 	diskParams := armcompute.Disk{
 		Location: to.Ptr(Location),
@@ -129,7 +130,7 @@ func CreateVolumeFromSnapshot(ctx context.Context, clients *AzureClients, resour
 		tags.LastUsed = now.Format(time.RFC3339)
 	}
 
-	log.Printf("Creating volume from snapshot: %s -> %s (role: %s)", snapshotID, volumeName, tags.Role)
+	slog.Info("Creating volume from snapshot", "snapshotID", snapshotID, "volumeName", volumeName, "role", tags.Role)
 
 	diskParams := armcompute.Disk{
 		Location: to.Ptr(Location),
@@ -171,11 +172,11 @@ func CreateVolumeFromSnapshot(ctx context.Context, clients *AzureClients, resour
 // It returns an error if the deletion fails.
 func DeleteVolume(ctx context.Context, clients *AzureClients, resourceGroupName, volumeName string) error {
 	if volumeName == "" {
-		log.Printf("Volume name is empty, skipping deletion")
+		slog.Warn("Volume name is empty, skipping deletion")
 		return nil
 	}
 
-	log.Printf("Deleting volume: %s", volumeName)
+	slog.Info("Deleting volume", "name", volumeName)
 
 	pollOptions := &runtime.PollUntilDoneOptions{
 		Frequency: 2 * time.Second,
@@ -191,13 +192,14 @@ func DeleteVolume(ctx context.Context, clients *AzureClients, resourceGroupName,
 		return fmt.Errorf("deleting volume: %w", err)
 	}
 
-	log.Printf("Successfully deleted volume: %s", volumeName)
+	slog.Info("Successfully deleted volume", "name", volumeName)
 	return nil
 }
 
 // FindVolumesByRole returns volume names matching the given role tag.
 // It filters disks based on their role tag and returns their names for further operations.
-func FindVolumesByRole(ctx context.Context, clients *AzureClients, resourceGroupName, role string) ([]string, error) {
+// If suffix is provided, it only returns volumes whose names contain that suffix.
+func FindVolumesByRole(ctx context.Context, clients *AzureClients, resourceGroupName, role string, suffix ...string) ([]string, error) {
 	var volumes []string
 
 	pager := clients.DisksClient.NewListByResourceGroupPager(resourceGroupName, nil)
@@ -210,6 +212,10 @@ func FindVolumesByRole(ctx context.Context, clients *AzureClients, resourceGroup
 		for _, disk := range page.Value {
 			if disk.Tags != nil {
 				if roleTag, exists := disk.Tags[TagKeyRole]; exists && *roleTag == role {
+					// If suffix filter is provided, only include volumes with that suffix in the name
+					if len(suffix) > 0 && !strings.Contains(*disk.Name, suffix[0]) {
+						continue
+					}
 					volumes = append(volumes, *disk.Name)
 				}
 			}

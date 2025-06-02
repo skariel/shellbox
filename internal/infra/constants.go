@@ -28,8 +28,17 @@ const (
 // Table Storage configuration
 const (
 	tableStorageConfigFile = ".tablestorage.json"
-	tableEventLog          = "EventLog"
-	tableResourceRegistry  = "ResourceRegistry"
+
+	// Shared storage account for testing (no suffix)
+	TestingStorageAccountBaseName = "shellboxtest"
+
+	// Table name base constants (will be suffixed for test isolation)
+	tableEventLogBase         = "EventLog"
+	tableResourceRegistryBase = "ResourceRegistry"
+
+	// Legacy constants for backward compatibility
+	tableEventLog         = "EventLog"
+	tableResourceRegistry = "ResourceRegistry"
 )
 
 // VM configuration
@@ -187,7 +196,7 @@ func formatNSGRules(rules []*armnetwork.SecurityRule) string {
 	return result
 }
 
-func generateConfigHash(suffix string) (string, error) {
+func GenerateConfigHash(suffix string) (string, error) {
 	hashInput := FormatConfig(suffix)
 
 	hasher := sha256.New()

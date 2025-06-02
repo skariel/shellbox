@@ -4,8 +4,6 @@ package integration
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"testing"
 	"time"
 
@@ -18,6 +16,7 @@ import (
 )
 
 func TestCreateNetworkInfrastructure(t *testing.T) {
+	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
 	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
 
@@ -142,6 +141,7 @@ func TestCreateNetworkInfrastructure(t *testing.T) {
 }
 
 func TestNetworkInfrastructureRetry(t *testing.T) {
+	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
 	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
 
@@ -177,6 +177,7 @@ func TestNetworkInfrastructureRetry(t *testing.T) {
 }
 
 func TestNetworkResourceDependencies(t *testing.T) {
+	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
 	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
 
@@ -223,6 +224,7 @@ func TestNetworkResourceDependencies(t *testing.T) {
 }
 
 func TestNetworkResourceNaming(t *testing.T) {
+	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
 	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
 
@@ -267,6 +269,7 @@ func TestNetworkResourceNaming(t *testing.T) {
 }
 
 func TestNetworkConfigurationValidation(t *testing.T) {
+	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
 	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
 
@@ -280,8 +283,6 @@ func TestNetworkConfigurationValidation(t *testing.T) {
 
 	// Get configuration hash and verify it matches expectations
 	expectedConfig := infra.FormatConfig(env.Suffix)
-	actualHash, err := generateConfigHash(env.Suffix)
-	require.NoError(t, err, "Should be able to generate config hash")
 
 	// Verify resource group has the correct config tag
 	rg, err := env.Clients.ResourceClient.Get(ctx, env.ResourceGroupName, nil)
@@ -290,19 +291,17 @@ func TestNetworkConfigurationValidation(t *testing.T) {
 
 	configTag, exists := rg.Tags["config"]
 	require.True(t, exists, "Resource group should have config tag")
-	expectedTag := "sha256-" + actualHash
-	assert.Equal(t, expectedTag, *configTag, "Config tag should match expected hash")
+
+	// Extract hash from tag (format: "sha256-XXXXXXXX")
+	require.True(t, len(*configTag) > 7 && (*configTag)[:7] == "sha256-", "Config tag should have sha256- prefix")
+	actualHash := (*configTag)[7:]
+
+	// Verify the hash matches what we would generate for this config
+	expectedHash, err := infra.GenerateConfigHash(env.Suffix)
+	require.NoError(t, err, "Should be able to generate config hash")
+	assert.Equal(t, expectedHash, actualHash, "Config tag should match expected hash")
 
 	test.LogTestProgress(t, "configuration validation complete",
 		"hash", actualHash,
 		"config_length", len(expectedConfig))
-}
-
-// Helper function to generate config hash (copied from constants.go for testing)
-func generateConfigHash(suffix string) (string, error) {
-	hashInput := infra.FormatConfig(suffix)
-
-	hasher := sha256.New()
-	hasher.Write([]byte(hashInput))
-	return hex.EncodeToString(hasher.Sum(nil))[:8], nil
 }

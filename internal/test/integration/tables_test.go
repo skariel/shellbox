@@ -19,6 +19,7 @@ import (
 )
 
 func TestCreateTableStorageResources(t *testing.T) {
+	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
 
 	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
@@ -28,12 +29,13 @@ func TestCreateTableStorageResources(t *testing.T) {
 	defer cancel()
 
 	namer := env.GetResourceNamer()
-	storageAccountName := namer.StorageAccountName()
+	storageAccountName := namer.SharedStorageAccountName()
+	tableNames := []string{namer.EventLogTableName(), namer.ResourceRegistryTableName()}
 
-	test.LogTestProgress(t, "creating table storage resources", "accountName", storageAccountName)
+	test.LogTestProgress(t, "creating table storage resources", "accountName", storageAccountName, "tableNames", tableNames)
 
 	// Create table storage resources
-	result := infra.CreateTableStorageResources(ctx, env.Clients, storageAccountName)
+	result := infra.CreateTableStorageResources(ctx, env.Clients, storageAccountName, tableNames)
 	require.NoError(t, result.Error, "should create table storage resources without error")
 	require.NotEmpty(t, result.ConnectionString, "should return valid connection string")
 
@@ -52,7 +54,7 @@ func TestCreateTableStorageResources(t *testing.T) {
 	test.LogTestProgress(t, "verifying tables were created")
 
 	// Verify that required tables exist by attempting to query them
-	expectedTables := []string{"EventLog", "ResourceRegistry"}
+	expectedTables := tableNames
 	for _, tableName := range expectedTables {
 		specificTableClient := tableClient.NewClient(tableName)
 
@@ -66,6 +68,7 @@ func TestCreateTableStorageResources(t *testing.T) {
 }
 
 func TestTableStorageEntityOperations(t *testing.T) {
+	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
 
 	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
@@ -76,9 +79,10 @@ func TestTableStorageEntityOperations(t *testing.T) {
 
 	// Set up table storage
 	namer := env.GetResourceNamer()
-	storageAccountName := namer.StorageAccountName()
+	storageAccountName := namer.SharedStorageAccountName()
+	tableNames := []string{namer.EventLogTableName(), namer.ResourceRegistryTableName()}
 
-	result := infra.CreateTableStorageResources(ctx, env.Clients, storageAccountName)
+	result := infra.CreateTableStorageResources(ctx, env.Clients, storageAccountName, tableNames)
 	require.NoError(t, result.Error, "should create table storage resources")
 
 	// Set up table client in the environment
@@ -110,7 +114,7 @@ func TestTableStorageEntityOperations(t *testing.T) {
 		require.NoError(t, err, "should write event log without error")
 
 		// Verify entity was written by querying it back
-		eventLogClient := tableClient.NewClient("EventLog")
+		eventLogClient := tableClient.NewClient(namer.EventLogTableName())
 
 		// Get the entity
 		response, err := eventLogClient.GetEntity(ctx, eventEntity.PartitionKey, eventEntity.RowKey, nil)
@@ -152,7 +156,7 @@ func TestTableStorageEntityOperations(t *testing.T) {
 		require.NoError(t, err, "should write resource registry without error")
 
 		// Verify entity was written by querying it back
-		registryClient := tableClient.NewClient("ResourceRegistry")
+		registryClient := tableClient.NewClient(namer.ResourceRegistryTableName())
 
 		// Get the entity
 		response, err := registryClient.GetEntity(ctx, resourceEntity.PartitionKey, resourceEntity.RowKey, nil)
@@ -172,6 +176,7 @@ func TestTableStorageEntityOperations(t *testing.T) {
 }
 
 func TestTableStorageQueryOperations(t *testing.T) {
+	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
 
 	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
@@ -182,9 +187,10 @@ func TestTableStorageQueryOperations(t *testing.T) {
 
 	// Set up table storage
 	namer := env.GetResourceNamer()
-	storageAccountName := namer.StorageAccountName()
+	storageAccountName := namer.SharedStorageAccountName()
+	tableNames := []string{namer.EventLogTableName(), namer.ResourceRegistryTableName()}
 
-	result := infra.CreateTableStorageResources(ctx, env.Clients, storageAccountName)
+	result := infra.CreateTableStorageResources(ctx, env.Clients, storageAccountName, tableNames)
 	require.NoError(t, result.Error, "should create table storage resources")
 
 	env.Clients.TableStorageConnectionString = result.ConnectionString
@@ -237,7 +243,7 @@ func TestTableStorageQueryOperations(t *testing.T) {
 
 	test.LogTestProgress(t, "testing query operations")
 
-	eventLogClient := tableClient.NewClient("EventLog")
+	eventLogClient := tableClient.NewClient(namer.EventLogTableName())
 
 	// Test querying all entities in partition
 	filter := fmt.Sprintf("PartitionKey eq '%s'", partitionKey)
@@ -308,6 +314,7 @@ func TestTableStorageQueryOperations(t *testing.T) {
 }
 
 func TestTableStorageUpdateOperations(t *testing.T) {
+	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
 
 	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
@@ -318,9 +325,10 @@ func TestTableStorageUpdateOperations(t *testing.T) {
 
 	// Set up table storage
 	namer := env.GetResourceNamer()
-	storageAccountName := namer.StorageAccountName()
+	storageAccountName := namer.SharedStorageAccountName()
+	tableNames := []string{namer.EventLogTableName(), namer.ResourceRegistryTableName()}
 
-	result := infra.CreateTableStorageResources(ctx, env.Clients, storageAccountName)
+	result := infra.CreateTableStorageResources(ctx, env.Clients, storageAccountName, tableNames)
 	require.NoError(t, result.Error, "should create table storage resources")
 
 	env.Clients.TableStorageConnectionString = result.ConnectionString
@@ -330,7 +338,7 @@ func TestTableStorageUpdateOperations(t *testing.T) {
 
 	test.LogTestProgress(t, "testing entity update operations")
 
-	registryClient := tableClient.NewClient("ResourceRegistry")
+	registryClient := tableClient.NewClient(namer.ResourceRegistryTableName())
 
 	// Create initial entity
 	now := time.Now().UTC()
@@ -378,6 +386,7 @@ func TestTableStorageUpdateOperations(t *testing.T) {
 }
 
 func TestTableStorageDeleteOperations(t *testing.T) {
+	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
 
 	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
@@ -388,9 +397,10 @@ func TestTableStorageDeleteOperations(t *testing.T) {
 
 	// Set up table storage
 	namer := env.GetResourceNamer()
-	storageAccountName := namer.StorageAccountName()
+	storageAccountName := namer.SharedStorageAccountName()
+	tableNames := []string{namer.EventLogTableName(), namer.ResourceRegistryTableName()}
 
-	result := infra.CreateTableStorageResources(ctx, env.Clients, storageAccountName)
+	result := infra.CreateTableStorageResources(ctx, env.Clients, storageAccountName, tableNames)
 	require.NoError(t, result.Error, "should create table storage resources")
 
 	env.Clients.TableStorageConnectionString = result.ConnectionString
@@ -400,7 +410,7 @@ func TestTableStorageDeleteOperations(t *testing.T) {
 
 	test.LogTestProgress(t, "testing entity delete operations")
 
-	eventLogClient := tableClient.NewClient("EventLog")
+	eventLogClient := tableClient.NewClient(namer.EventLogTableName())
 
 	// Create entity to delete
 	eventEntity := infra.EventLogEntity{
@@ -436,6 +446,7 @@ func TestTableStorageDeleteOperations(t *testing.T) {
 }
 
 func TestTableStorageErrorHandling(t *testing.T) {
+	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
 
 	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
@@ -464,13 +475,15 @@ func TestTableStorageErrorHandling(t *testing.T) {
 
 	// Test 2: Invalid storage account name
 	invalidAccountName := "invalid-account-name-with-special-chars!"
-	result := infra.CreateTableStorageResources(ctx, env.Clients, invalidAccountName)
+	invalidTableNames := []string{"InvalidTable"}
+	result := infra.CreateTableStorageResources(ctx, env.Clients, invalidAccountName, invalidTableNames)
 	assert.Error(t, result.Error, "should error with invalid storage account name")
 
 	test.LogTestProgress(t, "error handling tests completed")
 }
 
 func TestTableStorageIdempotency(t *testing.T) {
+	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
 
 	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
@@ -480,16 +493,17 @@ func TestTableStorageIdempotency(t *testing.T) {
 	defer cancel()
 
 	namer := env.GetResourceNamer()
-	storageAccountName := namer.StorageAccountName()
+	storageAccountName := namer.SharedStorageAccountName()
+	tableNames := []string{namer.EventLogTableName(), namer.ResourceRegistryTableName()}
 
 	test.LogTestProgress(t, "testing table storage idempotency")
 
 	// Create table storage first time
-	result1 := infra.CreateTableStorageResources(ctx, env.Clients, storageAccountName)
+	result1 := infra.CreateTableStorageResources(ctx, env.Clients, storageAccountName, tableNames)
 	require.NoError(t, result1.Error, "first creation should succeed")
 
 	// Create table storage second time (should be idempotent)
-	result2 := infra.CreateTableStorageResources(ctx, env.Clients, storageAccountName)
+	result2 := infra.CreateTableStorageResources(ctx, env.Clients, storageAccountName, tableNames)
 	require.NoError(t, result2.Error, "second creation should succeed (idempotent)")
 
 	// Connection strings should be the same
