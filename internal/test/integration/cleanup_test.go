@@ -4,8 +4,6 @@ package integration
 
 import (
 	"context"
-	"fmt"
-	"sync"
 	"testing"
 	"time"
 
@@ -89,7 +87,6 @@ func TestResourceGroupCleanupBehavior(t *testing.T) {
 	_, err = env.Clients.DisksClient.Get(ctx, env.ResourceGroupName, volumeName, nil)
 	assert.Error(t, err, "test volume should be deleted after cleanup")
 }
-
 
 func TestCleanupTimeout(t *testing.T) {
 	t.Parallel()
