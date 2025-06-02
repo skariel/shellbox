@@ -29,8 +29,52 @@ func CreateTableStorageResources(ctx context.Context, clients *AzureClients, acc
 		return result
 	}
 
-	// Create storage account
-	poller, err := storageClient.BeginCreate(ctx, clients.ResourceGroupName, accountName, armstorage.AccountCreateParameters{
+	// Ensure storage account exists
+	if err := ensureStorageAccountExists(ctx, storageClient, clients.ResourceGroupName, accountName); err != nil {
+		result.Error = err
+		return result
+	}
+
+	// Get connection string
+	connectionString, err := getStorageConnectionString(ctx, storageClient, clients.ResourceGroupName, accountName)
+	if err != nil {
+		result.Error = err
+		return result
+	}
+	result.ConnectionString = connectionString
+
+	// Create tables
+	if err := createTables(ctx, connectionString, tableNames); err != nil {
+		result.Error = err
+		return result
+	}
+
+	return result
+}
+
+// ensureStorageAccountExists checks if storage account exists and creates it if needed
+func ensureStorageAccountExists(ctx context.Context, storageClient *armstorage.AccountsClient, resourceGroupName, accountName string) error {
+	// Check if storage account already exists in our resource group
+	_, err := storageClient.GetProperties(ctx, resourceGroupName, accountName, nil)
+	if err == nil {
+		return nil // Already exists
+	}
+
+	// Storage account doesn't exist, check name availability
+	checkAvailability, err := storageClient.CheckNameAvailability(ctx, armstorage.AccountCheckNameAvailabilityParameters{
+		Name: to.Ptr(accountName),
+		Type: to.Ptr("Microsoft.Storage/storageAccounts"),
+	}, nil)
+	if err != nil {
+		return fmt.Errorf("failed to check storage account name availability: %w", err)
+	}
+
+	if !*checkAvailability.NameAvailable {
+		return fmt.Errorf("storage account name '%s' is not available: %s", accountName, *checkAvailability.Message)
+	}
+
+	// Create the storage account
+	poller, err := storageClient.BeginCreate(ctx, resourceGroupName, accountName, armstorage.AccountCreateParameters{
 		SKU: &armstorage.SKU{
 			Name: to.Ptr(armstorage.SKUNameStandardLRS),
 		},
@@ -41,39 +85,47 @@ func CreateTableStorageResources(ctx context.Context, clients *AzureClients, acc
 		},
 	}, nil)
 	if err != nil {
-		result.Error = fmt.Errorf("failed to create storage account: %w", err)
-		return result
+		return fmt.Errorf("failed to create storage account: %w", err)
 	}
 
 	_, err = poller.PollUntilDone(ctx, nil)
 	if err != nil {
-		result.Error = fmt.Errorf("failed to wait for storage account creation: %w", err)
-		return result
+		return fmt.Errorf("failed to wait for storage account creation: %w", err)
 	}
 
-	// Get connection string
-	keysResponse, err := storageClient.ListKeys(ctx, clients.ResourceGroupName, accountName, nil)
+	return nil
+}
+
+// getStorageConnectionString retrieves the connection string for a storage account
+func getStorageConnectionString(ctx context.Context, storageClient *armstorage.AccountsClient, resourceGroupName, accountName string) (string, error) {
+	var keysResponse armstorage.AccountsClientListKeysResponse
+
+	// Retry getting storage keys in case the storage account is still provisioning
+	err := RetryOperation(ctx, func(ctx context.Context) error {
+		var err error
+		keysResponse, err = storageClient.ListKeys(ctx, resourceGroupName, accountName, nil)
+		return err
+	}, 5*time.Minute, 10*time.Second, "get storage account keys")
 	if err != nil {
-		result.Error = fmt.Errorf("failed to get storage keys: %w", err)
-		return result
+		return "", fmt.Errorf("failed to get storage keys: %w", err)
 	}
 
 	if len(keysResponse.Keys) == 0 {
-		result.Error = fmt.Errorf("no storage keys found")
-		return result
+		return "", fmt.Errorf("no storage keys found")
 	}
 
 	key := *keysResponse.Keys[0].Value
-	result.ConnectionString = fmt.Sprintf("DefaultEndpointsProtocol=https;AccountName=%s;AccountKey=%s;EndpointSuffix=core.windows.net", accountName, key)
+	return fmt.Sprintf("DefaultEndpointsProtocol=https;AccountName=%s;AccountKey=%s;EndpointSuffix=core.windows.net", accountName, key), nil
+}
 
-	// Create tables
-	tablesClient, err := aztables.NewServiceClientFromConnectionString(result.ConnectionString, nil)
+// createTables creates the specified tables in the storage account
+func createTables(ctx context.Context, connectionString string, tableNames []string) error {
+	tablesClient, err := aztables.NewServiceClientFromConnectionString(connectionString, nil)
 	if err != nil {
-		result.Error = fmt.Errorf("failed to create tables client: %w", err)
-		return result
+		return fmt.Errorf("failed to create tables client: %w", err)
 	}
 
-	// Use provided table names, or fall back to legacy defaults if none provided
+	// Use legacy defaults if no table names provided
 	if len(tableNames) == 0 {
 		tableNames = []string{tableEventLog, tableResourceRegistry}
 	}
@@ -84,15 +136,13 @@ func CreateTableStorageResources(ctx context.Context, clients *AzureClients, acc
 			// Check if this is a "table already exists" error (idempotent operation)
 			var respErr *azcore.ResponseError
 			if errors.As(err, &respErr) && respErr.StatusCode == 409 && respErr.ErrorCode == "TableAlreadyExists" {
-				// Table already exists, this is fine for idempotent operations
-				continue
+				continue // Table already exists, this is fine
 			}
-			result.Error = fmt.Errorf("failed to create table %s: %w", tableName, err)
-			return result
+			return fmt.Errorf("failed to create table %s: %w", tableName, err)
 		}
 	}
 
-	return result
+	return nil
 }
 
 // CreateTableStorageResourcesLegacy creates a storage account with default table names (backward compatibility)

@@ -30,7 +30,7 @@ const (
 	tableStorageConfigFile = ".tablestorage.json"
 
 	// Shared storage account for testing (no suffix)
-	TestingStorageAccountBaseName = "shellboxtest"
+	TestingStorageAccountBaseName = "shellboxtest536567"
 
 	// Table name base constants (will be suffixed for test isolation)
 	tableEventLogBase         = "EventLog"

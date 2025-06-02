@@ -161,6 +161,18 @@ func (te *Environment) Cleanup() {
 		"elapsed", elapsed,
 		"category", category)
 
+	// Clean up table storage first (if tables were created with this suffix)
+	if te.Clients.TableClient != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+
+		if err := infra.CleanupTestTables(ctx, te.Clients, te.Suffix); err != nil {
+			slog.Warn("Failed to cleanup test tables", "suffix", te.Suffix, "error", err)
+		} else {
+			slog.Info("Successfully cleaned up test tables", "suffix", te.Suffix)
+		}
+	}
+
 	// Clean up individual resources created by this test
 	// Note: We don't delete the shared resource group - it's persistent
 	if len(te.CreatedResources) > 0 {

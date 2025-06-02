@@ -159,7 +159,7 @@ func (suite *NamingTestSuite) TestStorageNaming() {
 
 	// Test shared storage account naming
 	sharedStorageAccount := namer.SharedStorageAccountName()
-	assert.Equal(suite.T(), "shellboxtest", sharedStorageAccount, "Shared storage account should be fixed name")
+	assert.Equal(suite.T(), "shellboxtest536567", sharedStorageAccount, "Shared storage account should be fixed name")
 
 	// Test table naming
 	eventLogTable := namer.EventLogTableName()
