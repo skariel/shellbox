@@ -1,5 +1,3 @@
-//go:build integration
-
 package integration
 
 import (
@@ -18,8 +16,8 @@ import (
 )
 
 func TestVolumeCreationAndDeletion(t *testing.T) {
-	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
+	t.Parallel()
 
 	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
 	defer env.Cleanup()
@@ -114,8 +112,8 @@ func TestVolumeCreationAndDeletion(t *testing.T) {
 }
 
 func TestFindVolumesByRole(t *testing.T) {
-	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
+	t.Parallel()
 
 	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
 	defer env.Cleanup()
@@ -204,8 +202,8 @@ func TestFindVolumesByRole(t *testing.T) {
 }
 
 func TestUpdateVolumeStatus(t *testing.T) {
-	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
+	t.Parallel()
 
 	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
 	defer env.Cleanup()
@@ -259,8 +257,8 @@ func TestUpdateVolumeStatus(t *testing.T) {
 }
 
 func TestVolumeAttachmentToInstance(t *testing.T) {
-	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
+	t.Parallel()
 
 	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
 	defer env.Cleanup()
@@ -351,8 +349,8 @@ func TestVolumeAttachmentToInstance(t *testing.T) {
 }
 
 func TestVolumeLifecycle(t *testing.T) {
-	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
+	t.Parallel()
 
 	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
 	defer env.Cleanup()
@@ -416,8 +414,8 @@ func TestVolumeLifecycle(t *testing.T) {
 }
 
 func TestVolumeErrorHandling(t *testing.T) {
-	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
+	t.Parallel()
 
 	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
 	defer env.Cleanup()

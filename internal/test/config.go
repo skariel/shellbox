@@ -12,11 +12,7 @@ type Category string
 
 const (
 	CategoryUnit        Category = "unit"        // < 30s, pure Go logic
-	CategoryClient      Category = "client"      // < 2m, Azure client init
 	CategoryIntegration Category = "integration" // < 10m, infrastructure
-	CategoryCompute     Category = "compute"     // < 15m, VM operations
-	CategoryGolden      Category = "golden"      // < 30m, snapshot operations
-	CategoryPool        Category = "pool"        // < 30m, pool behavior
 	CategoryE2E         Category = "e2e"         // < 45m, end-to-end scenarios
 )
 
@@ -26,8 +22,6 @@ type Config struct {
 	Categories []Category
 
 	// Skip flags for expensive operations
-	SkipGoldenSnapshot bool
-	SkipPoolTests      bool
 	SkipE2ETests       bool
 
 	// Resource configuration
@@ -48,8 +42,6 @@ type Config struct {
 func DefaultConfig() *Config {
 	return &Config{
 		Categories:          []Category{CategoryUnit},
-		SkipGoldenSnapshot:  false,
-		SkipPoolTests:       false,
 		SkipE2ETests:        false,
 		ResourceGroupPrefix: "test",
 		Location:            "westus2",
@@ -71,8 +63,6 @@ func LoadConfig() *Config {
 	}
 
 	// Skip flags
-	config.SkipGoldenSnapshot = parseBool(os.Getenv("SKIP_GOLDEN_SNAPSHOT"), false)
-	config.SkipPoolTests = parseBool(os.Getenv("SKIP_POOL_TESTS"), false)
 	config.SkipE2ETests = parseBool(os.Getenv("SKIP_E2E_TESTS"), false)
 
 	// Resource configuration
@@ -121,14 +111,6 @@ func LoadConfig() *Config {
 func (c *Config) ShouldRunCategory(category Category) bool {
 	// Check skip flags first
 	switch category {
-	case CategoryGolden:
-		if c.SkipGoldenSnapshot {
-			return false
-		}
-	case CategoryPool:
-		if c.SkipPoolTests {
-			return false
-		}
 	case CategoryE2E:
 		if c.SkipE2ETests {
 			return false
@@ -149,29 +131,22 @@ func (c *Config) ShouldRunCategory(category Category) bool {
 func AllCategories() []Category {
 	return []Category{
 		CategoryUnit,
-		CategoryClient,
 		CategoryIntegration,
-		CategoryCompute,
-		CategoryGolden,
-		CategoryPool,
 		CategoryE2E,
 	}
 }
 
-// FastCategories returns categories that run quickly (< 2 minutes)
+// FastCategories returns categories that run quickly (< 30s)
 func FastCategories() []Category {
 	return []Category{
 		CategoryUnit,
-		CategoryClient,
 	}
 }
 
 // SlowCategories returns categories that take significant time (> 10 minutes)
 func SlowCategories() []Category {
 	return []Category{
-		CategoryCompute,
-		CategoryGolden,
-		CategoryPool,
+		CategoryIntegration,
 		CategoryE2E,
 	}
 }
@@ -215,16 +190,8 @@ func GetEstimatedDuration(category Category) time.Duration {
 	switch category {
 	case CategoryUnit:
 		return 30 * time.Second
-	case CategoryClient:
-		return 2 * time.Minute
 	case CategoryIntegration:
 		return 10 * time.Minute
-	case CategoryCompute:
-		return 15 * time.Minute
-	case CategoryGolden:
-		return 30 * time.Minute
-	case CategoryPool:
-		return 30 * time.Minute
 	case CategoryE2E:
 		return 45 * time.Minute
 	default:

@@ -161,11 +161,18 @@ func (te *Environment) Cleanup() {
 		"elapsed", elapsed,
 		"category", category)
 
-	// Clean up table storage first (if tables were created with this suffix)
-	if te.Clients.TableClient != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-		defer cancel()
+	// Clean up all Azure resources by suffix (VMs, NICs, disks, storage accounts, etc.)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
 
+	if err := te.CleanupResourcesBySuffix(ctx); err != nil {
+		slog.Warn("Failed to cleanup resources by suffix", "suffix", te.Suffix, "error", err)
+	} else {
+		slog.Info("Successfully cleaned up Azure resources by suffix", "suffix", te.Suffix)
+	}
+
+	// Clean up table storage (if tables were created with this suffix)
+	if te.Clients.TableClient != nil {
 		if err := infra.CleanupTestTables(ctx, te.Clients, te.Suffix); err != nil {
 			slog.Warn("Failed to cleanup test tables", "suffix", te.Suffix, "error", err)
 		} else {
@@ -173,26 +180,15 @@ func (te *Environment) Cleanup() {
 		}
 	}
 
-	// Clean up individual resources created by this test
-	// Note: We don't delete the shared resource group - it's persistent
+	// Log tracked resources for reference
 	if len(te.CreatedResources) > 0 {
-		slog.Info("Cleaning up individual test resources",
+		slog.Info("Tracked resources for cleanup",
 			"count", len(te.CreatedResources),
 			"suffix", te.Suffix)
 
-		// In practice, most tests will use Azure's resource lifecycle management
-		// where deleting parent resources (like VMs) automatically cleans up dependent resources
-		// Individual tests can also implement their own specific cleanup if needed
-
 		for _, resourceName := range te.CreatedResources {
-			slog.Info("Resource tracked for cleanup", "resource", resourceName)
+			slog.Debug("Resource tracked for cleanup", "resource", resourceName)
 		}
-
-		slog.Info("Individual resource cleanup completed",
-			"suffix", te.Suffix,
-			"elapsed", time.Since(te.startTime))
-	} else {
-		slog.Info("No individual resources to clean up", "suffix", te.Suffix)
 	}
 }
 
@@ -223,12 +219,111 @@ func (te *Environment) CleanupResourcesBySuffix(ctx context.Context) error {
 
 	slog.Info("Cleaning up resources by suffix", "suffix", te.Suffix, "resourceGroup", te.ResourceGroupName)
 
-	// Clean up volumes/disks with matching suffix
-	pager := te.Clients.DisksClient.NewListByResourceGroupPager(te.ResourceGroupName, nil)
-	for pager.More() {
-		page, err := pager.NextPage(ctx)
+	// Clean up resources in dependency order
+	te.cleanupVMs(ctx)
+	te.cleanupNICs(ctx)
+	te.cleanupPublicIPs(ctx)
+	te.cleanupNSGs(ctx)
+	te.cleanupDisks(ctx)
+	te.cleanupStorageAccounts(ctx)
+
+	slog.Info("Completed resource cleanup by suffix", "suffix", te.Suffix)
+	return nil
+}
+
+// cleanupVMs deletes VMs with matching suffix
+func (te *Environment) cleanupVMs(ctx context.Context) {
+	vmPager := te.Clients.ComputeClient.NewListPager(te.ResourceGroupName, nil)
+	for vmPager.More() {
+		page, err := vmPager.NextPage(ctx)
 		if err != nil {
-			return fmt.Errorf("listing disks for cleanup: %w", err)
+			slog.Warn("Failed to list VMs for cleanup", "error", err)
+			break
+		}
+
+		for _, vm := range page.Value {
+			if vm.Name != nil && contains(*vm.Name, te.Suffix) {
+				slog.Info("Deleting VM", "name", *vm.Name, "suffix", te.Suffix)
+				if err := infra.DeleteInstance(ctx, te.Clients, te.ResourceGroupName, *vm.Name); err != nil {
+					slog.Warn("Failed to delete VM", "name", *vm.Name, "error", err)
+				}
+			}
+		}
+	}
+}
+
+// cleanupNICs deletes NICs with matching suffix
+func (te *Environment) cleanupNICs(ctx context.Context) {
+	nicPager := te.Clients.NICClient.NewListPager(te.ResourceGroupName, nil)
+	for nicPager.More() {
+		page, err := nicPager.NextPage(ctx)
+		if err != nil {
+			slog.Warn("Failed to list NICs for cleanup", "error", err)
+			break
+		}
+
+		for _, nic := range page.Value {
+			if nic.Name != nil && contains(*nic.Name, te.Suffix) {
+				slog.Info("Deleting NIC", "name", *nic.Name, "suffix", te.Suffix)
+				infra.DeleteNIC(ctx, te.Clients, te.ResourceGroupName, *nic.Name, "")
+			}
+		}
+	}
+}
+
+// cleanupPublicIPs deletes Public IPs with matching suffix
+func (te *Environment) cleanupPublicIPs(ctx context.Context) {
+	pipPager := te.Clients.PublicIPClient.NewListPager(te.ResourceGroupName, nil)
+	for pipPager.More() {
+		page, err := pipPager.NextPage(ctx)
+		if err != nil {
+			slog.Warn("Failed to list Public IPs for cleanup", "error", err)
+			break
+		}
+
+		for _, pip := range page.Value {
+			if pip.Name != nil && contains(*pip.Name, te.Suffix) {
+				slog.Info("Deleting Public IP", "name", *pip.Name, "suffix", te.Suffix)
+				poller, err := te.Clients.PublicIPClient.BeginDelete(ctx, te.ResourceGroupName, *pip.Name, nil)
+				if err != nil {
+					slog.Warn("Failed to start Public IP deletion", "name", *pip.Name, "error", err)
+					continue
+				}
+				if _, err := poller.PollUntilDone(ctx, &infra.DefaultPollOptions); err != nil {
+					slog.Warn("Failed to delete Public IP", "name", *pip.Name, "error", err)
+				}
+			}
+		}
+	}
+}
+
+// cleanupNSGs deletes NSGs with matching suffix
+func (te *Environment) cleanupNSGs(ctx context.Context) {
+	nsgPager := te.Clients.NSGClient.NewListPager(te.ResourceGroupName, nil)
+	for nsgPager.More() {
+		page, err := nsgPager.NextPage(ctx)
+		if err != nil {
+			slog.Warn("Failed to list NSGs for cleanup", "error", err)
+			break
+		}
+
+		for _, nsg := range page.Value {
+			if nsg.Name != nil && contains(*nsg.Name, te.Suffix) {
+				slog.Info("Deleting NSG", "name", *nsg.Name, "suffix", te.Suffix)
+				infra.DeleteNSG(ctx, te.Clients, te.ResourceGroupName, *nsg.Name)
+			}
+		}
+	}
+}
+
+// cleanupDisks deletes disks with matching suffix
+func (te *Environment) cleanupDisks(ctx context.Context) {
+	diskPager := te.Clients.DisksClient.NewListByResourceGroupPager(te.ResourceGroupName, nil)
+	for diskPager.More() {
+		page, err := diskPager.NextPage(ctx)
+		if err != nil {
+			slog.Warn("Failed to list disks for cleanup", "error", err)
+			break
 		}
 
 		for _, disk := range page.Value {
@@ -240,10 +335,27 @@ func (te *Environment) CleanupResourcesBySuffix(ctx context.Context) error {
 			}
 		}
 	}
+}
 
-	// TODO: Add cleanup for other resource types (VMs, NICs, etc.) if needed for tests
+// cleanupStorageAccounts deletes storage accounts with matching suffix
+func (te *Environment) cleanupStorageAccounts(ctx context.Context) {
+	storagePager := te.Clients.StorageClient.NewListByResourceGroupPager(te.ResourceGroupName, nil)
+	for storagePager.More() {
+		page, err := storagePager.NextPage(ctx)
+		if err != nil {
+			slog.Warn("Failed to list storage accounts for cleanup", "error", err)
+			break
+		}
 
-	return nil
+		for _, storage := range page.Value {
+			if storage.Name != nil && contains(*storage.Name, te.Suffix) {
+				slog.Info("Deleting storage account", "name", *storage.Name, "suffix", te.Suffix)
+				if _, err := te.Clients.StorageClient.Delete(ctx, te.ResourceGroupName, *storage.Name, nil); err != nil {
+					slog.Warn("Failed to delete storage account", "name", *storage.Name, "error", err)
+				}
+			}
+		}
+	}
 }
 
 // GetUniqueResourceName generates a unique resource name for testing
@@ -300,6 +412,13 @@ func RequireCategory(t *testing.T, category Category) {
 	if !config.ShouldRunCategory(category) {
 		t.Skipf("Test requires category %s which is not enabled", category)
 	}
+}
+
+// ShouldRunCategory returns true if the given category should be executed
+// This is a convenience function for direct use in tests
+func ShouldRunCategory(category Category) bool {
+	config := LoadConfig()
+	return config.ShouldRunCategory(category)
 }
 
 // RequireAzure is deprecated - Azure tests always run

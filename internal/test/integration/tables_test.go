@@ -1,5 +1,3 @@
-//go:build integration
-
 package integration
 
 import (
@@ -19,8 +17,8 @@ import (
 )
 
 func TestTableStorageCreationAndIdempotency(t *testing.T) {
-	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
+	t.Parallel()
 
 	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
 	defer env.Cleanup()
@@ -96,8 +94,8 @@ func TestTableStorageCreationAndIdempotency(t *testing.T) {
 }
 
 func TestTableStorageEntityOperations(t *testing.T) {
-	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
+	t.Parallel()
 
 	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
 	defer env.Cleanup()
@@ -204,8 +202,8 @@ func TestTableStorageEntityOperations(t *testing.T) {
 }
 
 func TestTableStorageQueryOperations(t *testing.T) {
-	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
+	t.Parallel()
 
 	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
 	defer env.Cleanup()
@@ -342,8 +340,8 @@ func TestTableStorageQueryOperations(t *testing.T) {
 }
 
 func TestTableStorageUpdateOperations(t *testing.T) {
-	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
+	t.Parallel()
 
 	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
 	defer env.Cleanup()
@@ -390,11 +388,8 @@ func TestTableStorageUpdateOperations(t *testing.T) {
 	resourceEntity.LastActivity = now
 	resourceEntity.Metadata = `{"updated": "data", "cpu": 4}`
 
-	// Use upsert operation to update
-	entityBytes, err := json.Marshal(resourceEntity)
-	require.NoError(t, err, "should marshal updated entity")
-
-	_, err = registryClient.UpsertEntity(ctx, entityBytes, nil)
+	// Use existing infra function to update
+	err = infra.WriteResourceRegistry(ctx, env.Clients, resourceEntity)
 	require.NoError(t, err, "should update entity without error")
 
 	test.LogTestProgress(t, "verifying entity was updated")
@@ -414,8 +409,8 @@ func TestTableStorageUpdateOperations(t *testing.T) {
 }
 
 func TestTableStorageDeleteOperations(t *testing.T) {
-	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
+	t.Parallel()
 
 	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
 	defer env.Cleanup()
@@ -474,8 +469,8 @@ func TestTableStorageDeleteOperations(t *testing.T) {
 }
 
 func TestTableStorageErrorHandling(t *testing.T) {
-	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
+	t.Parallel()
 
 	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
 	defer env.Cleanup()

@@ -1,5 +1,3 @@
-//go:build integration
-
 package integration
 
 // This file previously contained individual network component tests that have been

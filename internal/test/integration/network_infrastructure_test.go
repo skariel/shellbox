@@ -1,5 +1,3 @@
-//go:build integration
-
 package integration
 
 import (
@@ -16,8 +14,8 @@ import (
 )
 
 func TestNetworkInfrastructureIdempotency(t *testing.T) {
-	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
+	t.Parallel()
 	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Minute)

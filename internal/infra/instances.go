@@ -368,8 +368,8 @@ func DeleteInstance(ctx context.Context, clients *AzureClients, resourceGroupNam
 	deleteVM(ctx, clients, resourceGroupName, vmName, err == nil)
 	deleteDisk(ctx, clients, resourceGroupName, resourceInfo.dataDiskName, "data disk")
 	deleteDisk(ctx, clients, resourceGroupName, resourceInfo.osDiskName, "OS disk")
-	deleteNIC(ctx, clients, resourceGroupName, resourceInfo.nicName, resourceInfo.nicID)
-	deleteNSG(ctx, clients, resourceGroupName, resourceInfo.nsgName)
+	DeleteNIC(ctx, clients, resourceGroupName, resourceInfo.nicName, resourceInfo.nicID)
+	DeleteNSG(ctx, clients, resourceGroupName, resourceInfo.nsgName)
 
 	slog.Info("Box deletion completed", "vmName", vmName)
 	return nil
@@ -487,7 +487,7 @@ func deleteDisk(ctx context.Context, clients *AzureClients, resourceGroupName, d
 }
 
 // deleteNIC deletes a network interface
-func deleteNIC(ctx context.Context, clients *AzureClients, resourceGroupName, nicName, nicID string) {
+func DeleteNIC(ctx context.Context, clients *AzureClients, resourceGroupName, nicName, nicID string) {
 	targetNICName := nicName
 	if targetNICName == "" && nicID != "" {
 		parts := strings.Split(nicID, "/")
@@ -514,7 +514,7 @@ func deleteNIC(ctx context.Context, clients *AzureClients, resourceGroupName, ni
 }
 
 // deleteNSG deletes a network security group
-func deleteNSG(ctx context.Context, clients *AzureClients, resourceGroupName, nsgName string) {
+func DeleteNSG(ctx context.Context, clients *AzureClients, resourceGroupName, nsgName string) {
 	if nsgName == "" {
 		return
 	}

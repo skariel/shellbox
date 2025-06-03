@@ -1,5 +1,3 @@
-//go:build unit
-
 package unit
 
 import (
@@ -24,6 +22,7 @@ type RetryTestSuite struct {
 
 // SetupSuite runs once before all tests in the suite
 func (suite *RetryTestSuite) SetupSuite() {
+	test.RequireCategory(suite.T(), test.CategoryUnit)
 	suite.env = test.SetupMinimalTestEnvironment(suite.T())
 }
 

@@ -57,7 +57,7 @@ func compileBastionServer() error {
 	return nil
 }
 
-func createBastionPublicIP(ctx context.Context, clients *AzureClients) (*armnetwork.PublicIPAddress, error) {
+func CreateBastionPublicIP(ctx context.Context, clients *AzureClients) (*armnetwork.PublicIPAddress, error) {
 	namer := NewResourceNamer(clients.Suffix)
 	ipPoller, err := clients.PublicIPClient.BeginCreateOrUpdate(ctx, clients.ResourceGroupName, namer.BastionPublicIPName(), armnetwork.PublicIPAddress{
 		Location: to.Ptr(Location),
@@ -78,7 +78,7 @@ func createBastionPublicIP(ctx context.Context, clients *AzureClients) (*armnetw
 	return &res.PublicIPAddress, nil
 }
 
-func createBastionNIC(ctx context.Context, clients *AzureClients, publicIPID *string) (*armnetwork.Interface, error) {
+func CreateBastionNIC(ctx context.Context, clients *AzureClients, publicIPID *string) (*armnetwork.Interface, error) {
 	namer := NewResourceNamer(clients.Suffix)
 	nicPoller, err := clients.NICClient.BeginCreateOrUpdate(ctx, clients.ResourceGroupName, namer.BastionNICName(), armnetwork.Interface{
 		Location: to.Ptr(Location),
@@ -109,7 +109,7 @@ func createBastionNIC(ctx context.Context, clients *AzureClients, publicIPID *st
 	return &res.Interface, nil
 }
 
-func createBastionVM(ctx context.Context, clients *AzureClients, config *VMConfig, nicID string, customData string) (*armcompute.VirtualMachine, error) {
+func CreateBastionVM(ctx context.Context, clients *AzureClients, config *VMConfig, nicID string, customData string) (*armcompute.VirtualMachine, error) {
 	namer := NewResourceNamer(clients.Suffix)
 	vmPoller, err := clients.ComputeClient.BeginCreateOrUpdate(ctx, clients.ResourceGroupName, namer.BastionVMName(), armcompute.VirtualMachine{
 		Location: to.Ptr(Location),
@@ -261,13 +261,13 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *VMConfig)
 		os.Exit(1)
 	}
 
-	publicIP, err := createBastionPublicIP(ctx, clients)
+	publicIP, err := CreateBastionPublicIP(ctx, clients)
 	if err != nil {
 		logger.Error("failed to create public IP", "error", err)
 		os.Exit(1)
 	}
 
-	nic, err := createBastionNIC(ctx, clients, publicIP.ID)
+	nic, err := CreateBastionNIC(ctx, clients, publicIP.ID)
 	if err != nil {
 		logger.Error("failed to create NIC", "error", err)
 		os.Exit(1)
@@ -279,7 +279,7 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *VMConfig)
 		os.Exit(1)
 	}
 
-	vm, err := createBastionVM(ctx, clients, config, *nic.ID, customData)
+	vm, err := CreateBastionVM(ctx, clients, config, *nic.ID, customData)
 	if err != nil {
 		logger.Error("failed to create bastion VM", "error", err)
 		os.Exit(1)

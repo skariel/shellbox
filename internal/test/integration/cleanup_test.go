@@ -1,5 +1,3 @@
-//go:build integration
-
 package integration
 
 import (
@@ -16,8 +14,8 @@ import (
 )
 
 func TestResourceCleanupIsolation(t *testing.T) {
-	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
+	t.Parallel()
 
 	test.LogTestProgress(t, "testing resource cleanup and isolation")
 
@@ -36,8 +34,8 @@ func TestResourceCleanupIsolation(t *testing.T) {
 }
 
 func TestResourceGroupCleanupBehavior(t *testing.T) {
-	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
+	t.Parallel()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 	defer cancel()
@@ -89,8 +87,8 @@ func TestResourceGroupCleanupBehavior(t *testing.T) {
 }
 
 func TestCleanupTimeout(t *testing.T) {
-	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
+	t.Parallel()
 
 	test.LogTestProgress(t, "testing cleanup timeout behavior")
 
@@ -107,8 +105,8 @@ func TestCleanupTimeout(t *testing.T) {
 }
 
 func TestComprehensiveResourceNaming(t *testing.T) {
-	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
+	t.Parallel()
 
 	test.LogTestProgress(t, "testing comprehensive resource naming patterns and uniqueness")
 
@@ -170,8 +168,8 @@ func TestComprehensiveResourceNaming(t *testing.T) {
 }
 
 func TestCleanupErrorHandling(t *testing.T) {
-	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
+	t.Parallel()
 
 	test.LogTestProgress(t, "testing cleanup error handling")
 
@@ -197,8 +195,8 @@ func TestCleanupErrorHandling(t *testing.T) {
 }
 
 func TestMinimalEnvironmentBehavior(t *testing.T) {
-	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
+	t.Parallel()
 
 	test.LogTestProgress(t, "testing minimal environment behavior")
 
@@ -217,8 +215,8 @@ func TestMinimalEnvironmentBehavior(t *testing.T) {
 }
 
 func TestResourceTrackingBehavior(t *testing.T) {
-	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
+	t.Parallel()
 
 	test.LogTestProgress(t, "testing resource tracking behavior")
 
@@ -258,8 +256,8 @@ func TestResourceTrackingBehavior(t *testing.T) {
 }
 
 func TestUniqueResourceNaming(t *testing.T) {
-	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
+	t.Parallel()
 
 	test.LogTestProgress(t, "testing unique resource naming patterns")
 
@@ -283,8 +281,8 @@ func TestUniqueResourceNaming(t *testing.T) {
 }
 
 func TestConfigurationCategoryHandling(t *testing.T) {
-	t.Parallel()
 	test.RequireCategory(t, test.CategoryIntegration)
+	t.Parallel()
 
 	test.LogTestProgress(t, "testing configuration category handling")
 
