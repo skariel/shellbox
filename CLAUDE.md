@@ -57,8 +57,11 @@ go build -o deploy ./cmd/deploy
 
 ### Setup
 ```go
-// Initialize logger (production setup automatically used in tests)
+// Production setup
 infra.SetDefaultLogger()
+
+// Test setup (automatically used in SetupTestEnvironment)
+// Uses debug level and text format for better test visibility
 ```
 
 ### Usage
@@ -82,8 +85,8 @@ slog.Error("Failed to create resource", "type", "volume", "error", err)
 - **NEVER use `log.Printf()`** - always use structured `slog` calls
 - **Include relevant context** as key-value pairs after the message
 - **Use appropriate levels**: Debug for test details, Info for status, Warn for recoverable issues, Error for failures
-- **Tests automatically use production logger** via `SetupTestEnvironment()` and `SetupMinimalTestEnvironment()`
-- **JSON output** ensures consistent parsing across environments
+- **Tests automatically use debug-level text logger** via `SetupTestEnvironment()` and `SetupMinimalTestEnvironment()` for better visibility
+- **Production uses JSON output** for consistent parsing; **tests use text output** for readability
 
 ## Code Patterns
 
@@ -149,9 +152,11 @@ volumeName := namer.VolumePoolDiskName(volumeID)
 
 ### Testing Patterns
 - **Shared resource group**: Use `shellbox-testing` for all integration tests
+  **Resource Isolation**: unique prefix by test 
 - **Production logger**: Tests use `infra.SetDefaultLogger()` for consistency
-- **Category-based organization**: Tests organized by categories (unit, integration, golden, etc.)
+- **Category-based organization**: Tests organized by categories (unit, integration, e2e, etc.)
 - **Resource tracking**: Track created resources for cleanup with `env.TrackResource()`
+  **Resource cleanup**: each test removes it's own resources. There is a cleanup verification test run after all other tests have run.
 
 ## Guidelines
 

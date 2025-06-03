@@ -16,8 +16,6 @@ import (
 )
 
 func TestAzureClientInitialization(t *testing.T) {
-	test.RequireCategory(t, test.CategoryClient)
-
 	tests := []struct {
 		name        string
 		useAzureCLI bool
@@ -70,8 +68,6 @@ func TestAzureClientInitialization(t *testing.T) {
 }
 
 func TestCredentialCreation(t *testing.T) {
-	test.RequireCategory(t, test.CategoryClient)
-
 	tests := []struct {
 		name          string
 		credFunc      func() (azcore.TokenCredential, error)
@@ -107,8 +103,6 @@ func TestCredentialCreation(t *testing.T) {
 }
 
 func TestSubscriptionDiscovery(t *testing.T) {
-	test.RequireCategory(t, test.CategoryClient)
-
 	// This test verifies that the Azure client initialization discovers a valid subscription
 	env := test.SetupMinimalTestEnvironment(t)
 	clients := infra.NewAzureClients(env.Suffix, true)
@@ -119,8 +113,6 @@ func TestSubscriptionDiscovery(t *testing.T) {
 }
 
 func TestClientOperationTimeout(t *testing.T) {
-	test.RequireCategory(t, test.CategoryClient)
-
 	env := test.SetupMinimalTestEnvironment(t)
 	clients := infra.NewAzureClients(env.Suffix, true) // Use Azure CLI for test environment
 
@@ -135,8 +127,6 @@ func TestClientOperationTimeout(t *testing.T) {
 }
 
 func TestClientValidation(t *testing.T) {
-	test.RequireCategory(t, test.CategoryClient)
-
 	env := test.SetupMinimalTestEnvironment(t)
 	clients := infra.NewAzureClients(env.Suffix, true)
 
@@ -172,8 +162,6 @@ func TestClientValidation(t *testing.T) {
 }
 
 func TestResourceGroupNaming(t *testing.T) {
-	test.RequireCategory(t, test.CategoryClient)
-
 	tests := []struct {
 		name     string
 		suffix   string

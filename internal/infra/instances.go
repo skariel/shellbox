@@ -385,7 +385,7 @@ func extractInstanceResourceInfo(vm armcompute.VirtualMachinesClientGetResponse,
 
 	// Extract instance ID from VM name if not found in tags
 	if info.instanceID == "" {
-		info.instanceID = extractInstanceIDFromVMName(vmName)
+		info.instanceID = ExtractInstanceIDFromVMName(vmName)
 	}
 
 	// Generate missing resource names using naming patterns
@@ -418,7 +418,7 @@ func extractResourcesFromVM(info *instanceResourceInfo, vm armcompute.VirtualMac
 }
 
 // extractInstanceIDFromVMName extracts instance ID from VM name using naming pattern
-func extractInstanceIDFromVMName(vmName string) string {
+func ExtractInstanceIDFromVMName(vmName string) string {
 	parts := strings.Split(vmName, "-")
 	if len(parts) >= 4 {
 		return parts[len(parts)-2]
@@ -432,7 +432,7 @@ func generateMissingResourceNames(info *instanceResourceInfo, resourceGroupName 
 		return
 	}
 
-	namer := NewResourceNamer(extractSuffix(resourceGroupName))
+	namer := NewResourceNamer(ExtractSuffix(resourceGroupName))
 	info.nicName = namer.BoxNICName(info.instanceID)
 	info.nsgName = namer.BoxNSGName(info.instanceID)
 

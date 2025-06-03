@@ -51,7 +51,7 @@ func parseCommand(cmdLine string) CommandResult {
 	rootCmd.SetErr(&outputBuf)
 
 	// Parse command line into args and execute
-	args := parseArgs(cmdLine)
+	args := ParseArgs(cmdLine)
 	rootCmd.SetArgs(args)
 
 	if err := rootCmd.Execute(); err != nil {
@@ -148,7 +148,7 @@ func createCobraCommand(result *CommandResult) *cobra.Command {
 
 // parseArgs splits a command line into arguments
 // Simple implementation - could be enhanced for quotes, escaping, etc.
-func parseArgs(cmdLine string) []string {
+func ParseArgs(cmdLine string) []string {
 	args := strings.Fields(strings.TrimSpace(cmdLine))
 	// Use slices.Clip for memory efficiency if args will be long-lived
 	return slices.Clip(args)

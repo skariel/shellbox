@@ -14,10 +14,9 @@ import (
 )
 
 func TestBastionComponentIntegration(t *testing.T) {
-	test.RequireCategory(t, test.CategoryIntegration)
 	t.Parallel()
 
-	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
+	env := test.SetupTestEnvironment(t)
 	defer env.Cleanup()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)

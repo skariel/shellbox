@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math/big"
+	"os"
 	"testing"
 	"time"
 
@@ -28,22 +29,17 @@ type Environment struct {
 }
 
 // SetupTestEnvironment creates a new test environment with Azure resources
-func SetupTestEnvironment(t *testing.T, category Category) *Environment {
+func SetupTestEnvironment(t *testing.T) *Environment {
 	t.Helper()
 
-	// Initialize logger with production configuration
-	infra.SetDefaultLogger()
+	// Initialize logger with debug level for tests
+	setupTestLogger()
 
 	config := LoadConfig()
 
-	// Skip if category is not enabled
-	if !config.ShouldRunCategory(category) {
-		t.Skipf("Category %s is not enabled in test configuration", category)
-	}
-
 	// Generate unique suffix for this test's resources
 	rndNum, _ := rand.Int(rand.Reader, big.NewInt(100000))
-	suffix := fmt.Sprintf("%s-%s-%d", config.ResourceGroupPrefix, category, rndNum.Int64())
+	suffix := fmt.Sprintf("%s-test-%d", config.ResourceGroupPrefix, rndNum.Int64())
 
 	// Use shared resource group for all tests
 	sharedRGName := "shellbox-testing"
@@ -74,8 +70,7 @@ func SetupTestEnvironment(t *testing.T, category Category) *Environment {
 		env.Cleanup()
 	})
 
-	slog.Info("Test environment ready",
-		"category", category,
+	slog.Debug("Test environment ready",
 		"suffix", suffix,
 		"sharedResourceGroup", env.ResourceGroupName,
 		"useAzureCLI", config.UseAzureCLI)
@@ -87,8 +82,8 @@ func SetupTestEnvironment(t *testing.T, category Category) *Environment {
 func SetupMinimalTestEnvironment(t *testing.T) *Environment {
 	t.Helper()
 
-	// Initialize logger with production configuration
-	infra.SetDefaultLogger()
+	// Initialize logger with debug level for tests
+	setupTestLogger()
 
 	config := LoadConfig()
 
@@ -115,12 +110,12 @@ func (te *Environment) createTestResourceGroup() error {
 	_, err := te.Clients.ResourceClient.Get(ctx, te.ResourceGroupName, nil)
 	if err == nil {
 		// Resource group already exists, we're good
-		slog.Info("Shared resource group already exists", "name", te.ResourceGroupName)
+		slog.Debug("Shared resource group already exists", "name", te.ResourceGroupName)
 		return nil
 	}
 
 	// Resource group doesn't exist, create it
-	slog.Info("Creating shared resource group", "name", te.ResourceGroupName)
+	slog.Debug("Creating shared resource group", "name", te.ResourceGroupName)
 
 	_, err = te.Clients.ResourceClient.CreateOrUpdate(ctx, te.ResourceGroupName, armresources.ResourceGroup{
 		Location: to.Ptr(te.Config.Location),
@@ -135,7 +130,7 @@ func (te *Environment) createTestResourceGroup() error {
 		return fmt.Errorf("failed to create shared resource group: %w", err)
 	}
 
-	slog.Info("Successfully created shared resource group", "name", te.ResourceGroupName)
+	slog.Debug("Successfully created shared resource group", "name", te.ResourceGroupName)
 	// Don't add the RG to CreatedResources since we never want to delete it
 	return nil
 }
@@ -153,13 +148,10 @@ func (te *Environment) Cleanup() {
 	te.cleanedUp = true // Mark as cleaned up to prevent double cleanup
 
 	elapsed := time.Since(te.startTime)
-	category := te.getCurrentCategory()
-
-	slog.Info("Starting test cleanup",
+	slog.Debug("Starting test cleanup",
 		"suffix", te.Suffix,
 		"resources", len(te.CreatedResources),
-		"elapsed", elapsed,
-		"category", category)
+		"elapsed", elapsed)
 
 	// Clean up all Azure resources by suffix (VMs, NICs, disks, storage accounts, etc.)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
@@ -168,7 +160,7 @@ func (te *Environment) Cleanup() {
 	if err := te.CleanupResourcesBySuffix(ctx); err != nil {
 		slog.Warn("Failed to cleanup resources by suffix", "suffix", te.Suffix, "error", err)
 	} else {
-		slog.Info("Successfully cleaned up Azure resources by suffix", "suffix", te.Suffix)
+		slog.Debug("Successfully cleaned up Azure resources by suffix", "suffix", te.Suffix)
 	}
 
 	// Clean up table storage (if tables were created with this suffix)
@@ -176,13 +168,13 @@ func (te *Environment) Cleanup() {
 		if err := infra.CleanupTestTables(ctx, te.Clients, te.Suffix); err != nil {
 			slog.Warn("Failed to cleanup test tables", "suffix", te.Suffix, "error", err)
 		} else {
-			slog.Info("Successfully cleaned up test tables", "suffix", te.Suffix)
+			slog.Debug("Successfully cleaned up test tables", "suffix", te.Suffix)
 		}
 	}
 
 	// Log tracked resources for reference
 	if len(te.CreatedResources) > 0 {
-		slog.Info("Tracked resources for cleanup",
+		slog.Debug("Tracked resources for cleanup",
 			"count", len(te.CreatedResources),
 			"suffix", te.Suffix)
 
@@ -217,7 +209,7 @@ func (te *Environment) CleanupResourcesBySuffix(ctx context.Context) error {
 		return nil // Nothing to clean up for minimal environments
 	}
 
-	slog.Info("Cleaning up resources by suffix", "suffix", te.Suffix, "resourceGroup", te.ResourceGroupName)
+	slog.Debug("Cleaning up resources by suffix", "suffix", te.Suffix, "resourceGroup", te.ResourceGroupName)
 
 	// Clean up resources in dependency order
 	te.cleanupVMs(ctx)
@@ -227,7 +219,7 @@ func (te *Environment) CleanupResourcesBySuffix(ctx context.Context) error {
 	te.cleanupDisks(ctx)
 	te.cleanupStorageAccounts(ctx)
 
-	slog.Info("Completed resource cleanup by suffix", "suffix", te.Suffix)
+	slog.Debug("Completed resource cleanup by suffix", "suffix", te.Suffix)
 	return nil
 }
 
@@ -243,7 +235,7 @@ func (te *Environment) cleanupVMs(ctx context.Context) {
 
 		for _, vm := range page.Value {
 			if vm.Name != nil && contains(*vm.Name, te.Suffix) {
-				slog.Info("Deleting VM", "name", *vm.Name, "suffix", te.Suffix)
+				slog.Debug("Deleting VM", "name", *vm.Name, "suffix", te.Suffix)
 				if err := infra.DeleteInstance(ctx, te.Clients, te.ResourceGroupName, *vm.Name); err != nil {
 					slog.Warn("Failed to delete VM", "name", *vm.Name, "error", err)
 				}
@@ -264,7 +256,7 @@ func (te *Environment) cleanupNICs(ctx context.Context) {
 
 		for _, nic := range page.Value {
 			if nic.Name != nil && contains(*nic.Name, te.Suffix) {
-				slog.Info("Deleting NIC", "name", *nic.Name, "suffix", te.Suffix)
+				slog.Debug("Deleting NIC", "name", *nic.Name, "suffix", te.Suffix)
 				infra.DeleteNIC(ctx, te.Clients, te.ResourceGroupName, *nic.Name, "")
 			}
 		}
@@ -283,7 +275,7 @@ func (te *Environment) cleanupPublicIPs(ctx context.Context) {
 
 		for _, pip := range page.Value {
 			if pip.Name != nil && contains(*pip.Name, te.Suffix) {
-				slog.Info("Deleting Public IP", "name", *pip.Name, "suffix", te.Suffix)
+				slog.Debug("Deleting Public IP", "name", *pip.Name, "suffix", te.Suffix)
 				poller, err := te.Clients.PublicIPClient.BeginDelete(ctx, te.ResourceGroupName, *pip.Name, nil)
 				if err != nil {
 					slog.Warn("Failed to start Public IP deletion", "name", *pip.Name, "error", err)
@@ -309,7 +301,7 @@ func (te *Environment) cleanupNSGs(ctx context.Context) {
 
 		for _, nsg := range page.Value {
 			if nsg.Name != nil && contains(*nsg.Name, te.Suffix) {
-				slog.Info("Deleting NSG", "name", *nsg.Name, "suffix", te.Suffix)
+				slog.Debug("Deleting NSG", "name", *nsg.Name, "suffix", te.Suffix)
 				infra.DeleteNSG(ctx, te.Clients, te.ResourceGroupName, *nsg.Name)
 			}
 		}
@@ -328,7 +320,7 @@ func (te *Environment) cleanupDisks(ctx context.Context) {
 
 		for _, disk := range page.Value {
 			if disk.Name != nil && contains(*disk.Name, te.Suffix) {
-				slog.Info("Deleting disk", "name", *disk.Name, "suffix", te.Suffix)
+				slog.Debug("Deleting disk", "name", *disk.Name, "suffix", te.Suffix)
 				if err := infra.DeleteVolume(ctx, te.Clients, te.ResourceGroupName, *disk.Name); err != nil {
 					slog.Warn("Failed to delete disk", "name", *disk.Name, "error", err)
 				}
@@ -349,7 +341,7 @@ func (te *Environment) cleanupStorageAccounts(ctx context.Context) {
 
 		for _, storage := range page.Value {
 			if storage.Name != nil && contains(*storage.Name, te.Suffix) {
-				slog.Info("Deleting storage account", "name", *storage.Name, "suffix", te.Suffix)
+				slog.Debug("Deleting storage account", "name", *storage.Name, "suffix", te.Suffix)
 				if _, err := te.Clients.StorageClient.Delete(ctx, te.ResourceGroupName, *storage.Name, nil); err != nil {
 					slog.Warn("Failed to delete storage account", "name", *storage.Name, "error", err)
 				}
@@ -362,27 +354,6 @@ func (te *Environment) cleanupStorageAccounts(ctx context.Context) {
 func (te *Environment) GetUniqueResourceName(prefix string) string {
 	rndNum, _ := rand.Int(rand.Reader, big.NewInt(1000))
 	return fmt.Sprintf("%s-%s-%d", prefix, te.Suffix, rndNum.Int64())
-}
-
-// getCurrentCategory extracts the category from the test name or suffix
-func (te *Environment) getCurrentCategory() Category {
-	testName := te.t.Name()
-
-	// Try to extract category from test name
-	for _, category := range AllCategories() {
-		if contains(testName, string(category)) {
-			return category
-		}
-	}
-
-	// Fall back to extracting from suffix
-	for _, category := range AllCategories() {
-		if contains(te.Suffix, string(category)) {
-			return category
-		}
-	}
-
-	return CategoryUnit // Default fallback
 }
 
 // contains checks if a string contains a substring (case-insensitive)
@@ -404,23 +375,6 @@ func indexOf(s, substr string) int {
 	return -1
 }
 
-// RequireCategory skips the test if the category is not enabled
-func RequireCategory(t *testing.T, category Category) {
-	t.Helper()
-
-	config := LoadConfig()
-	if !config.ShouldRunCategory(category) {
-		t.Skipf("Test requires category %s which is not enabled", category)
-	}
-}
-
-// ShouldRunCategory returns true if the given category should be executed
-// This is a convenience function for direct use in tests
-func ShouldRunCategory(category Category) bool {
-	config := LoadConfig()
-	return config.ShouldRunCategory(category)
-}
-
 // RequireAzure is deprecated - Azure tests always run
 func RequireAzure(t *testing.T) {
 	t.Helper()
@@ -434,5 +388,14 @@ func LogTestProgress(t *testing.T, operation string, details ...interface{}) {
 	args := []interface{}{"test", t.Name(), "operation", operation}
 	args = append(args, details...)
 
-	slog.Info("Test progress", args...)
+	slog.Debug("Test progress", args...)
+}
+
+// setupTestLogger configures slog to use debug level for test visibility
+func setupTestLogger() {
+	// Create a text handler for better readability in tests
+	handler := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	})
+	slog.SetDefault(slog.New(handler))
 }

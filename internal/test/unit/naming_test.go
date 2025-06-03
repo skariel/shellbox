@@ -238,9 +238,6 @@ func (suite *NamingTestSuite) TestFrameworkItself() {
 	// Test configuration loading
 	config := test.LoadConfig()
 	require.NotNil(suite.T(), config, "Test config should load successfully")
-
-	// Test category checking
-	assert.True(suite.T(), config.ShouldRunCategory(test.CategoryUnit), "Unit category should be enabled by default")
 }
 
 // Run the test suite

@@ -17,8 +17,6 @@ import (
 )
 
 func TestTableStorageClientCreation(t *testing.T) {
-	test.RequireCategory(t, test.CategoryClient)
-
 	tests := []struct {
 		name             string
 		connectionString string
@@ -73,8 +71,6 @@ func TestTableStorageClientCreation(t *testing.T) {
 }
 
 func TestTableStorageConfigFileHandling(t *testing.T) {
-	test.RequireCategory(t, test.CategoryClient)
-
 	// Create temporary directory for test config files
 	tempDir := t.TempDir()
 
@@ -149,8 +145,6 @@ func TestTableStorageConfigFileHandling(t *testing.T) {
 }
 
 func TestTableOperationEntities(t *testing.T) {
-	test.RequireCategory(t, test.CategoryClient)
-
 	t.Run("EventLogEntity", func(t *testing.T) {
 		// Test EventLogEntity marshaling
 		entity := infra.EventLogEntity{
@@ -216,8 +210,6 @@ func TestTableOperationEntities(t *testing.T) {
 }
 
 func TestTableStorageClientIntegration(t *testing.T) {
-	test.RequireCategory(t, test.CategoryClient)
-
 	// Test that table storage client integrates properly with AzureClients
 	env := test.SetupMinimalTestEnvironment(t)
 
@@ -244,8 +236,6 @@ func TestTableStorageClientIntegration(t *testing.T) {
 }
 
 func TestTableStorageConstants(t *testing.T) {
-	test.RequireCategory(t, test.CategoryClient)
-
 	// Test that required table names are defined
 	// Note: These are internal constants, so we test them indirectly by checking
 	// they're used in the table creation patterns
@@ -259,8 +249,6 @@ func TestTableStorageConstants(t *testing.T) {
 }
 
 func TestConnectionStringGeneration(t *testing.T) {
-	test.RequireCategory(t, test.CategoryClient)
-
 	tests := []struct {
 		name        string
 		accountName string

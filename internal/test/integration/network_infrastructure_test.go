@@ -14,9 +14,8 @@ import (
 )
 
 func TestNetworkInfrastructureIdempotency(t *testing.T) {
-	test.RequireCategory(t, test.CategoryIntegration)
 	t.Parallel()
-	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
+	env := test.SetupTestEnvironment(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Minute)
 	defer cancel()

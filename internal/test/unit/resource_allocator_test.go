@@ -72,33 +72,21 @@ func (m *MockAzureOperations) GetInstancePrivateIP(ctx context.Context, instance
 // ResourceAllocatorTestSuite tests the resource allocation logic
 type ResourceAllocatorTestSuite struct {
 	suite.Suite
-	env                 *test.Environment
-	mockResourceQueries *MockResourceGraphQueries
-	mockQEMU            *MockQEMUManager
-	mockAzureOps        *MockAzureOperations
-	allocator           *ResourceAllocatorWrapper
+	env *test.Environment
 }
 
 // ResourceAllocatorWrapper wraps the allocator with mock dependencies
 type ResourceAllocatorWrapper struct {
 	*infra.ResourceAllocator
-	mockResourceQueries *MockResourceGraphQueries
-	mockQEMU            *MockQEMUManager
-	mockAzureOps        *MockAzureOperations
 }
 
 // SetupSuite runs once before all tests in the suite
 func (suite *ResourceAllocatorTestSuite) SetupSuite() {
-	test.RequireCategory(suite.T(), test.CategoryUnit)
 	suite.env = test.SetupMinimalTestEnvironment(suite.T())
 }
 
 // SetupTest runs before each test
 func (suite *ResourceAllocatorTestSuite) SetupTest() {
-	suite.mockResourceQueries = new(MockResourceGraphQueries)
-	suite.mockQEMU = new(MockQEMUManager)
-	suite.mockAzureOps = new(MockAzureOperations)
-
 	// Note: Since ResourceAllocator doesn't expose its dependencies for injection,
 	// we'll test the logic patterns and structures rather than the full integration
 }

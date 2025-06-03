@@ -17,10 +17,9 @@ import (
 )
 
 func TestTableStorageCreationAndIdempotency(t *testing.T) {
-	test.RequireCategory(t, test.CategoryIntegration)
 	t.Parallel()
 
-	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
+	env := test.SetupTestEnvironment(t)
 	defer env.Cleanup()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
@@ -94,10 +93,9 @@ func TestTableStorageCreationAndIdempotency(t *testing.T) {
 }
 
 func TestTableStorageEntityOperations(t *testing.T) {
-	test.RequireCategory(t, test.CategoryIntegration)
 	t.Parallel()
 
-	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
+	env := test.SetupTestEnvironment(t)
 	defer env.Cleanup()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
@@ -202,10 +200,9 @@ func TestTableStorageEntityOperations(t *testing.T) {
 }
 
 func TestTableStorageQueryOperations(t *testing.T) {
-	test.RequireCategory(t, test.CategoryIntegration)
 	t.Parallel()
 
-	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
+	env := test.SetupTestEnvironment(t)
 	defer env.Cleanup()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
@@ -340,10 +337,9 @@ func TestTableStorageQueryOperations(t *testing.T) {
 }
 
 func TestTableStorageUpdateOperations(t *testing.T) {
-	test.RequireCategory(t, test.CategoryIntegration)
 	t.Parallel()
 
-	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
+	env := test.SetupTestEnvironment(t)
 	defer env.Cleanup()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
@@ -409,10 +405,9 @@ func TestTableStorageUpdateOperations(t *testing.T) {
 }
 
 func TestTableStorageDeleteOperations(t *testing.T) {
-	test.RequireCategory(t, test.CategoryIntegration)
 	t.Parallel()
 
-	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
+	env := test.SetupTestEnvironment(t)
 	defer env.Cleanup()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
@@ -469,10 +464,9 @@ func TestTableStorageDeleteOperations(t *testing.T) {
 }
 
 func TestTableStorageErrorHandling(t *testing.T) {
-	test.RequireCategory(t, test.CategoryIntegration)
 	t.Parallel()
 
-	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
+	env := test.SetupTestEnvironment(t)
 	defer env.Cleanup()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)

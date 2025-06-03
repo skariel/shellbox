@@ -253,7 +253,7 @@ func (rq *ResourceGraphQueries) executeResourceQuery(ctx context.Context, query 
 		if dataArray, ok := result.Data.([]interface{}); ok {
 			for _, item := range dataArray {
 				if resourceMap, ok := item.(map[string]interface{}); ok {
-					resource := parseResourceInfo(resourceMap)
+					resource := ParseResourceInfo(resourceMap)
 					if resource != nil {
 						resources = append(resources, *resource)
 					}
@@ -267,18 +267,18 @@ func (rq *ResourceGraphQueries) executeResourceQuery(ctx context.Context, query 
 }
 
 // parseResourceInfo converts Resource Graph result map to ResourceInfo struct
-func parseResourceInfo(resourceMap map[string]interface{}) *ResourceInfo {
+func ParseResourceInfo(resourceMap map[string]interface{}) *ResourceInfo {
 	resource := &ResourceInfo{}
 
-	parseBasicFields(resource, resourceMap)
-	parseTags(resource, resourceMap)
-	parseProjectedFields(resource, resourceMap)
+	ParseBasicFields(resource, resourceMap)
+	ParseTags(resource, resourceMap)
+	ParseProjectedFields(resource, resourceMap)
 
 	return resource
 }
 
 // parseBasicFields extracts basic resource fields
-func parseBasicFields(resource *ResourceInfo, resourceMap map[string]interface{}) {
+func ParseBasicFields(resource *ResourceInfo, resourceMap map[string]interface{}) {
 	if name, ok := resourceMap["name"].(string); ok {
 		resource.Name = name
 	}
@@ -291,7 +291,7 @@ func parseBasicFields(resource *ResourceInfo, resourceMap map[string]interface{}
 }
 
 // parseTags extracts and processes resource tags
-func parseTags(resource *ResourceInfo, resourceMap map[string]interface{}) {
+func ParseTags(resource *ResourceInfo, resourceMap map[string]interface{}) {
 	tagsInterface, ok := resourceMap["tags"]
 	if !ok {
 		return
@@ -345,7 +345,7 @@ func extractResourceID(resource *ResourceInfo) {
 }
 
 // parseProjectedFields parses fields projected by specific queries
-func parseProjectedFields(resource *ResourceInfo, resourceMap map[string]interface{}) {
+func ParseProjectedFields(resource *ResourceInfo, resourceMap map[string]interface{}) {
 	// Parse lastused from query projection (for oldest resource queries)
 	if lastUsedInterface, ok := resourceMap["lastused"]; ok {
 		if lastUsedStr, ok := lastUsedInterface.(string); ok {

@@ -221,7 +221,7 @@ type tempBoxInfo struct {
 
 // createBoxWithDataVolume creates a temporary box VM with a data volume for QEMU setup
 func createBoxWithDataVolume(ctx context.Context, clients *AzureClients, resourceGroupName, vmName string) (*tempBoxInfo, error) {
-	namer := NewResourceNamer(extractSuffix(resourceGroupName))
+	namer := NewResourceNamer(ExtractSuffix(resourceGroupName))
 
 	// Create data volume using golden-specific tagging
 	dataDiskName := fmt.Sprintf("%s-data", vmName)
@@ -407,7 +407,7 @@ func createBoxVMWithDataDisk(ctx context.Context, clients *AzureClients, resourc
 				},
 				DataDisks: []*armcompute.DataDisk{
 					{
-						Name:         to.Ptr(extractDiskNameFromID(dataDiskID)),
+						Name:         to.Ptr(ExtractDiskNameFromID(dataDiskID)),
 						CreateOption: to.Ptr(armcompute.DiskCreateOptionTypesAttach),
 						Lun:          to.Ptr[int32](0),
 						ManagedDisk: &armcompute.ManagedDiskParameters{
@@ -487,13 +487,13 @@ func generateDataVolumeInitScript() (string, error) {
 }
 
 // extractDiskNameFromID extracts the disk name from a full Azure resource ID
-func extractDiskNameFromID(diskID string) string {
+func ExtractDiskNameFromID(diskID string) string {
 	parts := strings.Split(diskID, "/")
 	return parts[len(parts)-1]
 }
 
 // extractSuffix extracts the suffix from a resource group name
-func extractSuffix(resourceGroupName string) string {
+func ExtractSuffix(resourceGroupName string) string {
 	// Assumes resource group name format: "shellbox-<suffix>"
 	const prefix = "shellbox-"
 	if len(resourceGroupName) > len(prefix) {

@@ -28,17 +28,12 @@ func (suite *ZZZCleanupVerificationTestSuite) SetupSuite() {
 
 // TestResourceGroupIsEmpty tests that the shared test resource group is empty after all tests
 func (suite *ZZZCleanupVerificationTestSuite) TestResourceGroupIsEmpty() {
-	// This test should run for both integration and e2e categories
-	config := test.LoadConfig()
-	if !config.ShouldRunCategory(test.CategoryIntegration) && !config.ShouldRunCategory(test.CategoryE2E) {
-		suite.T().Skip("Cleanup verification test only runs with integration or e2e tests")
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
 	// List all resources in the shared test resource group
 	resourceGroupName := "shellbox-testing"
-	
+
 	resources, err := suite.env.Clients.ResourceClient.ListByResourceGroup(ctx, resourceGroupName, nil)
 	require.NoError(suite.T(), err, "Failed to list resources in %s", resourceGroupName)
 
@@ -47,7 +42,7 @@ func (suite *ZZZCleanupVerificationTestSuite) TestResourceGroupIsEmpty() {
 	for resources.More() {
 		page, err := resources.NextPage(ctx)
 		require.NoError(suite.T(), err, "Failed to get next page of resources")
-		
+
 		for _, resource := range page.Value {
 			if resource.ID != nil {
 				foundResources = append(foundResources, *resource.ID)
@@ -63,10 +58,10 @@ func (suite *ZZZCleanupVerificationTestSuite) TestResourceGroupIsEmpty() {
 		}
 	}
 
-	assert.Empty(suite.T(), foundResources, 
+	assert.Empty(suite.T(), foundResources,
 		"Resource group %s should be empty after all tests complete. "+
-		"Found %d remaining resources. This indicates test cleanup failures. "+
-		"Run 'make clean-test' to manually clean up resources.", 
+			"Found %d remaining resources. This indicates test cleanup failures. "+
+			"Run 'make clean-test' to manually clean up resources.",
 		resourceGroupName, len(foundResources))
 }
 

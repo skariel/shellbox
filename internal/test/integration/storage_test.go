@@ -16,10 +16,9 @@ import (
 )
 
 func TestVolumeCreationAndDeletion(t *testing.T) {
-	test.RequireCategory(t, test.CategoryIntegration)
 	t.Parallel()
 
-	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
+	env := test.SetupTestEnvironment(t)
 	defer env.Cleanup()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
@@ -112,10 +111,9 @@ func TestVolumeCreationAndDeletion(t *testing.T) {
 }
 
 func TestFindVolumesByRole(t *testing.T) {
-	test.RequireCategory(t, test.CategoryIntegration)
 	t.Parallel()
 
-	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
+	env := test.SetupTestEnvironment(t)
 	defer env.Cleanup()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
@@ -202,10 +200,9 @@ func TestFindVolumesByRole(t *testing.T) {
 }
 
 func TestUpdateVolumeStatus(t *testing.T) {
-	test.RequireCategory(t, test.CategoryIntegration)
 	t.Parallel()
 
-	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
+	env := test.SetupTestEnvironment(t)
 	defer env.Cleanup()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
@@ -257,10 +254,9 @@ func TestUpdateVolumeStatus(t *testing.T) {
 }
 
 func TestVolumeAttachmentToInstance(t *testing.T) {
-	test.RequireCategory(t, test.CategoryIntegration)
 	t.Parallel()
 
-	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
+	env := test.SetupTestEnvironment(t)
 	defer env.Cleanup()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Minute)
@@ -349,10 +345,9 @@ func TestVolumeAttachmentToInstance(t *testing.T) {
 }
 
 func TestVolumeLifecycle(t *testing.T) {
-	test.RequireCategory(t, test.CategoryIntegration)
 	t.Parallel()
 
-	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
+	env := test.SetupTestEnvironment(t)
 	defer env.Cleanup()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
@@ -414,10 +409,9 @@ func TestVolumeLifecycle(t *testing.T) {
 }
 
 func TestVolumeErrorHandling(t *testing.T) {
-	test.RequireCategory(t, test.CategoryIntegration)
 	t.Parallel()
 
-	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
+	env := test.SetupTestEnvironment(t)
 	defer env.Cleanup()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)

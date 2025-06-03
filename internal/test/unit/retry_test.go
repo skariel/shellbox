@@ -22,7 +22,6 @@ type RetryTestSuite struct {
 
 // SetupSuite runs once before all tests in the suite
 func (suite *RetryTestSuite) SetupSuite() {
-	test.RequireCategory(suite.T(), test.CategoryUnit)
 	suite.env = test.SetupMinimalTestEnvironment(suite.T())
 }
 
@@ -31,7 +30,7 @@ func (suite *RetryTestSuite) TestRetryOperationSuccess() {
 	ctx := context.Background()
 	callCount := 0
 
-	operation := func(ctx context.Context) error {
+	operation := func(_ context.Context) error {
 		callCount++
 		return nil // Success on first try
 	}
@@ -47,7 +46,7 @@ func (suite *RetryTestSuite) TestRetryOperationEventualSuccess() {
 	ctx := context.Background()
 	callCount := 0
 
-	operation := func(ctx context.Context) error {
+	operation := func(_ context.Context) error {
 		callCount++
 		if callCount < 3 {
 			return errors.New("temporary failure")
@@ -70,7 +69,7 @@ func (suite *RetryTestSuite) TestRetryOperationTimeout() {
 	ctx := context.Background()
 	callCount := 0
 
-	operation := func(ctx context.Context) error {
+	operation := func(_ context.Context) error {
 		callCount++
 		return errors.New("persistent failure")
 	}
@@ -92,7 +91,7 @@ func (suite *RetryTestSuite) TestRetryOperationContextCancellation() {
 	ctx, cancel := context.WithCancel(context.Background())
 	callCount := 0
 
-	operation := func(ctx context.Context) error {
+	operation := func(_ context.Context) error {
 		callCount++
 		if callCount == 2 {
 			cancel() // Cancel after second attempt
@@ -112,7 +111,7 @@ func (suite *RetryTestSuite) TestRetryOperationWithShortTimeout() {
 	ctx := context.Background()
 	callCount := 0
 
-	operation := func(ctx context.Context) error {
+	operation := func(_ context.Context) error {
 		callCount++
 		// Fast operation that always fails
 		return errors.New("fast failing operation")
@@ -134,7 +133,7 @@ func (suite *RetryTestSuite) TestRetryOperationWithLongInterval() {
 	ctx := context.Background()
 	callCount := 0
 
-	operation := func(ctx context.Context) error {
+	operation := func(_ context.Context) error {
 		callCount++
 		if callCount < 3 {
 			return errors.New("temporary failure")
@@ -157,7 +156,7 @@ func (suite *RetryTestSuite) TestRetryOperationNoTimeout() {
 	defer cancel()
 
 	callCount := 0
-	operation := func(ctx context.Context) error {
+	operation := func(_ context.Context) error {
 		callCount++
 		return errors.New("persistent failure") // Always fail to ensure timeout
 	}
@@ -192,7 +191,7 @@ func (suite *RetryTestSuite) TestRetryOperationErrorWrapping() {
 	ctx := context.Background()
 	originalError := errors.New("original error message")
 
-	operation := func(ctx context.Context) error {
+	operation := func(_ context.Context) error {
 		return originalError
 	}
 
@@ -212,9 +211,9 @@ func (suite *RetryTestSuite) TestRetryOperationConcurrentSafety() {
 	results := make(chan error, numGoroutines)
 
 	for i := 0; i < numGoroutines; i++ {
-		go func(id int) {
+		go func(_ int) {
 			callCount := 0
-			operation := func(ctx context.Context) error {
+			operation := func(_ context.Context) error {
 				callCount++
 				if callCount < 2 {
 					return errors.New("temporary failure")

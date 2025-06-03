@@ -88,7 +88,7 @@ func CreateVolumeWithTags(ctx context.Context, clients *AzureClients, resourceGr
 				CreateOption: to.Ptr(armcompute.DiskCreateOptionEmpty),
 			},
 		},
-		Tags: volumeTagsToMap(tags),
+		Tags: VolumeTagsToMap(tags),
 	}
 
 	pollOptions := &runtime.PollUntilDoneOptions{
@@ -140,7 +140,7 @@ func CreateVolumeFromSnapshot(ctx context.Context, clients *AzureClients, resour
 				SourceResourceID: to.Ptr(snapshotID),
 			},
 		},
-		Tags: volumeTagsToMap(tags),
+		Tags: VolumeTagsToMap(tags),
 	}
 
 	pollOptions := &runtime.PollUntilDoneOptions{
@@ -226,7 +226,7 @@ func FindVolumesByRole(ctx context.Context, clients *AzureClients, resourceGroup
 }
 
 // volumeTagsToMap converts VolumeTags struct to Azure tags map format
-func volumeTagsToMap(tags VolumeTags) map[string]*string {
+func VolumeTagsToMap(tags VolumeTags) map[string]*string {
 	return map[string]*string{
 		TagKeyRole:     to.Ptr(tags.Role),
 		TagKeyStatus:   to.Ptr(tags.Status),

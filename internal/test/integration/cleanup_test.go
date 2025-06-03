@@ -14,14 +14,13 @@ import (
 )
 
 func TestResourceCleanupIsolation(t *testing.T) {
-	test.RequireCategory(t, test.CategoryIntegration)
 	t.Parallel()
 
 	test.LogTestProgress(t, "testing resource cleanup and isolation")
 
 	// Test 1: Multiple test environments should have unique suffixes
-	env1 := test.SetupTestEnvironment(t, test.CategoryIntegration)
-	env2 := test.SetupTestEnvironment(t, test.CategoryIntegration)
+	env1 := test.SetupTestEnvironment(t)
+	env2 := test.SetupTestEnvironment(t)
 
 	assert.NotEqual(t, env1.Suffix, env2.Suffix, "test environments should have unique suffixes")
 	// Resource groups are shared, but suffixes should be unique
@@ -34,7 +33,6 @@ func TestResourceCleanupIsolation(t *testing.T) {
 }
 
 func TestResourceGroupCleanupBehavior(t *testing.T) {
-	test.RequireCategory(t, test.CategoryIntegration)
 	t.Parallel()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
@@ -43,7 +41,7 @@ func TestResourceGroupCleanupBehavior(t *testing.T) {
 	test.LogTestProgress(t, "testing resource group cleanup behavior")
 
 	// Create a test environment
-	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
+	env := test.SetupTestEnvironment(t)
 
 	// Verify resource group exists
 	rg, err := env.Clients.ResourceClient.Get(ctx, env.ResourceGroupName, nil)
@@ -87,12 +85,11 @@ func TestResourceGroupCleanupBehavior(t *testing.T) {
 }
 
 func TestCleanupTimeout(t *testing.T) {
-	test.RequireCategory(t, test.CategoryIntegration)
 	t.Parallel()
 
 	test.LogTestProgress(t, "testing cleanup timeout behavior")
 
-	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
+	env := test.SetupTestEnvironment(t)
 
 	// Verify the test environment has a cleanup timeout configured
 	assert.NotZero(t, env.Config.CleanupTimeout, "test environment should have cleanup timeout configured")
@@ -105,7 +102,6 @@ func TestCleanupTimeout(t *testing.T) {
 }
 
 func TestComprehensiveResourceNaming(t *testing.T) {
-	test.RequireCategory(t, test.CategoryIntegration)
 	t.Parallel()
 
 	test.LogTestProgress(t, "testing comprehensive resource naming patterns and uniqueness")
@@ -113,7 +109,7 @@ func TestComprehensiveResourceNaming(t *testing.T) {
 	// Create multiple test environments
 	environments := make([]*test.Environment, 5)
 	for i := 0; i < 5; i++ {
-		environments[i] = test.SetupTestEnvironment(t, test.CategoryIntegration)
+		environments[i] = test.SetupTestEnvironment(t)
 	}
 
 	// Verify all have unique names
@@ -168,12 +164,11 @@ func TestComprehensiveResourceNaming(t *testing.T) {
 }
 
 func TestCleanupErrorHandling(t *testing.T) {
-	test.RequireCategory(t, test.CategoryIntegration)
 	t.Parallel()
 
 	test.LogTestProgress(t, "testing cleanup error handling")
 
-	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
+	env := test.SetupTestEnvironment(t)
 
 	// Test cleanup with valid environment
 	originalRGName := env.ResourceGroupName
@@ -195,7 +190,6 @@ func TestCleanupErrorHandling(t *testing.T) {
 }
 
 func TestMinimalEnvironmentBehavior(t *testing.T) {
-	test.RequireCategory(t, test.CategoryIntegration)
 	t.Parallel()
 
 	test.LogTestProgress(t, "testing minimal environment behavior")
@@ -215,12 +209,11 @@ func TestMinimalEnvironmentBehavior(t *testing.T) {
 }
 
 func TestResourceTrackingBehavior(t *testing.T) {
-	test.RequireCategory(t, test.CategoryIntegration)
 	t.Parallel()
 
 	test.LogTestProgress(t, "testing resource tracking behavior")
 
-	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
+	env := test.SetupTestEnvironment(t)
 	defer env.Cleanup()
 
 	// Verify initial state (environment starts with empty tracking)
@@ -256,7 +249,6 @@ func TestResourceTrackingBehavior(t *testing.T) {
 }
 
 func TestUniqueResourceNaming(t *testing.T) {
-	test.RequireCategory(t, test.CategoryIntegration)
 	t.Parallel()
 
 	test.LogTestProgress(t, "testing unique resource naming patterns")
@@ -278,25 +270,4 @@ func TestUniqueResourceNaming(t *testing.T) {
 	assert.Len(t, names, 10, "should generate 10 unique names")
 
 	test.LogTestProgress(t, "unique resource naming verified", "uniqueNames", len(names))
-}
-
-func TestConfigurationCategoryHandling(t *testing.T) {
-	test.RequireCategory(t, test.CategoryIntegration)
-	t.Parallel()
-
-	test.LogTestProgress(t, "testing configuration category handling")
-
-	// Test that category is properly detected and handled
-	env := test.SetupTestEnvironment(t, test.CategoryIntegration)
-	defer env.Cleanup()
-
-	// Verify test configuration
-	assert.NotNil(t, env.Config, "test environment should have configuration")
-	assert.True(t, env.Config.ShouldRunCategory(test.CategoryIntegration), "should allow integration category")
-
-	// Verify category-specific behavior
-	assert.NotEmpty(t, env.Suffix, "integration test should have suffix")
-	assert.Contains(t, env.Suffix, "integration", "integration test suffix should contain category")
-
-	test.LogTestProgress(t, "configuration category handling verified", "category", test.CategoryIntegration)
 }
