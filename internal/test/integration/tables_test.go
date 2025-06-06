@@ -384,8 +384,8 @@ func TestTableStorageUpdateOperations(t *testing.T) {
 	resourceEntity.LastActivity = now
 	resourceEntity.Metadata = `{"updated": "data", "cpu": 4}`
 
-	// Use existing infra function to update
-	err = infra.WriteResourceRegistry(ctx, env.Clients, resourceEntity)
+	// Use update function for updating existing entity
+	err = infra.UpdateResourceRegistry(ctx, env.Clients, resourceEntity)
 	require.NoError(t, err, "should update entity without error")
 
 	test.LogTestProgress(t, "verifying entity was updated")

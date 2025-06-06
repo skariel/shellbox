@@ -80,6 +80,7 @@ const (
 	TagKeyStatus   = "shellbox:status"
 	TagKeyCreated  = "shellbox:created"
 	TagKeyLastUsed = "shellbox:lastused"
+	TagKeyVolumeID = "shellbox:volumeid"
 )
 
 // Tag keys for golden snapshot resources (separate namespace)

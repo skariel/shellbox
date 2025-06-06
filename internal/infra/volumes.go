@@ -225,7 +225,7 @@ func VolumeTagsToMap(tags VolumeTags) map[string]*string {
 		TagKeyStatus:   to.Ptr(tags.Status),
 		TagKeyCreated:  to.Ptr(tags.CreatedAt),
 		TagKeyLastUsed: to.Ptr(tags.LastUsed),
-		"volumeID":     to.Ptr(tags.VolumeID),
+		TagKeyVolumeID: to.Ptr(tags.VolumeID),
 	}
 }
 

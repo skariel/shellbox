@@ -22,12 +22,13 @@ func TestVolumesHelpersTestSuite(t *testing.T) {
 
 		// Should contain all tag fields
 		assert.NotNil(t, tagMap)
-		assert.Equal(t, "volume", *tagMap["shellbox:role"])
-		assert.Equal(t, "free", *tagMap["shellbox:status"])
-		assert.Equal(t, "2024-01-01T00:00:00Z", *tagMap["shellbox:created"])
-		assert.Equal(t, "2024-01-01T01:00:00Z", *tagMap["shellbox:lastused"])
+		assert.Equal(t, "volume", *tagMap[infra.TagKeyRole])
+		assert.Equal(t, "free", *tagMap[infra.TagKeyStatus])
+		assert.Equal(t, "2024-01-01T00:00:00Z", *tagMap[infra.TagKeyCreated])
+		assert.Equal(t, "2024-01-01T01:00:00Z", *tagMap[infra.TagKeyLastUsed])
+		assert.Equal(t, "vol123", *tagMap[infra.TagKeyVolumeID])
 
-		// Should have exactly 5 entries (role, status, created, lastused, volume_id)
+		// Should have exactly 5 entries (role, status, created, lastused, volumeid)
 		assert.Len(t, tagMap, 5)
 	})
 
@@ -43,10 +44,11 @@ func TestVolumesHelpersTestSuite(t *testing.T) {
 
 		// Should still contain all keys with empty values
 		assert.NotNil(t, tagMap)
-		assert.Equal(t, "", *tagMap["shellbox:role"])
-		assert.Equal(t, "", *tagMap["shellbox:status"])
-		assert.Equal(t, "", *tagMap["shellbox:created"])
-		assert.Equal(t, "", *tagMap["shellbox:lastused"])
+		assert.Equal(t, "", *tagMap[infra.TagKeyRole])
+		assert.Equal(t, "", *tagMap[infra.TagKeyStatus])
+		assert.Equal(t, "", *tagMap[infra.TagKeyCreated])
+		assert.Equal(t, "", *tagMap[infra.TagKeyLastUsed])
+		assert.Equal(t, "", *tagMap[infra.TagKeyVolumeID])
 		assert.Len(t, tagMap, 5)
 	})
 
@@ -66,6 +68,7 @@ func TestVolumesHelpersTestSuite(t *testing.T) {
 			infra.TagKeyStatus,
 			infra.TagKeyCreated,
 			infra.TagKeyLastUsed,
+			infra.TagKeyVolumeID,
 		}
 
 		for _, key := range expectedKeys {
@@ -115,6 +118,7 @@ func TestVolumesHelpersTestSuite(t *testing.T) {
 		assert.Equal(t, "shellbox:status", infra.TagKeyStatus)
 		assert.Equal(t, "shellbox:created", infra.TagKeyCreated)
 		assert.Equal(t, "shellbox:lastused", infra.TagKeyLastUsed)
+		assert.Equal(t, "shellbox:volumeid", infra.TagKeyVolumeID)
 	})
 
 	t.Run("TestVolumeTagsDefaultValues", func(t *testing.T) {

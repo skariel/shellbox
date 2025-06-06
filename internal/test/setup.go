@@ -215,6 +215,7 @@ func (te *Environment) CleanupResourcesBySuffix(ctx context.Context) error {
 	te.cleanupVMs(ctx)
 	te.cleanupNICs(ctx)
 	te.cleanupPublicIPs(ctx)
+	te.cleanupVNets(ctx) // Delete VNets before NSGs to remove subnet associations
 	te.cleanupNSGs(ctx)
 	te.cleanupDisks(ctx)
 	te.cleanupStorageAccounts(ctx)
@@ -283,6 +284,34 @@ func (te *Environment) cleanupPublicIPs(ctx context.Context) {
 				}
 				if _, err := poller.PollUntilDone(ctx, &infra.DefaultPollOptions); err != nil {
 					slog.Warn("Failed to delete Public IP", "name", *pip.Name, "error", err)
+				}
+			}
+		}
+	}
+}
+
+// cleanupVNets deletes VNets with matching suffix
+func (te *Environment) cleanupVNets(ctx context.Context) {
+	vnetPager := te.Clients.NetworkClient.NewListPager(te.ResourceGroupName, nil)
+	for vnetPager.More() {
+		page, err := vnetPager.NextPage(ctx)
+		if err != nil {
+			slog.Warn("Failed to list VNets for cleanup", "error", err)
+			break
+		}
+
+		for _, vnet := range page.Value {
+			if vnet.Name != nil && contains(*vnet.Name, te.Suffix) {
+				slog.Debug("Deleting VNet", "name", *vnet.Name, "suffix", te.Suffix)
+				poller, err := te.Clients.NetworkClient.BeginDelete(ctx, te.ResourceGroupName, *vnet.Name, nil)
+				if err != nil {
+					slog.Warn("Failed to start VNet deletion", "name", *vnet.Name, "error", err)
+					continue
+				}
+				if _, err := poller.PollUntilDone(ctx, &infra.DefaultPollOptions); err != nil {
+					slog.Warn("Failed to delete VNet", "name", *vnet.Name, "error", err)
+				} else {
+					slog.Info("Successfully deleted VNet", "name", *vnet.Name)
 				}
 			}
 		}

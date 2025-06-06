@@ -92,7 +92,7 @@ func TestVolumeCreationAndDeletion(t *testing.T) {
 			if !tc.useAPI {
 				// Only volumes created with CreateVolumeWithTags have these specific tags
 				assert.Equal(t, infra.ResourceStatusFree, *disk.Tags[infra.TagKeyStatus], "volume should have correct status tag")
-				assert.Equal(t, volumeID, *disk.Tags["volume_id"], "volume should have correct volume ID tag")
+				assert.Equal(t, volumeID, *disk.Tags[infra.TagKeyVolumeID], "volume should have correct volume ID tag")
 			}
 
 			test.LogTestProgress(t, "testing volume deletion")
