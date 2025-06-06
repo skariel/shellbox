@@ -111,13 +111,13 @@ func (r *ResourceNamer) SharedStorageAccountName() string {
 // EventLogTableName returns the suffixed table name for EventLog
 func (r *ResourceNamer) EventLogTableName() string {
 	cleanSuffix := r.cleanSuffixForTable()
-	return fmt.Sprintf("%s%s", tableEventLogBase, cleanSuffix)
+	return fmt.Sprintf("%s%s", tableEventLog, cleanSuffix)
 }
 
 // ResourceRegistryTableName returns the suffixed table name for ResourceRegistry
 func (r *ResourceNamer) ResourceRegistryTableName() string {
 	cleanSuffix := r.cleanSuffixForTable()
-	return fmt.Sprintf("%s%s", tableResourceRegistryBase, cleanSuffix)
+	return fmt.Sprintf("%s%s", tableResourceRegistry, cleanSuffix)
 }
 
 // cleanSuffixForTable removes invalid characters from suffix for Azure Table names

@@ -193,7 +193,7 @@ func (rq *ResourceGraphQueries) executeCountQuery(ctx context.Context, query str
 		},
 	}, nil)
 	if err != nil {
-		return nil, fmt.Errorf("resource Graph query failed: %w", err)
+		return nil, fmt.Errorf("resource Graph count query failed for resource group %s: %w", rq.resourceGroup, err)
 	}
 
 	counts := &ResourceCounts{}
@@ -243,7 +243,7 @@ func (rq *ResourceGraphQueries) executeResourceQuery(ctx context.Context, query 
 		},
 	}, nil)
 	if err != nil {
-		return nil, fmt.Errorf("resource Graph query failed: %w", err)
+		return nil, fmt.Errorf("resource Graph resource query failed for resource group %s: %w", rq.resourceGroup, err)
 	}
 
 	var resources []ResourceInfo
@@ -334,12 +334,12 @@ func parseTimestamps(resource *ResourceInfo) {
 	}
 }
 
-// extractResourceID extracts resource ID from tags (instance_id or volume_id)
+// extractResourceID extracts resource ID from tags (instanceID or volumeID)
 func extractResourceID(resource *ResourceInfo) {
-	if instanceID := resource.Tags["instance_id"]; instanceID != "" {
+	if instanceID := resource.Tags["instanceID"]; instanceID != "" {
 		resource.ResourceID = instanceID
 	}
-	if volumeID := resource.Tags["volume_id"]; volumeID != "" {
+	if volumeID := resource.Tags["volumeID"]; volumeID != "" {
 		resource.ResourceID = volumeID
 	}
 }

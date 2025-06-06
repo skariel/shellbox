@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
 	"github.com/google/uuid"
@@ -91,9 +90,7 @@ func CreateVolumeWithTags(ctx context.Context, clients *AzureClients, resourceGr
 		Tags: VolumeTagsToMap(tags),
 	}
 
-	pollOptions := &runtime.PollUntilDoneOptions{
-		Frequency: 2 * time.Second,
-	}
+	pollOptions := &DefaultPollOptions
 
 	poller, err := clients.DisksClient.BeginCreateOrUpdate(ctx, resourceGroupName, volumeName, diskParams, nil)
 	if err != nil {
@@ -143,9 +140,7 @@ func CreateVolumeFromSnapshot(ctx context.Context, clients *AzureClients, resour
 		Tags: VolumeTagsToMap(tags),
 	}
 
-	pollOptions := &runtime.PollUntilDoneOptions{
-		Frequency: 2 * time.Second,
-	}
+	pollOptions := &DefaultPollOptions
 
 	poller, err := clients.DisksClient.BeginCreateOrUpdate(ctx, resourceGroupName, volumeName, diskParams, nil)
 	if err != nil {
@@ -178,9 +173,7 @@ func DeleteVolume(ctx context.Context, clients *AzureClients, resourceGroupName,
 
 	slog.Info("Deleting volume", "name", volumeName)
 
-	pollOptions := &runtime.PollUntilDoneOptions{
-		Frequency: 2 * time.Second,
-	}
+	pollOptions := &DefaultPollOptions
 
 	poller, err := clients.DisksClient.BeginDelete(ctx, resourceGroupName, volumeName, nil)
 	if err != nil {
@@ -225,14 +218,14 @@ func FindVolumesByRole(ctx context.Context, clients *AzureClients, resourceGroup
 	return volumes, nil
 }
 
-// volumeTagsToMap converts VolumeTags struct to Azure tags map format
+// VolumeTagsToMap converts VolumeTags struct to Azure tags map format
 func VolumeTagsToMap(tags VolumeTags) map[string]*string {
 	return map[string]*string{
 		TagKeyRole:     to.Ptr(tags.Role),
 		TagKeyStatus:   to.Ptr(tags.Status),
 		TagKeyCreated:  to.Ptr(tags.CreatedAt),
 		TagKeyLastUsed: to.Ptr(tags.LastUsed),
-		"volume_id":    to.Ptr(tags.VolumeID),
+		"volumeID":     to.Ptr(tags.VolumeID),
 	}
 }
 

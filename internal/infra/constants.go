@@ -32,11 +32,7 @@ const (
 	// Shared storage account for testing (no suffix)
 	TestingStorageAccountBaseName = "shellboxtest536567"
 
-	// Table name base constants (will be suffixed for test isolation)
-	tableEventLogBase         = "EventLog"
-	tableResourceRegistryBase = "ResourceRegistry"
-
-	// Legacy constants for backward compatibility
+	// Table name constants (used as base for suffixed table names)
 	tableEventLog         = "EventLog"
 	tableResourceRegistry = "ResourceRegistry"
 )

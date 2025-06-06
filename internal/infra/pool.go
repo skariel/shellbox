@@ -190,7 +190,7 @@ func (p *BoxPool) scaleDownInstances(ctx context.Context, currentSize int) {
 	if time.Since(p.lastScaleDown) < p.poolConfig.ScaleDownCooldown {
 		p.mu.Unlock()
 		slog.Info("skipping instance scale down due to cooldown",
-			"time_remaining", p.poolConfig.ScaleDownCooldown-time.Since(p.lastScaleDown))
+			"timeRemaining", p.poolConfig.ScaleDownCooldown-time.Since(p.lastScaleDown))
 		return
 	}
 	p.mu.Unlock()
@@ -315,7 +315,7 @@ func (p *BoxPool) scaleDownVolumes(ctx context.Context, currentSize int) {
 	if time.Since(p.lastScaleDown) < p.poolConfig.ScaleDownCooldown {
 		p.mu.Unlock()
 		slog.Info("skipping volume scale down due to cooldown",
-			"time_remaining", p.poolConfig.ScaleDownCooldown-time.Since(p.lastScaleDown))
+			"timeRemaining", p.poolConfig.ScaleDownCooldown-time.Since(p.lastScaleDown))
 		return
 	}
 	p.mu.Unlock()

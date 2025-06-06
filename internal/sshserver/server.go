@@ -135,27 +135,27 @@ func (s *Server) handleShellSession(sess gssh.Session) {
 	}
 
 	// Allocate resources for this user session
-	s.logger.Info("allocating resources", "session_id", sessionID)
+	s.logger.Info("allocating resources", "sessionID", sessionID)
 	ctx := context.Background()
 	resources, err := s.allocator.AllocateResourcesForUser(ctx, userKeyHash)
 	if err != nil {
-		s.logger.Error("Failed to allocate resources", "error", err, "session_id", sessionID)
+		s.logger.Error("Failed to allocate resources", "error", err, "sessionID", sessionID)
 		fmt.Fprintf(sess.Stderr(), "Error allocating resources: %v\n", err)
 		return
 	}
 
 	// Ensure cleanup on session end
 	defer func() {
-		s.logger.Info("releasing resources", "session_id", sessionID)
+		s.logger.Info("releasing resources", "sessionID", sessionID)
 		if err := s.allocator.ReleaseResources(ctx, resources.InstanceID, resources.VolumeID); err != nil {
-			s.logger.Error("Failed to release resources", "error", err, "session_id", sessionID)
+			s.logger.Error("Failed to release resources", "error", err, "sessionID", sessionID)
 		}
 	}()
 
 	// Connect to allocated instance
 	client, err := s.dialBoxAtIP(resources.InstanceIP)
 	if err != nil {
-		s.logger.Error("Failed to connect to allocated instance", "error", err, "session_id", sessionID)
+		s.logger.Error("Failed to connect to allocated instance", "error", err, "sessionID", sessionID)
 		fmt.Fprintf(sess.Stderr(), "Error connecting to allocated instance: %v\n", err)
 		return
 	}
@@ -170,7 +170,7 @@ func (s *Server) handleShellSession(sess gssh.Session) {
 		SessionID:    sessionID,
 		UserKey:      userKeyHash,
 		BoxID:        resources.InstanceID,
-		Details:      fmt.Sprintf(`{"instance_ip":"%s","volume_id":"%s"}`, resources.InstanceIP, resources.VolumeID),
+		Details:      fmt.Sprintf(`{"instanceIP":"%s","volumeID":"%s"}`, resources.InstanceIP, resources.VolumeID),
 	}
 	if err := infra.WriteEventLog(ctx, s.clients, connectEvent); err != nil {
 		s.logger.Warn("Failed to log resource connection", "error", err)

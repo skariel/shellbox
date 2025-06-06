@@ -50,7 +50,7 @@ func (ra *ResourceAllocator) AllocateResourcesForUser(ctx context.Context, userI
 		return nil, err
 	}
 
-	slog.Info("resources allocated", "instance_id", instance.ResourceID, "volume_id", volume.ResourceID, "user_id", userID)
+	slog.Info("resources allocated", "instanceID", instance.ResourceID, "volumeID", volume.ResourceID, "userID", userID)
 
 	return &AllocatedResources{
 		InstanceID: instance.ResourceID,
@@ -140,11 +140,11 @@ func (ra *ResourceAllocator) ReleaseResources(ctx context.Context, instanceID, v
 	// Get instance IP for QEMU operations
 	instanceIP, err := GetInstancePrivateIP(ctx, ra.clients, instanceID)
 	if err != nil {
-		slog.Warn("Failed to get instance IP for cleanup", "instance_id", instanceID, "error", err)
+		slog.Warn("Failed to get instance IP for cleanup", "instanceID", instanceID, "error", err)
 	} else {
 		// Stop QEMU (best effort)
 		if err := ra.qemuManager.StopQEMU(ctx, instanceIP); err != nil {
-			slog.Warn("Failed to stop QEMU during cleanup", "instance_ip", instanceIP, "error", err)
+			slog.Warn("Failed to stop QEMU during cleanup", "instanceIP", instanceIP, "error", err)
 		}
 	}
 
@@ -163,6 +163,6 @@ func (ra *ResourceAllocator) ReleaseResources(ctx context.Context, instanceID, v
 		return errors.Join(errs...)
 	}
 
-	slog.Info("resources released", "instance_id", instanceID, "volume_id", volumeID)
+	slog.Info("resources released", "instanceID", instanceID, "volumeID", volumeID)
 	return nil
 }

@@ -95,12 +95,12 @@ func waitForRoleAssignment(ctx context.Context, cred azcore.TokenCredential) str
 	err := RetryOperation(ctx, func(ctx context.Context) error {
 		client, err := armsubscriptions.NewClient(cred, nil)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to create subscriptions client: %w", err)
 		}
 		pager := client.NewListPager(nil)
 		page, err := pager.NextPage(ctx)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to list subscriptions: %w", err)
 		}
 		if len(page.Value) == 0 {
 			return fmt.Errorf("no subscriptions found")

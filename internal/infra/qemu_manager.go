@@ -69,7 +69,7 @@ sleep 10
 		return fmt.Errorf("QEMU SSH not ready: %w", err)
 	}
 
-	slog.Info("QEMU started", "instance_ip", instanceIP)
+	slog.Info("QEMU started", "instanceIP", instanceIP)
 	return nil
 }
 
@@ -84,11 +84,11 @@ sudo pkill qemu-system-x86_64 || true
 `
 
 	if err := sshutil.ExecuteCommand(ctx, stopCmd, AdminUsername, instanceIP); err != nil {
-		slog.Warn("Error stopping QEMU (expected during shutdown)", "instance_ip", instanceIP, "error", err)
+		slog.Warn("Error stopping QEMU (expected during shutdown)", "instanceIP", instanceIP, "error", err)
 		// Don't return error - stopping QEMU often causes connection issues
 	}
 
-	slog.Info("QEMU stopped", "instance_ip", instanceIP)
+	slog.Info("QEMU stopped", "instanceIP", instanceIP)
 	return nil
 }
 

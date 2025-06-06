@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v7"
@@ -165,9 +164,7 @@ func createInstanceNSG(ctx context.Context, clients *AzureClients, nsgName strin
 		},
 	}
 
-	pollOptions := &runtime.PollUntilDoneOptions{
-		Frequency: 2 * time.Second,
-	}
+	pollOptions := &DefaultPollOptions
 
 	poller, err := clients.NSGClient.BeginCreateOrUpdate(ctx, clients.ResourceGroupName, nsgName, nsgParams, nil)
 	if err != nil {
@@ -203,9 +200,7 @@ func createInstanceNIC(ctx context.Context, clients *AzureClients, nicName strin
 		},
 	}
 
-	pollOptions := &runtime.PollUntilDoneOptions{
-		Frequency: 2 * time.Second,
-	}
+	pollOptions := &DefaultPollOptions
 
 	poller, err := clients.NICClient.BeginCreateOrUpdate(ctx, clients.ResourceGroupName, nicName, nicParams, nil)
 	if err != nil {
@@ -227,7 +222,7 @@ func createInstanceVM(ctx context.Context, clients *AzureClients, vmName string,
 		TagKeyStatus:   to.Ptr(tags.Status),
 		TagKeyCreated:  to.Ptr(tags.CreatedAt),
 		TagKeyLastUsed: to.Ptr(tags.LastUsed),
-		"instance_id":  to.Ptr(tags.InstanceID),
+		"instanceID":   to.Ptr(tags.InstanceID),
 	}
 
 	vmParams := armcompute.VirtualMachine{
@@ -277,9 +272,7 @@ func createInstanceVM(ctx context.Context, clients *AzureClients, vmName string,
 		},
 	}
 
-	pollOptions := &runtime.PollUntilDoneOptions{
-		Frequency: 2 * time.Second,
-	}
+	pollOptions := &DefaultPollOptions
 
 	poller, err := clients.ComputeClient.BeginCreateOrUpdate(ctx, clients.ResourceGroupName, vmName, vmParams, nil)
 	if err != nil {
@@ -297,9 +290,7 @@ func createInstanceVM(ctx context.Context, clients *AzureClients, vmName string,
 // DeallocateBox deallocates a box VM.
 // It stops the VM and releases compute resources while preserving the VM configuration.
 func DeallocateBox(ctx context.Context, clients *AzureClients, vmID string) error {
-	pollOptions := &runtime.PollUntilDoneOptions{
-		Frequency: 2 * time.Second,
-	}
+	pollOptions := &DefaultPollOptions
 
 	poller, err := clients.ComputeClient.BeginDeallocate(ctx, clients.ResourceGroupName, vmID, nil)
 	if err != nil {
@@ -365,9 +356,9 @@ func DeleteInstance(ctx context.Context, clients *AzureClients, resourceGroupNam
 	slog.Info("Deleting box with resources", "vmName", vmName, "nicName", resourceInfo.nicName, "nsgName", resourceInfo.nsgName, "osDiskName", resourceInfo.osDiskName, "dataDiskName", resourceInfo.dataDiskName)
 
 	// Delete resources in order: VM, data disk, OS disk, NIC, NSG
-	deleteVM(ctx, clients, resourceGroupName, vmName, err == nil)
-	deleteDisk(ctx, clients, resourceGroupName, resourceInfo.dataDiskName, "data disk")
-	deleteDisk(ctx, clients, resourceGroupName, resourceInfo.osDiskName, "OS disk")
+	DeleteVM(ctx, clients, resourceGroupName, vmName, err == nil)
+	DeleteDisk(ctx, clients, resourceGroupName, resourceInfo.dataDiskName, "data disk")
+	DeleteDisk(ctx, clients, resourceGroupName, resourceInfo.osDiskName, "OS disk")
 	DeleteNIC(ctx, clients, resourceGroupName, resourceInfo.nicName, resourceInfo.nicID)
 	DeleteNSG(ctx, clients, resourceGroupName, resourceInfo.nsgName)
 
@@ -397,8 +388,8 @@ func extractInstanceResourceInfo(vm armcompute.VirtualMachinesClientGetResponse,
 // extractResourcesFromVM extracts resource information from VM properties
 func extractResourcesFromVM(info *instanceResourceInfo, vm armcompute.VirtualMachinesClientGetResponse) {
 	// Extract instance ID from tags
-	if vm.Tags != nil && vm.Tags["instance_id"] != nil {
-		info.instanceID = *vm.Tags["instance_id"]
+	if vm.Tags != nil && vm.Tags["instanceID"] != nil {
+		info.instanceID = *vm.Tags["instanceID"]
 	}
 
 	// Get NIC ID
@@ -417,7 +408,7 @@ func extractResourcesFromVM(info *instanceResourceInfo, vm armcompute.VirtualMac
 	}
 }
 
-// extractInstanceIDFromVMName extracts instance ID from VM name using naming pattern
+// ExtractInstanceIDFromVMName extracts instance ID from VM name using naming pattern
 func ExtractInstanceIDFromVMName(vmName string) string {
 	parts := strings.Split(vmName, "-")
 	if len(parts) >= 4 {
@@ -444,8 +435,8 @@ func generateMissingResourceNames(info *instanceResourceInfo, resourceGroupName 
 	}
 }
 
-// deleteVM deletes a virtual machine
-func deleteVM(ctx context.Context, clients *AzureClients, resourceGroupName, vmName string, vmExists bool) {
+// DeleteVM deletes a virtual machine
+func DeleteVM(ctx context.Context, clients *AzureClients, resourceGroupName, vmName string, vmExists bool) {
 	if !vmExists {
 		return
 	}
@@ -465,8 +456,8 @@ func deleteVM(ctx context.Context, clients *AzureClients, resourceGroupName, vmN
 	}
 }
 
-// deleteDisk deletes a disk (OS or data disk)
-func deleteDisk(ctx context.Context, clients *AzureClients, resourceGroupName, diskName, diskType string) {
+// DeleteDisk deletes a disk (OS or data disk)
+func DeleteDisk(ctx context.Context, clients *AzureClients, resourceGroupName, diskName, diskType string) {
 	if diskName == "" {
 		return
 	}

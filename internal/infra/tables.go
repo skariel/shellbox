@@ -125,9 +125,9 @@ func createTables(ctx context.Context, connectionString string, tableNames []str
 		return fmt.Errorf("failed to create tables client: %w", err)
 	}
 
-	// Use legacy defaults if no table names provided
+	// Require table names to be explicitly provided
 	if len(tableNames) == 0 {
-		tableNames = []string{tableEventLog, tableResourceRegistry}
+		return fmt.Errorf("table names must be provided - cannot create tables without explicit names")
 	}
 
 	for _, tableName := range tableNames {
@@ -143,11 +143,6 @@ func createTables(ctx context.Context, connectionString string, tableNames []str
 	}
 
 	return nil
-}
-
-// CreateTableStorageResourcesLegacy creates a storage account with default table names (backward compatibility)
-func CreateTableStorageResourcesLegacy(ctx context.Context, clients *AzureClients, accountName string) TableStorageResult {
-	return CreateTableStorageResources(ctx, clients, accountName, nil)
 }
 
 // EventLogEntity represents an entry in the EventLog table
@@ -186,7 +181,10 @@ func writeTableEntity(ctx context.Context, clients *AzureClients, tableName stri
 		return fmt.Errorf("failed to marshal entity: %w", err)
 	}
 	_, err = tableClient.AddEntity(ctx, entityBytes, nil)
-	return err
+	if err != nil {
+		return fmt.Errorf("failed to add entity to table %s: %w", tableName, err)
+	}
+	return nil
 }
 
 // WriteEventLog writes an entry to the EventLog table
@@ -201,16 +199,6 @@ func WriteResourceRegistry(ctx context.Context, clients *AzureClients, resource 
 	namer := NewResourceNamer(clients.Suffix)
 	tableName := namer.ResourceRegistryTableName()
 	return writeTableEntity(ctx, clients, tableName, resource)
-}
-
-// WriteEventLogLegacy writes an entry to the EventLog table using legacy table name (backward compatibility)
-func WriteEventLogLegacy(ctx context.Context, clients *AzureClients, event EventLogEntity) error {
-	return writeTableEntity(ctx, clients, tableEventLog, event)
-}
-
-// WriteResourceRegistryLegacy writes an entry to the ResourceRegistry table using legacy table name (backward compatibility)
-func WriteResourceRegistryLegacy(ctx context.Context, clients *AzureClients, resource ResourceRegistryEntity) error {
-	return writeTableEntity(ctx, clients, tableResourceRegistry, resource)
 }
 
 // CleanupTestTables deletes test tables with the given suffix (for test cleanup)

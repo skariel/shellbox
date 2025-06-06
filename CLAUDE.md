@@ -23,10 +23,36 @@ go build -o deploy ./cmd/deploy
 ./deploy <suffix>
 ```
 
-### Code Quality
+### Code Quality & Refactoring
 ```bash
 # All formatting, linting, security scanning, static analysis
 ./tst.sh
+
+# Structural code search (preferred over grep)
+comby ':[pattern]' '' -language go -match-only
+
+# Structural code refactoring (preferred over grep/sed)
+comby ':[pattern]' ':[replacement]' -language go
+```
+
+**Comby**: Use the [comby tool](https://comby.dev) for structural search-and-replace operations. It understands code structure better than regex, handles nested expressions, comments, and strings correctly. Prefer comby over grep/sed for search and refactoring tasks.
+
+#### Comby Search Examples
+```bash
+# Find all function calls to specific function
+comby 'slog.:[level](:[args])' '' -language go -match-only
+
+# Find error handling patterns
+comby 'if err != nil { :[body] }' '' -language go -match-only
+
+# Find struct field assignments
+comby ':[var] := :[type]{:[fields]}' '' -language go -match-only
+
+# Find Azure SDK polling patterns
+comby ':[var], err := :[client].BeginCreateOrUpdate(:[args])' '' -language go -match-only
+
+# Find retry operation calls
+comby 'infra.RetryOperation(:[args])' '' -language go -match-only
 ```
 
 ### Go Standards
@@ -34,7 +60,7 @@ go build -o deploy ./cmd/deploy
 - **Error Handling**: `log.Fatal()` for deployment, error returns for runtime
 - **Concurrency**: Use `golang.org/x/sync` primitives
 - **Dependencies**: Latest Azure SDK v6/v7, `gliderlabs/ssh`, Cobra
-- **Logging**: Use `log/slog` with structured JSON format (see Logging section)
+- **Logging**: Use `log/slog` with structured JSON (production) / text (tests)
 - **Tool Dependencies**: Use `tools.go` pattern for development dependencies
 
 ## Key Components
@@ -53,124 +79,59 @@ go build -o deploy ./cmd/deploy
 
 ## Logging
 
-**Consistent JSON structured logging** across production and test environments using `log/slog`.
+Use `log/slog` for structured logging. Production uses JSON format, tests use text format for readability.
 
-### Setup
 ```go
-// Production setup
-infra.SetDefaultLogger()
-
-// Test setup (automatically used in SetupTestEnvironment)
-// Uses debug level and text format for better test visibility
-```
-
-### Usage
-```go
-import "log/slog"
-
-// Info level for normal operations
-slog.Info("Creating volume", "name", volumeName, "sizeGB", sizeGB, "role", role)
-
-// Debug level for detailed information  
-slog.Debug("Test progress", "operation", "waiting", "timeout", "30s")
-
-// Warn level for non-critical issues
-slog.Warn("Resource not found", "resourceName", name, "error", err)
-
-// Error level for failures
+// Setup: infra.SetDefaultLogger() (production) or SetupTestEnvironment() (tests)
+slog.Info("Creating volume", "name", volumeName, "sizeGB", sizeGB)
 slog.Error("Failed to create resource", "type", "volume", "error", err)
 ```
 
-### Guidelines
-- **NEVER use `log.Printf()`** - always use structured `slog` calls
-- **Include relevant context** as key-value pairs after the message
-- **Use appropriate levels**: Debug for test details, Info for status, Warn for recoverable issues, Error for failures
-- **Tests automatically use debug-level text logger** via `SetupTestEnvironment()` and `SetupMinimalTestEnvironment()` for better visibility
-- **Production uses JSON output** for consistent parsing; **tests use text output** for readability
+**Never use `log.Printf()`** - always use structured `slog` calls with key-value context.
 
 ## Code Patterns
 
-### Struct Design
-- **Tag-based metadata**: Use structs like `InstanceTags`, `VolumeTags` for resource metadata
-- **Configuration structs**: Use `*Config` structs for function parameters (e.g., `VMConfig`, `VolumeConfig`)
-- **Info structs**: Return structured information with `*Info` structs (e.g., `VolumeInfo`)
-
-### Error Handling Patterns
+### Common Patterns
 ```go
-// Deployment-time failures (fail fast)
-infra.FatalOnError(err, "failed to create resource")
+// Error handling: fail fast (deployment) vs graceful (runtime)
+infra.FatalOnError(err, "deployment failed")
+if err != nil { return fmt.Errorf("operation failed: %w", err) }
 
-// Runtime errors (graceful handling)
-if err != nil {
-    return fmt.Errorf("operation failed: %w", err)
-}
-```
-
-### Azure SDK Patterns
-```go
-// Always use to.Ptr() for Azure SDK pointer requirements
-Location: to.Ptr(infra.Location),
-VMSize: to.Ptr(armcompute.VirtualMachineSizeTypes(config.VMSize)),
-
-// Standard polling with consistent options
+// Azure SDK: always use pointers and consistent polling
+Location: to.Ptr(infra.Location)
 poller, err := client.BeginCreateOrUpdate(ctx, params, nil)
 result, err := poller.PollUntilDone(ctx, &infra.DefaultPollOptions)
-```
 
-### Concurrency Patterns
-```go
-// Coordinate parallel operations
-var wg sync.WaitGroup
-wg.Add(1)
-go func() {
-    defer wg.Done()
-    // parallel work
-}()
-wg.Wait()
+// Retry operations with centralized helper
+err := infra.RetryOperation(ctx, operation, 5*time.Minute, 5*time.Second, "description")
 
-// Context-based timeouts
-ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-defer cancel()
-```
-
-### Retry Pattern
-```go
-// Use centralized retry for Azure operations
-err := infra.RetryOperation(ctx, func(ctx context.Context) error {
-    // operation that may need retries
-    return someAzureOperation(ctx)
-}, 5*time.Minute, 5*time.Second, "operation description")
-```
-
-### Resource Naming
-```go
-// Use ResourceNamer for consistent naming
+// Resource naming with consistent patterns
 namer := infra.NewResourceNamer(suffix)
 vmName := namer.BoxVMName(instanceID)
-volumeName := namer.VolumePoolDiskName(volumeID)
 ```
 
-### Testing Patterns
-- **Shared resource group**: Use `shellbox-testing` for all integration tests
-  **Resource Isolation**: unique prefix by test 
-- **Production logger**: Tests use `infra.SetDefaultLogger()` for consistency
-- **Category-based organization**: Tests organized by categories (unit, integration, e2e, etc.)
-- **Resource tracking**: Track created resources for cleanup with `env.TrackResource()`
-  **Resource cleanup**: each test removes it's own resources. There is a cleanup verification test run after all other tests have run.
+### Struct Conventions
+- **Metadata**: `*Tags` structs (e.g., `InstanceTags`, `VolumeTags`)
+- **Configuration**: `*Config` structs for parameters (e.g., `VMConfig`, `VolumeConfig`)
+- **Results**: `*Info` structs for return data (e.g., `VolumeInfo`)
+
+## Testing
+
+- **Resource Group**: Use `shellbox-testing` with unique resource name prefixes per test
+- **Cleanup**: Each test removes its own resources; verification test runs after all tests
+- **Categories**: Organized by unit, integration, e2e
+- **Tracking**: Use `env.TrackResource()` for resource cleanup
 
 ## Guidelines
 
 - Use `./tst.sh` for all code quality checks
-- Maintain backwards compatibility
-- Prefer minimal changes
+- Use `comby` for structural code refactoring
+- Maintain backwards compatibility, prefer minimal changes
 - Handle errors gracefully at runtime, fail fast during deployment
 
-## Memories
+## Quick Commands
 
-- test isolation is done by unique resource name suffix rather than having unique resource group
-
-## Specific actions for when users asks to...
-
-### list all functions
-
-grep -rn --color=always -E "^func\s*(\([^)]+\))?\s*[a-zA-Z_][a-zA-Z0-9_]*\s*\(" . --include="*.go" | grep -v -i test
+```bash
+# List all functions
+grep -rn -E "^func\s*(\([^)]+\))?\s*[a-zA-Z_][a-zA-Z0-9_]*\s*\(" . --include="*.go" | grep -v -i test
+```

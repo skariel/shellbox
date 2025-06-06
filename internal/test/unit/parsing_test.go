@@ -186,7 +186,7 @@ func (suite *ParsingTestSuite) TestVolumeTagsToMap() {
 				"shellbox:status":   stringPtr("free"),
 				"shellbox:created":  stringPtr("2023-01-01T00:00:00Z"),
 				"shellbox:lastused": stringPtr("2023-01-01T12:00:00Z"),
-				"volume_id":         stringPtr("vol-123"),
+				"volumeID":          stringPtr("vol-123"),
 			},
 		},
 		{
@@ -197,7 +197,7 @@ func (suite *ParsingTestSuite) TestVolumeTagsToMap() {
 				"shellbox:status":   stringPtr(""),
 				"shellbox:created":  stringPtr(""),
 				"shellbox:lastused": stringPtr(""),
-				"volume_id":         stringPtr(""),
+				"volumeID":          stringPtr(""),
 			},
 		},
 	}
