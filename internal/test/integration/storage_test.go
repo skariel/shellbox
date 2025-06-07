@@ -2,6 +2,7 @@ package integration
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -35,118 +36,218 @@ func TestVolumeCreationAndDeletion(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			volumeID := uuid.New().String()
-			namer := env.GetResourceNamer()
-			volumeName := namer.VolumePoolDiskName(volumeID)
-
-			test.LogTestProgress(t, "creating volume", "volumeID", volumeID, "name", volumeName, "sizeGB", tc.sizeGB, "useAPI", tc.useAPI)
-
-			var err error
-			var returnedVolumeID string
-
-			if tc.useAPI {
-				// Use CreateVolume API
-				config := &infra.VolumeConfig{DiskSize: tc.sizeGB}
-				returnedVolumeID, err = infra.CreateVolume(ctx, env.Clients, config)
-				if err != nil {
-					t.Fatalf("should create volume without error: %v", err)
-				}
-				if returnedVolumeID == "" {
-					t.Fatalf("volume ID should be returned")
-				}
-				// Update volume name with returned ID
-				volumeName = namer.VolumePoolDiskName(returnedVolumeID)
-			} else {
-				// Use CreateVolumeWithTags API
-				tags := infra.VolumeTags{
-					Role:     infra.ResourceRoleVolume,
-					Status:   infra.ResourceStatusFree,
-					VolumeID: volumeID,
-				}
-				volumeInfo, err := infra.CreateVolumeWithTags(ctx, env.Clients, env.ResourceGroupName, volumeName, tc.sizeGB, tags)
-				if err != nil {
-					t.Fatalf("should create volume without error: %v", err)
-				}
-
-				// Verify volume properties from returned info
-				if volumeInfo.Name != volumeName {
-					t.Errorf("volume should have correct name: expected %s, got %s", volumeName, volumeInfo.Name)
-				}
-				if volumeInfo.SizeGB != tc.sizeGB {
-					t.Errorf("volume should have correct size: expected %d, got %d", tc.sizeGB, volumeInfo.SizeGB)
-				}
-				if volumeInfo.Location != infra.Location {
-					t.Errorf("volume should be in correct location: expected %s, got %s", infra.Location, volumeInfo.Location)
-				}
-				if volumeInfo.ResourceID == "" {
-					t.Errorf("volume should have resource ID")
-				}
-				if volumeInfo.VolumeID != volumeID {
-					t.Errorf("volume should have correct volume ID: expected %s, got %s", volumeID, volumeInfo.VolumeID)
-				}
-
-				// Verify volume tags from returned info
-				if volumeInfo.Tags.Role != infra.ResourceRoleVolume {
-					t.Errorf("volume should have correct role tag: expected %s, got %s", infra.ResourceRoleVolume, volumeInfo.Tags.Role)
-				}
-				if volumeInfo.Tags.Status != infra.ResourceStatusFree {
-					t.Errorf("volume should have correct status tag: expected %s, got %s", infra.ResourceStatusFree, volumeInfo.Tags.Status)
-				}
-				if volumeInfo.Tags.CreatedAt == "" {
-					t.Errorf("volume should have created timestamp")
-				}
-				if volumeInfo.Tags.LastUsed == "" {
-					t.Errorf("volume should have last used timestamp")
-				}
-			}
-
-			test.LogTestProgress(t, "verifying volume can be retrieved")
-
-			// Verify volume can be retrieved directly
-			disk, err := env.Clients.DisksClient.Get(ctx, env.ResourceGroupName, volumeName, nil)
-			if err != nil {
-				t.Fatalf("should be able to retrieve created volume: %v", err)
-			}
-			if *disk.Name != volumeName {
-				t.Errorf("retrieved volume should have correct name: expected %s, got %s", volumeName, *disk.Name)
-			}
-			if *disk.Properties.DiskSizeGB != tc.sizeGB {
-				t.Errorf("retrieved volume should have correct size: expected %d, got %d", tc.sizeGB, *disk.Properties.DiskSizeGB)
-			}
-
-			// Verify tags are correctly set
-			if disk.Tags == nil {
-				t.Fatalf("volume should have tags")
-			}
-			if *disk.Tags[infra.TagKeyRole] != infra.ResourceRoleVolume {
-				t.Errorf("volume should have correct role tag: expected %s, got %s", infra.ResourceRoleVolume, *disk.Tags[infra.TagKeyRole])
-			}
-			if !tc.useAPI {
-				// Only volumes created with CreateVolumeWithTags have these specific tags
-				if *disk.Tags[infra.TagKeyStatus] != infra.ResourceStatusFree {
-					t.Errorf("volume should have correct status tag: expected %s, got %s", infra.ResourceStatusFree, *disk.Tags[infra.TagKeyStatus])
-				}
-				if *disk.Tags[infra.TagKeyVolumeID] != volumeID {
-					t.Errorf("volume should have correct volume ID tag: expected %s, got %s", volumeID, *disk.Tags[infra.TagKeyVolumeID])
-				}
-			}
-
-			test.LogTestProgress(t, "testing volume deletion")
-
-			// Test volume deletion
-			err = infra.DeleteVolume(ctx, env.Clients, env.ResourceGroupName, volumeName)
-			if err != nil {
-				t.Fatalf("should delete volume without error: %v", err)
-			}
-
-			// Verify volume is deleted
-			_, err = env.Clients.DisksClient.Get(ctx, env.ResourceGroupName, volumeName, nil)
-			if err == nil {
-				t.Errorf("should not be able to retrieve deleted volume")
-			}
-
-			test.LogTestProgress(t, "volume test completed", "size", tc.sizeGB)
+			testVolumeCreationAndDeletionCase(ctx, t, env, tc)
 		})
+	}
+}
+
+func testVolumeCreationAndDeletionCase(ctx context.Context, t *testing.T, env *test.Environment, tc struct {
+	name   string
+	sizeGB int32
+	useAPI bool
+},
+) {
+	volumeID := uuid.New().String()
+	namer := env.GetResourceNamer()
+	volumeName := namer.VolumePoolDiskName(volumeID)
+
+	test.LogTestProgress(t, "creating volume", "volumeID", volumeID, "name", volumeName, "sizeGB", tc.sizeGB, "useAPI", tc.useAPI)
+
+	var finalVolumeName string
+	var err error
+
+	if tc.useAPI {
+		finalVolumeName, _, err = createVolumeWithAPI(ctx, env, tc.sizeGB, namer)
+	} else {
+		finalVolumeName, err = createVolumeWithTags(ctx, env, volumeID, tc.sizeGB, namer)
+	}
+
+	if err != nil {
+		t.Fatalf("should create volume without error: %v", err)
+	}
+
+	verifyVolumeRetrievalAndTags(ctx, t, env, finalVolumeName, volumeID, tc.sizeGB, tc.useAPI)
+	verifyVolumeDeletion(ctx, t, env, finalVolumeName, tc.sizeGB)
+}
+
+func createVolumeWithAPI(ctx context.Context, env *test.Environment, sizeGB int32, namer *infra.ResourceNamer) (string, string, error) {
+	config := &infra.VolumeConfig{DiskSize: sizeGB}
+	returnedVolumeID, err := infra.CreateVolume(ctx, env.Clients, config)
+	if err != nil {
+		return "", "", err
+	}
+	if returnedVolumeID == "" {
+		return "", "", fmt.Errorf("volume ID should be returned")
+	}
+	volumeName := namer.VolumePoolDiskName(returnedVolumeID)
+	return volumeName, returnedVolumeID, nil
+}
+
+func createVolumeWithTags(ctx context.Context, env *test.Environment, volumeID string, sizeGB int32, namer *infra.ResourceNamer) (string, error) {
+	volumeName := namer.VolumePoolDiskName(volumeID)
+	tags := infra.VolumeTags{
+		Role:     infra.ResourceRoleVolume,
+		Status:   infra.ResourceStatusFree,
+		VolumeID: volumeID,
+	}
+	volumeInfo, err := infra.CreateVolumeWithTags(ctx, env.Clients, env.ResourceGroupName, volumeName, sizeGB, tags)
+	if err != nil {
+		return "", err
+	}
+
+	if err := validateVolumeInfo(volumeInfo, volumeName, volumeID, sizeGB); err != nil {
+		return "", err
+	}
+	return volumeName, nil
+}
+
+func validateVolumeInfo(volumeInfo *infra.VolumeInfo, expectedName, expectedVolumeID string, expectedSizeGB int32) error {
+	if volumeInfo.Name != expectedName {
+		return fmt.Errorf("volume should have correct name: expected %s, got %s", expectedName, volumeInfo.Name)
+	}
+	if volumeInfo.SizeGB != expectedSizeGB {
+		return fmt.Errorf("volume should have correct size: expected %d, got %d", expectedSizeGB, volumeInfo.SizeGB)
+	}
+	if volumeInfo.Location != infra.Location {
+		return fmt.Errorf("volume should be in correct location: expected %s, got %s", infra.Location, volumeInfo.Location)
+	}
+	if volumeInfo.ResourceID == "" {
+		return fmt.Errorf("volume should have resource ID")
+	}
+	if volumeInfo.VolumeID != expectedVolumeID {
+		return fmt.Errorf("volume should have correct volume ID: expected %s, got %s", expectedVolumeID, volumeInfo.VolumeID)
+	}
+
+	return validateVolumeTags(&volumeInfo.Tags)
+}
+
+func validateVolumeTags(tags *infra.VolumeTags) error {
+	if tags.Role != infra.ResourceRoleVolume {
+		return fmt.Errorf("volume should have correct role tag: expected %s, got %s", infra.ResourceRoleVolume, tags.Role)
+	}
+	if tags.Status != infra.ResourceStatusFree {
+		return fmt.Errorf("volume should have correct status tag: expected %s, got %s", infra.ResourceStatusFree, tags.Status)
+	}
+	if tags.CreatedAt == "" {
+		return fmt.Errorf("volume should have created timestamp")
+	}
+	if tags.LastUsed == "" {
+		return fmt.Errorf("volume should have last used timestamp")
+	}
+	return nil
+}
+
+func verifyVolumeRetrievalAndTags(ctx context.Context, t *testing.T, env *test.Environment, volumeName, volumeID string, sizeGB int32, useAPI bool) {
+	test.LogTestProgress(t, "verifying volume can be retrieved")
+
+	disk, err := env.Clients.DisksClient.Get(ctx, env.ResourceGroupName, volumeName, nil)
+	if err != nil {
+		t.Fatalf("should be able to retrieve created volume: %v", err)
+	}
+	if *disk.Name != volumeName {
+		t.Errorf("retrieved volume should have correct name: expected %s, got %s", volumeName, *disk.Name)
+	}
+	if *disk.Properties.DiskSizeGB != sizeGB {
+		t.Errorf("retrieved volume should have correct size: expected %d, got %d", sizeGB, *disk.Properties.DiskSizeGB)
+	}
+
+	if disk.Tags == nil {
+		t.Fatalf("volume should have tags")
+	}
+	if *disk.Tags[infra.TagKeyRole] != infra.ResourceRoleVolume {
+		t.Errorf("volume should have correct role tag: expected %s, got %s", infra.ResourceRoleVolume, *disk.Tags[infra.TagKeyRole])
+	}
+	if !useAPI {
+		verifySpecificTags(t, disk.Tags, volumeID)
+	}
+}
+
+func verifySpecificTags(t *testing.T, tags map[string]*string, volumeID string) {
+	if *tags[infra.TagKeyStatus] != infra.ResourceStatusFree {
+		t.Errorf("volume should have correct status tag: expected %s, got %s", infra.ResourceStatusFree, *tags[infra.TagKeyStatus])
+	}
+	if *tags[infra.TagKeyVolumeID] != volumeID {
+		t.Errorf("volume should have correct volume ID tag: expected %s, got %s", volumeID, *tags[infra.TagKeyVolumeID])
+	}
+}
+
+func verifyVolumeDeletion(ctx context.Context, t *testing.T, env *test.Environment, volumeName string, sizeGB int32) {
+	test.LogTestProgress(t, "testing volume deletion")
+
+	err := infra.DeleteVolume(ctx, env.Clients, env.ResourceGroupName, volumeName)
+	if err != nil {
+		t.Fatalf("should delete volume without error: %v", err)
+	}
+
+	_, err = env.Clients.DisksClient.Get(ctx, env.ResourceGroupName, volumeName, nil)
+	if err == nil {
+		t.Errorf("should not be able to retrieve deleted volume")
+	}
+
+	test.LogTestProgress(t, "volume test completed", "size", sizeGB)
+}
+
+type testVolumeSpec struct {
+	volumeID string
+	role     string
+	name     string
+}
+
+func createTestVolume(ctx context.Context, env *test.Environment, volumeSpec *testVolumeSpec) error {
+	namer := env.GetResourceNamer()
+
+	if volumeSpec.role == infra.ResourceRoleVolume {
+		config := &infra.VolumeConfig{DiskSize: infra.DefaultVolumeSizeGB}
+		volumeID, err := infra.CreateVolume(ctx, env.Clients, config)
+		if err != nil {
+			return err
+		}
+		volumeSpec.volumeID = volumeID
+		volumeSpec.name = namer.VolumePoolDiskName(volumeID)
+		return nil
+	}
+
+	volumeID := uuid.New().String()
+	volumeName := namer.VolumePoolDiskName(volumeID)
+	tags := infra.VolumeTags{
+		Role:      volumeSpec.role,
+		Status:    infra.ResourceStatusFree,
+		CreatedAt: time.Now().UTC().Format(time.RFC3339),
+		LastUsed:  time.Now().UTC().Format(time.RFC3339),
+		VolumeID:  volumeID,
+	}
+
+	_, err := infra.CreateVolumeWithTags(ctx, env.Clients, env.ResourceGroupName, volumeName, infra.DefaultVolumeSizeGB, tags)
+	if err != nil {
+		return err
+	}
+
+	volumeSpec.volumeID = volumeID
+	volumeSpec.name = volumeName
+	return nil
+}
+
+func verifyVolumesByRole(ctx context.Context, t *testing.T, env *test.Environment, role string, expectedCount int, expectedNames []string) {
+	foundNames, err := infra.FindVolumesByRole(ctx, env.Clients, env.ResourceGroupName, role, env.Suffix)
+	if err != nil {
+		t.Fatalf("should find volumes by role %s without error: %v", role, err)
+	}
+
+	if len(foundNames) != expectedCount {
+		t.Errorf("should find exactly %d volumes with %s role, got %d", expectedCount, role, len(foundNames))
+	}
+
+	for _, expectedName := range expectedNames {
+		found := false
+		for _, volumeName := range foundNames {
+			if volumeName == expectedName {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("should find volume %s", expectedName)
+		}
 	}
 }
 
@@ -159,117 +260,30 @@ func TestFindVolumesByRole(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 	defer cancel()
 
-	namer := env.GetResourceNamer()
-
 	test.LogTestProgress(t, "creating multiple volumes with different roles")
 
-	// Create volumes with different roles
-	volumes := []struct {
-		volumeID string
-		role     string
-		name     string
-	}{
-		{"", infra.ResourceRoleVolume, ""},
-		{"", infra.ResourceRoleVolume, ""},
-		{"", "temp", ""},
+	volumes := []testVolumeSpec{
+		{role: infra.ResourceRoleVolume},
+		{role: infra.ResourceRoleVolume},
+		{role: "temp"},
 	}
 
-	// Create all volumes and capture their IDs
 	for i := range volumes {
-		if volumes[i].role == infra.ResourceRoleVolume {
-			// Use CreateVolume for standard volumes
-			config := &infra.VolumeConfig{DiskSize: infra.DefaultVolumeSizeGB}
-			volumeID, err := infra.CreateVolume(ctx, env.Clients, config)
-			if err != nil {
-				t.Fatalf("should create volume without error: %v", err)
-			}
-
-			volumes[i].volumeID = volumeID
-			volumes[i].name = namer.VolumePoolDiskName(volumeID)
-		} else {
-			// Use CreateVolumeWithTags for custom roles
-			volumeID := uuid.New().String()
-			volumeName := namer.VolumePoolDiskName(volumeID)
-			tags := infra.VolumeTags{
-				Role:      volumes[i].role,
-				Status:    infra.ResourceStatusFree,
-				CreatedAt: time.Now().UTC().Format(time.RFC3339),
-				LastUsed:  time.Now().UTC().Format(time.RFC3339),
-				VolumeID:  volumeID,
-			}
-
-			_, err := infra.CreateVolumeWithTags(ctx, env.Clients, env.ResourceGroupName, volumeName, infra.DefaultVolumeSizeGB, tags)
-			if err != nil {
-				t.Fatalf("should create volume with custom role without error: %v", err)
-			}
-
-			volumes[i].volumeID = volumeID
-			volumes[i].name = volumeName
+		if err := createTestVolume(ctx, env, &volumes[i]); err != nil {
+			t.Fatalf("should create volume without error: %v", err)
 		}
 	}
 
 	test.LogTestProgress(t, "finding volumes by role")
 
-	// Find volumes by role (filter by test suffix for isolation)
-	volumeRoleNames, err := infra.FindVolumesByRole(ctx, env.Clients, env.ResourceGroupName, infra.ResourceRoleVolume, env.Suffix)
-	if err != nil {
-		t.Fatalf("should find volumes by role without error: %v", err)
-	}
-
-	// Should find exactly 2 volumes with "volume" role
-	if len(volumeRoleNames) != 2 {
-		t.Errorf("should find exactly 2 volumes with volume role, got %d", len(volumeRoleNames))
-	}
-
-	// Verify the correct volumes are found
-	expectedNames := []string{volumes[0].name, volumes[1].name}
-	for _, expectedName := range expectedNames {
-		found := false
-		for _, volumeName := range volumeRoleNames {
-			if volumeName == expectedName {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Errorf("should find volume %s", expectedName)
-		}
-	}
-
-	// Find temp volumes (filter by test suffix for isolation)
-	tempVolumeNames, err := infra.FindVolumesByRole(ctx, env.Clients, env.ResourceGroupName, "temp", env.Suffix)
-	if err != nil {
-		t.Fatalf("should find temp volumes without error: %v", err)
-	}
-	if len(tempVolumeNames) != 1 {
-		t.Errorf("should find exactly 1 temp volume, got %d", len(tempVolumeNames))
-	}
-	found := false
-	for _, volumeName := range tempVolumeNames {
-		if volumeName == volumes[2].name {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Errorf("should find temp volume %s", volumes[2].name)
-	}
-
-	// Find non-existent role (filter by test suffix for isolation)
-	nonExistentNames, err := infra.FindVolumesByRole(ctx, env.Clients, env.ResourceGroupName, "nonexistent", env.Suffix)
-	if err != nil {
-		t.Fatalf("should handle non-existent role without error: %v", err)
-	}
-	if len(nonExistentNames) != 0 {
-		t.Errorf("should find no volumes with non-existent role, got %d", len(nonExistentNames))
-	}
+	verifyVolumesByRole(ctx, t, env, infra.ResourceRoleVolume, 2, []string{volumes[0].name, volumes[1].name})
+	verifyVolumesByRole(ctx, t, env, "temp", 1, []string{volumes[2].name})
+	verifyVolumesByRole(ctx, t, env, "nonexistent", 0, []string{})
 
 	test.LogTestProgress(t, "cleaning up test volumes")
 
-	// Clean up all volumes
 	for _, vol := range volumes {
-		err := infra.DeleteVolume(ctx, env.Clients, env.ResourceGroupName, vol.name)
-		if err != nil {
+		if err := infra.DeleteVolume(ctx, env.Clients, env.ResourceGroupName, vol.name); err != nil {
 			t.Errorf("should delete volume %s without error: %v", vol.name, err)
 		}
 	}
@@ -351,33 +365,23 @@ func TestUpdateVolumeStatus(t *testing.T) {
 	}
 }
 
-func TestVolumeAttachmentToInstance(t *testing.T) {
-	t.Parallel()
-
-	env := test.SetupTestEnvironment(t)
-	defer env.Cleanup()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Minute)
-	defer cancel()
-
-	test.LogTestProgress(t, "setting up network infrastructure for instance creation")
-
-	// First create network infrastructure (required for VM creation)
+func setupNetworkForTesting(ctx context.Context, env *test.Environment) {
+	test.LogTestProgress(nil, "setting up network infrastructure for instance creation")
 	infra.CreateNetworkInfrastructure(ctx, env.Clients, env.Config.UseAzureCLI)
+}
 
+func createTestVolumeForAttachment(ctx context.Context, t *testing.T, env *test.Environment) string {
 	test.LogTestProgress(t, "creating volume for attachment test")
-
-	// Create volume
 	config := &infra.VolumeConfig{DiskSize: infra.DefaultVolumeSizeGB}
 	volumeID, err := infra.CreateVolume(ctx, env.Clients, config)
 	if err != nil {
 		t.Fatalf("should create volume without error: %v", err)
 	}
-
 	test.LogTestProgress(t, "creating volume for attachment test", "volumeID", volumeID)
+	return volumeID
+}
 
-	// Create instance (VM) for attachment
-	// Load SSH public key using the same function as production
+func createTestInstanceForAttachment(ctx context.Context, t *testing.T, env *test.Environment) string {
 	_, sshPublicKey, err := sshutil.LoadKeyPair("/home/ubuntu/.ssh/id_ed25519")
 	if err != nil {
 		t.Fatalf("should load SSH key: %v", err)
@@ -386,24 +390,20 @@ func TestVolumeAttachmentToInstance(t *testing.T) {
 	vmConfig := &infra.VMConfig{
 		AdminUsername: infra.AdminUsername,
 		SSHPublicKey:  sshPublicKey,
-		VMSize:        "Standard_B2s", // Smaller size for faster testing
+		VMSize:        "Standard_B2s",
 	}
 
 	instanceID, err := infra.CreateInstance(ctx, env.Clients, vmConfig)
 	if err != nil {
 		t.Fatalf("should create instance without error: %v", err)
 	}
-
 	test.LogTestProgress(t, "creating instance for attachment test", "instanceID", instanceID)
+	return instanceID
+}
 
-	// Get resource names using the actual instance ID
-	namer := env.GetResourceNamer()
-	vmName := namer.BoxVMName(instanceID)
-	volumeName := namer.VolumePoolDiskName(volumeID)
-
-	// Wait for VM to be fully provisioned
+func waitForInstanceProvisioning(ctx context.Context, t *testing.T, env *test.Environment, vmName string) {
 	test.LogTestProgress(t, "waiting for instance to be fully provisioned")
-	err = env.WaitForResource(ctx, vmName, func() (bool, error) {
+	err := env.WaitForResource(ctx, vmName, func() (bool, error) {
 		vm, err := env.Clients.ComputeClient.Get(ctx, env.ResourceGroupName, vmName, nil)
 		if err != nil {
 			return false, err
@@ -413,18 +413,11 @@ func TestVolumeAttachmentToInstance(t *testing.T) {
 	if err != nil {
 		t.Fatalf("instance should be fully provisioned: %v", err)
 	}
+}
 
-	test.LogTestProgress(t, "attaching volume to instance")
-
-	// Attach volume to instance
-	err = infra.AttachVolumeToInstance(ctx, env.Clients, instanceID, volumeID)
-	if err != nil {
-		t.Fatalf("should attach volume to instance without error: %v", err)
-	}
-
+func verifyVolumeAttachment(ctx context.Context, t *testing.T, env *test.Environment, vmName, volumeName string) {
 	test.LogTestProgress(t, "verifying volume attachment")
 
-	// Verify attachment by checking VM configuration
 	vm, err := env.Clients.ComputeClient.Get(ctx, env.ResourceGroupName, vmName, nil)
 	if err != nil {
 		t.Fatalf("should retrieve VM after attachment: %v", err)
@@ -450,7 +443,6 @@ func TestVolumeAttachmentToInstance(t *testing.T) {
 		t.Errorf("disk should be attached at LUN 0, got %d", *dataDisk.Lun)
 	}
 
-	// Verify volume can still be retrieved
 	disk, err := env.Clients.DisksClient.Get(ctx, env.ResourceGroupName, volumeName, nil)
 	if err != nil {
 		t.Fatalf("should still be able to retrieve attached volume: %v", err)
@@ -458,20 +450,46 @@ func TestVolumeAttachmentToInstance(t *testing.T) {
 	if *disk.Name != volumeName {
 		t.Errorf("attached volume should have correct name, expected %q, got %q", volumeName, *disk.Name)
 	}
+}
 
+func cleanupInstanceAndVolume(ctx context.Context, t *testing.T, env *test.Environment, vmName, volumeName string) {
 	test.LogTestProgress(t, "cleaning up instance and volume")
 
-	// Clean up: delete instance (which will also detach the volume)
-	err = infra.DeleteInstance(ctx, env.Clients, env.ResourceGroupName, vmName)
-	if err != nil {
+	if err := infra.DeleteInstance(ctx, env.Clients, env.ResourceGroupName, vmName); err != nil {
 		t.Fatalf("should delete instance without error: %v", err)
 	}
 
-	// Clean up volume
-	err = infra.DeleteVolume(ctx, env.Clients, env.ResourceGroupName, volumeName)
-	if err != nil {
+	if err := infra.DeleteVolume(ctx, env.Clients, env.ResourceGroupName, volumeName); err != nil {
 		t.Fatalf("should delete volume without error: %v", err)
 	}
+}
+
+func TestVolumeAttachmentToInstance(t *testing.T) {
+	t.Parallel()
+
+	env := test.SetupTestEnvironment(t)
+	defer env.Cleanup()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Minute)
+	defer cancel()
+
+	setupNetworkForTesting(ctx, env)
+	volumeID := createTestVolumeForAttachment(ctx, t, env)
+	instanceID := createTestInstanceForAttachment(ctx, t, env)
+
+	namer := env.GetResourceNamer()
+	vmName := namer.BoxVMName(instanceID)
+	volumeName := namer.VolumePoolDiskName(volumeID)
+
+	waitForInstanceProvisioning(ctx, t, env, vmName)
+
+	test.LogTestProgress(t, "attaching volume to instance")
+	if err := infra.AttachVolumeToInstance(ctx, env.Clients, instanceID, volumeID); err != nil {
+		t.Fatalf("should attach volume to instance without error: %v", err)
+	}
+
+	verifyVolumeAttachment(ctx, t, env, vmName, volumeName)
+	cleanupInstanceAndVolume(ctx, t, env, vmName, volumeName)
 }
 
 func TestVolumeLifecycle(t *testing.T) {

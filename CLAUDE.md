@@ -12,12 +12,17 @@ Cloud service providing instant development environments through SSH. Users conn
 
 ## Development
 
+
+---------------------------------
 MOST IMPORTANT:
 - DONT ASSUME -- IF IN DOUBT, ASK FOR CLARIFICATIONS
 - KEEP CODE SIMPLE
 - DO MINIMAL CODE CHANGES NEEDED TO ACOMPLISH TASKS
 - BE CONSISTENT WITH EXISTING CODE: resue existing functions, maintain naming style, code patterns.
 - IF YOU SEE ANY OPPORTUNITY TO REMOVE UNNECESSARY TESTS OR OTHER CODE THAT IS MAINLY MAINTENANCE BURDEN: THEN NOTIFY THE USER!
+- USE THE LSP MCP SERVER... FOR DISCOVERIUNG TYPES, SIGNATURES, RENAMING, SEARCHING ETC.ND MOST IMPORTANTLY FOR EDITING! THE EDITS WITH THE LSP ARE VERY ACCURATE
+-----------------------------------------
+
 
 format, lint and tast that everything builds:
 ./tst.sh

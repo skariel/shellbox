@@ -124,7 +124,8 @@ func TestTableStorageEntityOperations(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 	defer cancel()
 
-	tableClient := setupTableStorageForEntityOperations(ctx, t, env)
+	tableClient := setupTableStorageForEntityOperations(t, ctx, env)
+
 
 	test.LogTestProgress(t, "testing EventLog entity operations")
 
@@ -150,8 +151,9 @@ func TestTableStorageEntityOperations(t *testing.T) {
 			t.Fatalf("should write event log without error: %v", err)
 		}
 
-		// Verify entity was written by querying it back
-		eventLogClient := tableClient.NewClient(env.GetResourceNamer().EventLogTableName())
+			// Verify entity was written by querying it back
+			eventLogClient := tableClient.NewClient(env.GetResourceNamer().EventLogTableName())
+
 
 		// Get the entity
 		response, err := eventLogClient.GetEntity(ctx, eventEntity.PartitionKey, eventEntity.RowKey, nil)
@@ -165,8 +167,9 @@ func TestTableStorageEntityOperations(t *testing.T) {
 			t.Fatalf("should be able to unmarshal retrieved entity: %v", err)
 		}
 
-		// Verify entity fields
-		verifyEventLogEntityFields(t, eventEntity, retrievedEntity)
+			// Verify entity fields
+			verifyEventLogEntityFields(t, eventEntity, retrievedEntity)
+
 	})
 
 	test.LogTestProgress(t, "testing ResourceRegistry entity operations")
@@ -192,8 +195,9 @@ func TestTableStorageEntityOperations(t *testing.T) {
 			t.Fatalf("should write resource registry without error: %v", err)
 		}
 
-		// Verify entity was written by querying it back
-		registryClient := tableClient.NewClient(env.GetResourceNamer().ResourceRegistryTableName())
+			// Verify entity was written by querying it back
+			registryClient := tableClient.NewClient(env.GetResourceNamer().ResourceRegistryTableName())
+
 
 		// Get the entity
 		response, err := registryClient.GetEntity(ctx, resourceEntity.PartitionKey, resourceEntity.RowKey, nil)
@@ -207,8 +211,9 @@ func TestTableStorageEntityOperations(t *testing.T) {
 			t.Fatalf("should be able to unmarshal retrieved entity: %v", err)
 		}
 
-		// Verify entity fields
-		verifyResourceRegistryEntityFields(t, resourceEntity, retrievedEntity)
+			// Verify entity fields
+			verifyResourceRegistryEntityFields(t, resourceEntity, retrievedEntity)
+
 	})
 }
 
@@ -221,15 +226,15 @@ func TestTableStorageQueryOperations(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 	defer cancel()
 
-	tableClient := setupTableStorageForQueries(ctx, t, env)
+	tableClient := setupTableStorageForQueries(t, ctx, env)
 	entities := createTestEntities(ctx, t, env)
 	eventLogClient := tableClient.NewClient(env.GetResourceNamer().EventLogTableName())
 
-	testAllEntitiesQuery(ctx, t, eventLogClient, entities)
-	testFilteredQuery(ctx, t, eventLogClient, entities[0].PartitionKey)
+	testAllEntitiesQuery(t, ctx, eventLogClient, entities)
+	testFilteredQuery(t, ctx, eventLogClient, entities[0].PartitionKey)
 }
 
-func setupTableStorageForQueries(ctx context.Context, t *testing.T, env *test.Environment) *aztables.ServiceClient {
+func setupTableStorageForQueries(t *testing.T, ctx context.Context, env *test.Environment) *aztables.ServiceClient {
 	namer := env.GetResourceNamer()
 	storageAccountName := namer.SharedStorageAccountName()
 	tableNames := []string{namer.EventLogTableName(), namer.ResourceRegistryTableName()}
@@ -295,11 +300,11 @@ func createTestEntities(ctx context.Context, t *testing.T, env *test.Environment
 	return entities
 }
 
-func testAllEntitiesQuery(ctx context.Context, t *testing.T, eventLogClient *aztables.Client, entities []infra.EventLogEntity) {
+func testAllEntitiesQuery(t *testing.T, ctx context.Context, eventLogClient *aztables.Client, entities []infra.EventLogEntity) {
 	test.LogTestProgress(t, "testing query operations")
 
 	partitionKey := entities[0].PartitionKey
-	retrievedEntities := queryEntitiesByPartition(ctx, t, eventLogClient, partitionKey)
+	retrievedEntities := queryEntitiesByPartition(t, ctx, eventLogClient, partitionKey)
 
 	if len(retrievedEntities) != 3 {
 		t.Errorf("should retrieve all 3 entities, got %d", len(retrievedEntities))
@@ -308,7 +313,7 @@ func testAllEntitiesQuery(ctx context.Context, t *testing.T, eventLogClient *azt
 	verifyRetrievedEntities(t, entities, retrievedEntities)
 }
 
-func queryEntitiesByPartition(ctx context.Context, t *testing.T, eventLogClient *aztables.Client, partitionKey string) []infra.EventLogEntity {
+func queryEntitiesByPartition(t *testing.T, ctx context.Context, eventLogClient *aztables.Client, partitionKey string) []infra.EventLogEntity {
 	filter := fmt.Sprintf("PartitionKey eq '%s'", partitionKey)
 	listOptions := &aztables.ListEntitiesOptions{
 		Filter: &filter,
@@ -364,10 +369,10 @@ func verifyEntityFields(t *testing.T, original, retrieved infra.EventLogEntity) 
 	}
 }
 
-func testFilteredQuery(ctx context.Context, t *testing.T, eventLogClient *aztables.Client, partitionKey string) {
+func testFilteredQuery(t *testing.T, ctx context.Context, eventLogClient *aztables.Client, partitionKey string) {
 	test.LogTestProgress(t, "testing filtered query operations")
 
-	sessionEntities := queryEntitiesBySession(ctx, t, eventLogClient, partitionKey, "session-1")
+	sessionEntities := queryEntitiesBySession(t, ctx, eventLogClient, partitionKey, "session-1")
 
 	if len(sessionEntities) != 2 {
 		t.Errorf("should retrieve only 2 entities for session-1, got %d", len(sessionEntities))
@@ -379,7 +384,7 @@ func testFilteredQuery(ctx context.Context, t *testing.T, eventLogClient *aztabl
 	}
 }
 
-func queryEntitiesBySession(ctx context.Context, t *testing.T, eventLogClient *aztables.Client, partitionKey, sessionID string) []infra.EventLogEntity {
+func queryEntitiesBySession(t *testing.T, ctx context.Context, eventLogClient *aztables.Client, partitionKey, sessionID string) []infra.EventLogEntity {
 	sessionFilter := fmt.Sprintf("PartitionKey eq '%s' and SessionID eq '%s'", partitionKey, sessionID)
 	sessionListOptions := &aztables.ListEntitiesOptions{
 		Filter: &sessionFilter,
@@ -424,6 +429,14 @@ func TestTableStorageUpdateOperations(t *testing.T) {
 	result := infra.CreateTableStorageResources(ctx, env.Clients, storageAccountName, tableNames)
 	if result.Error != nil {
 		t.Fatalf("should create table storage resources: %v", result.Error)
+	}
+
+	env.Clients.TableStorageConnectionString = result.ConnectionString
+	tableClient, err := aztables.NewServiceClientFromConnectionString(result.ConnectionString, nil)
+	if err != nil {
+		t.Fatalf("should create table client: %v", err)
+	}
+	env.Clients.TableClient = tableClient
 	}
 
 	env.Clients.TableStorageConnectionString = result.ConnectionString
@@ -604,9 +617,10 @@ func TestTableStorageErrorHandling(t *testing.T) {
 	}
 
 	test.LogTestProgress(t, "error handling tests completed")
+	test.LogTestProgress(t, "error handling tests completed")
 }
 
-func setupTableStorageForEntityOperations(ctx context.Context, t *testing.T, env *test.Environment) *aztables.ServiceClient {
+func setupTableStorageForEntityOperations(t *testing.T, ctx context.Context, env *test.Environment) *aztables.ServiceClient {
 	namer := env.GetResourceNamer()
 	storageAccountName := namer.SharedStorageAccountName()
 	tableNames := []string{namer.EventLogTableName(), namer.ResourceRegistryTableName()}
