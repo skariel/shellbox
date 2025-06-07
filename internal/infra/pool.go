@@ -104,7 +104,7 @@ func (p *BoxPool) maintainInstancePool(ctx context.Context) {
 		return
 	}
 
-	slog.Debug("instance pool status",
+	slog.Info("instance pool status",
 		"free", counts.Free,
 		"connected", counts.Connected,
 		"total", counts.Total)

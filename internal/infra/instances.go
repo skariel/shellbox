@@ -61,6 +61,12 @@ func CreateInstance(ctx context.Context, clients *AzureClients, config *VMConfig
 		return "", fmt.Errorf("creating instance VM: %w", err)
 	}
 
+	// Wait for the instance to be visible in Resource Graph before returning
+	err = waitForInstanceInResourceGraph(ctx, clients, instanceID, tags)
+	if err != nil {
+		return "", fmt.Errorf("waiting for instance in resource graph: %w", err)
+	}
+
 	return instanceID, nil
 }
 
@@ -624,4 +630,47 @@ func AttachVolumeToInstance(ctx context.Context, clients *AzureClients, instance
 	}
 
 	return nil
+}
+
+// waitForInstanceInResourceGraph waits for a newly created instance to be visible in Resource Graph with correct tags.
+// This is necessary because Resource Graph has eventual consistency and tags may not be immediately queryable.
+func waitForInstanceInResourceGraph(ctx context.Context, clients *AzureClients, instanceID string, expectedTags InstanceTags) error {
+	// Create resource graph queries client
+	rq := NewResourceGraphQueries(clients.ResourceGraphClient, clients.SubscriptionID, clients.ResourceGroupName)
+
+	// Define the verification operation
+	verifyOperation := func(ctx context.Context) error {
+		slog.Debug("Checking Resource Graph for instance", "instanceID", instanceID, "expectedStatus", expectedTags.Status)
+
+		// Get all instances with the expected status
+		instances, err := rq.GetInstancesByStatus(ctx, expectedTags.Status)
+		if err != nil {
+			return fmt.Errorf("querying instances: %w", err)
+		}
+
+		// Check if our instance is in the results
+		for _, instance := range instances {
+			if instance.Tags["instanceID"] == instanceID {
+				// Verify all expected tags are present
+				if instance.Tags[TagKeyRole] == expectedTags.Role &&
+					instance.Tags[TagKeyStatus] == expectedTags.Status &&
+					instance.Tags[TagKeyCreated] == expectedTags.CreatedAt &&
+					instance.Tags[TagKeyLastUsed] == expectedTags.LastUsed {
+					slog.Info("Instance visible in Resource Graph", "instanceID", instanceID)
+					return nil
+				}
+			}
+		}
+
+		// Instance not found yet
+		return fmt.Errorf("instance %s not yet visible in Resource Graph (checked %d instances with status %s)", instanceID, len(instances), expectedTags.Status)
+	}
+
+	// Use RetryOperation with a 2-minute timeout and 5-second intervals
+	const (
+		timeout  = 2 * time.Minute
+		interval = 5 * time.Second
+	)
+
+	return RetryOperation(ctx, verifyOperation, timeout, interval, "wait for instance in Resource Graph")
 }
