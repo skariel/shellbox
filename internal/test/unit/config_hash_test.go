@@ -8,27 +8,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"github.com/stretchr/testify/suite"
-
 	"shellbox/internal/infra"
 	"shellbox/internal/test"
 )
 
-// ConfigHashTestSuite tests configuration formatting and hash generation
-type ConfigHashTestSuite struct {
-	suite.Suite
-	env *test.Environment
-}
-
-// SetupSuite runs once before all tests in the suite
-func (suite *ConfigHashTestSuite) SetupSuite() {
-	suite.env = test.SetupMinimalTestEnvironment(suite.T())
-}
-
 // TestFormatConfig tests the configuration formatting function
-func (suite *ConfigHashTestSuite) TestFormatConfig() {
+func TestFormatConfig(t *testing.T) {
+	env := test.SetupMinimalTestEnvironment(t)
+	_ = env // For later use if needed
+
 	testCases := []struct {
 		name             string
 		suffix           string
@@ -85,62 +73,96 @@ func (suite *ConfigHashTestSuite) TestFormatConfig() {
 	}
 
 	for _, tc := range testCases {
-		suite.T().Run(tc.name, func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			config := infra.FormatConfig(tc.suffix)
 
 			if tc.expectedNotEmpty {
-				assert.NotEmpty(t, config, "Config should not be empty")
+				if config == "" {
+					t.Errorf("Config should not be empty")
+				}
 			}
 
 			for _, expected := range tc.expectedContains {
-				assert.Contains(t, config, expected, "Config should contain: %s", expected)
+				if !strings.Contains(config, expected) {
+					t.Errorf("Config should contain: %s", expected)
+				}
 			}
 
 			// Test that config contains network information
-			assert.Contains(t, config, "10.0.0.0/8", "Should contain VNet CIDR")
-			assert.Contains(t, config, "10.0.0.0/24", "Should contain bastion subnet CIDR")
-			assert.Contains(t, config, "10.1.0.0/16", "Should contain boxes subnet CIDR")
+			if !strings.Contains(config, "10.0.0.0/8") {
+				t.Errorf("Should contain VNet CIDR")
+			}
+			if !strings.Contains(config, "10.0.0.0/24") {
+				t.Errorf("Should contain bastion subnet CIDR")
+			}
+			if !strings.Contains(config, "10.1.0.0/16") {
+				t.Errorf("Should contain boxes subnet CIDR")
+			}
 
 			// Test that config is well-structured
 			lines := strings.Split(config, "\n")
-			assert.Greater(t, len(lines), 5, "Config should have multiple lines")
+			if len(lines) <= 5 {
+				t.Errorf("Config should have multiple lines, got %d", len(lines))
+			}
 		})
 	}
 }
 
 // TestFormatConfigConsistency tests that the same suffix produces the same config
-func (suite *ConfigHashTestSuite) TestFormatConfigConsistency() {
+func TestFormatConfigConsistency(t *testing.T) {
 	suffix := "consistency-test"
 
 	config1 := infra.FormatConfig(suffix)
 	config2 := infra.FormatConfig(suffix)
 
-	assert.Equal(suite.T(), config1, config2, "Same suffix should produce identical config")
-	assert.NotEmpty(suite.T(), config1, "Config should not be empty")
+	if config1 != config2 {
+		t.Errorf("Same suffix should produce identical config")
+	}
+	if config1 == "" {
+		t.Errorf("Config should not be empty")
+	}
 }
 
 // TestFormatConfigUniqueness tests that different suffixes produce different configs
-func (suite *ConfigHashTestSuite) TestFormatConfigUniqueness() {
+func TestFormatConfigUniqueness(t *testing.T) {
 	config1 := infra.FormatConfig("suffix1")
 	config2 := infra.FormatConfig("suffix2")
 
-	assert.NotEqual(suite.T(), config1, config2, "Different suffixes should produce different configs")
-	assert.NotEmpty(suite.T(), config1, "Config1 should not be empty")
-	assert.NotEmpty(suite.T(), config2, "Config2 should not be empty")
+	if config1 == config2 {
+		t.Errorf("Different suffixes should produce different configs")
+	}
+	if config1 == "" {
+		t.Errorf("Config1 should not be empty")
+	}
+	if config2 == "" {
+		t.Errorf("Config2 should not be empty")
+	}
 
 	// Both should contain common elements
-	assert.Contains(suite.T(), config1, "Network Configuration")
-	assert.Contains(suite.T(), config2, "Network Configuration")
+	if !strings.Contains(config1, "Network Configuration") {
+		t.Errorf("Config1 should contain Network Configuration")
+	}
+	if !strings.Contains(config2, "Network Configuration") {
+		t.Errorf("Config2 should contain Network Configuration")
+	}
 
 	// But should contain their respective suffixes
-	assert.Contains(suite.T(), config1, "suffix1")
-	assert.Contains(suite.T(), config2, "suffix2")
-	assert.NotContains(suite.T(), config1, "suffix2")
-	assert.NotContains(suite.T(), config2, "suffix1")
+	if !strings.Contains(config1, "suffix1") {
+		t.Errorf("Config1 should contain suffix1")
+	}
+	if !strings.Contains(config2, "suffix2") {
+		t.Errorf("Config2 should contain suffix2")
+	}
+	if strings.Contains(config1, "suffix2") {
+		t.Errorf("Config1 should not contain suffix2")
+	}
+	if strings.Contains(config2, "suffix1") {
+		t.Errorf("Config2 should not contain suffix1")
+	}
 }
 
 // TestGenerateConfigHash tests the configuration hash generation
-func (suite *ConfigHashTestSuite) TestGenerateConfigHash() {
+func TestGenerateConfigHash(t *testing.T) {
 	testCases := []struct {
 		name           string
 		suffix         string
@@ -174,56 +196,79 @@ func (suite *ConfigHashTestSuite) TestGenerateConfigHash() {
 	}
 
 	for _, tc := range testCases {
-		suite.T().Run(tc.name, func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			hash, err := infra.GenerateConfigHash(tc.suffix)
 
 			if tc.shouldError {
-				assert.Error(t, err, "Should return error")
+				if err == nil {
+					t.Errorf("Should return error")
+				}
 			} else {
-				require.NoError(t, err, "Should not return error")
-				assert.Len(t, hash, tc.expectedLength, "Hash should be 8 characters")
+				if err != nil {
+					t.Fatalf("Should not return error: %v", err)
+				}
+				if len(hash) != tc.expectedLength {
+					t.Errorf("Hash should be %d characters, got %d", tc.expectedLength, len(hash))
+				}
 
 				// Test that hash contains only hex characters
 				for _, char := range hash {
-					assert.True(t, isHexChar(char), "Hash should contain only hex characters: %c", char)
+					if !isHexChar(char) {
+						t.Errorf("Hash should contain only hex characters: %c", char)
+					}
 				}
 
 				// Test that hash is not empty
-				assert.NotEmpty(t, hash, "Hash should not be empty")
+				if hash == "" {
+					t.Errorf("Hash should not be empty")
+				}
 			}
 		})
 	}
 }
 
 // TestGenerateConfigHashConsistency tests that the same suffix produces the same hash
-func (suite *ConfigHashTestSuite) TestGenerateConfigHashConsistency() {
+func TestGenerateConfigHashConsistency(t *testing.T) {
 	suffix := "hash-consistency-test"
 
 	hash1, err1 := infra.GenerateConfigHash(suffix)
 	hash2, err2 := infra.GenerateConfigHash(suffix)
 
-	require.NoError(suite.T(), err1, "First hash generation should not error")
-	require.NoError(suite.T(), err2, "Second hash generation should not error")
+	if err1 != nil {
+		t.Fatalf("First hash generation should not error: %v", err1)
+	}
+	if err2 != nil {
+		t.Fatalf("Second hash generation should not error: %v", err2)
+	}
 
-	assert.Equal(suite.T(), hash1, hash2, "Same suffix should produce identical hash")
-	assert.Len(suite.T(), hash1, 8, "Hash should be 8 characters")
-	assert.Len(suite.T(), hash2, 8, "Hash should be 8 characters")
+	if hash1 != hash2 {
+		t.Errorf("Same suffix should produce identical hash")
+	}
+	if len(hash1) != 8 {
+		t.Errorf("Hash should be 8 characters, got %d", len(hash1))
+	}
+	if len(hash2) != 8 {
+		t.Errorf("Hash should be 8 characters, got %d", len(hash2))
+	}
 }
 
 // TestGenerateConfigHashUniqueness tests that different suffixes produce different hashes
-func (suite *ConfigHashTestSuite) TestGenerateConfigHashUniqueness() {
+func TestGenerateConfigHashUniqueness(t *testing.T) {
 	suffixes := []string{"test1", "test2", "different", "another-test", ""}
 	hashes := make(map[string]string)
 
 	for _, suffix := range suffixes {
 		hash, err := infra.GenerateConfigHash(suffix)
-		require.NoError(suite.T(), err, "Hash generation should not error for suffix: %s", suffix)
+		if err != nil {
+			t.Fatalf("Hash generation should not error for suffix: %s, error: %v", suffix, err)
+		}
 
 		// Check that this hash is unique
 		for otherSuffix, otherHash := range hashes {
 			if suffix != otherSuffix {
-				assert.NotEqual(suite.T(), hash, otherHash,
-					"Different suffixes should produce different hashes: %s vs %s", suffix, otherSuffix)
+				if hash == otherHash {
+					t.Errorf("Different suffixes should produce different hashes: %s vs %s", suffix, otherSuffix)
+				}
 			}
 		}
 
@@ -232,12 +277,14 @@ func (suite *ConfigHashTestSuite) TestGenerateConfigHashUniqueness() {
 }
 
 // TestHashAlgorithmCorrectness tests that the hash is generated correctly
-func (suite *ConfigHashTestSuite) TestHashAlgorithmCorrectness() {
+func TestHashAlgorithmCorrectness(t *testing.T) {
 	suffix := "algorithm-test"
 
 	// Generate hash using the function
 	actualHash, err := infra.GenerateConfigHash(suffix)
-	require.NoError(suite.T(), err, "Hash generation should not error")
+	if err != nil {
+		t.Fatalf("Hash generation should not error: %v", err)
+	}
 
 	// Generate hash manually to verify algorithm
 	config := infra.FormatConfig(suffix)
@@ -245,12 +292,16 @@ func (suite *ConfigHashTestSuite) TestHashAlgorithmCorrectness() {
 	hasher.Write([]byte(config))
 	expectedHash := hex.EncodeToString(hasher.Sum(nil))[:8]
 
-	assert.Equal(suite.T(), expectedHash, actualHash, "Hash should match manual calculation")
-	assert.Len(suite.T(), actualHash, 8, "Hash should be truncated to 8 characters")
+	if actualHash != expectedHash {
+		t.Errorf("Hash should match manual calculation, got %s, want %s", actualHash, expectedHash)
+	}
+	if len(actualHash) != 8 {
+		t.Errorf("Hash should be truncated to 8 characters, got %d", len(actualHash))
+	}
 }
 
 // TestHashCollisionResistance tests basic collision resistance properties
-func (suite *ConfigHashTestSuite) TestHashCollisionResistance() {
+func TestHashCollisionResistance(t *testing.T) {
 	// Test with similar suffixes that might cause collisions in a weak hash
 	similarSuffixes := []string{
 		"test", "test1", "test2", "test12", "test21",
@@ -262,11 +313,13 @@ func (suite *ConfigHashTestSuite) TestHashCollisionResistance() {
 
 	for _, suffix := range similarSuffixes {
 		hash, err := infra.GenerateConfigHash(suffix)
-		require.NoError(suite.T(), err, "Hash generation should not error")
+		if err != nil {
+			t.Fatalf("Hash generation should not error: %v", err)
+		}
 
 		if existingSuffixes, exists := hashes[hash]; exists {
 			// Collision detected - this is very unlikely with SHA256 but let's document it
-			suite.T().Logf("Hash collision detected: %s and %v both hash to %s",
+			t.Logf("Hash collision detected: %s and %v both hash to %s",
 				suffix, existingSuffixes, hash)
 		} else {
 			hashes[hash] = []string{suffix}
@@ -274,8 +327,9 @@ func (suite *ConfigHashTestSuite) TestHashCollisionResistance() {
 	}
 
 	// For this small test set, we expect no collisions with SHA256
-	assert.Len(suite.T(), hashes, len(similarSuffixes),
-		"Should have unique hashes for all test suffixes (collision unlikely with SHA256)")
+	if len(hashes) != len(similarSuffixes) {
+		t.Errorf("Should have unique hashes for all test suffixes (collision unlikely with SHA256)")
+	}
 }
 
 // Helper function to check if character is a valid hex digit
@@ -285,5 +339,13 @@ func isHexChar(char rune) bool {
 
 // Run the test suite
 func TestConfigHashTestSuite(t *testing.T) {
-	suite.Run(t, new(ConfigHashTestSuite))
+	// Run all the individual test functions
+	t.Run("TestFormatConfig", TestFormatConfig)
+	t.Run("TestFormatConfigConsistency", TestFormatConfigConsistency)
+	t.Run("TestFormatConfigUniqueness", TestFormatConfigUniqueness)
+	t.Run("TestGenerateConfigHash", TestGenerateConfigHash)
+	t.Run("TestGenerateConfigHashConsistency", TestGenerateConfigHashConsistency)
+	t.Run("TestGenerateConfigHashUniqueness", TestGenerateConfigHashUniqueness)
+	t.Run("TestHashAlgorithmCorrectness", TestHashAlgorithmCorrectness)
+	t.Run("TestHashCollisionResistance", TestHashCollisionResistance)
 }

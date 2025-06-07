@@ -6,8 +6,6 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v7"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 
 	"shellbox/internal/infra"
 	"shellbox/internal/test"
@@ -31,42 +29,76 @@ func TestNetworkInfrastructureIdempotency(t *testing.T) {
 
 	// Verify resource group exists
 	rg, err := env.Clients.ResourceClient.Get(ctx, env.ResourceGroupName, nil)
-	require.NoError(t, err, "Resource group should exist")
-	assert.Equal(t, env.ResourceGroupName, *rg.Name, "Resource group name should match")
-	assert.Equal(t, env.Config.Location, *rg.Location, "Resource group location should match")
+	if err != nil {
+		t.Fatalf("Resource group should exist: %v", err)
+	}
+	if *rg.Name != env.ResourceGroupName {
+		t.Errorf("Resource group name should match: got %s, want %s", *rg.Name, env.ResourceGroupName)
+	}
+	if *rg.Location != env.Config.Location {
+		t.Errorf("Resource group location should match: got %s, want %s", *rg.Location, env.Config.Location)
+	}
 
 	// Verify NSG was created with correct rules
 	nsgName := namer.BastionNSGName()
 	nsg, err := env.Clients.NSGClient.Get(ctx, env.ResourceGroupName, nsgName, nil)
-	require.NoError(t, err, "Bastion NSG should exist")
-	assert.Equal(t, nsgName, *nsg.Name, "NSG name should match")
+	if err != nil {
+		t.Fatalf("Bastion NSG should exist: %v", err)
+	}
+	if *nsg.Name != nsgName {
+		t.Errorf("NSG name should match: got %s, want %s", *nsg.Name, nsgName)
+	}
 
 	// Verify NSG rules
-	require.NotNil(t, nsg.Properties, "NSG properties should be set")
-	require.Greater(t, len(nsg.Properties.SecurityRules), 0, "NSG should have security rules")
+	if nsg.Properties == nil {
+		t.Fatal("NSG properties should be set")
+	}
+	if len(nsg.Properties.SecurityRules) == 0 {
+		t.Fatal("NSG should have security rules")
+	}
 
 	ruleNames := make(map[string]bool)
 	for _, rule := range nsg.Properties.SecurityRules {
 		ruleNames[*rule.Name] = true
 	}
 
-	assert.True(t, ruleNames["AllowSSHFromInternet"], "Should have SSH rule")
-	assert.True(t, ruleNames["AllowCustomSSHFromInternet"], "Should have custom SSH rule")
-	assert.True(t, ruleNames["AllowHTTPSFromInternet"], "Should have HTTPS rule")
+	if !ruleNames["AllowSSHFromInternet"] {
+		t.Error("Should have SSH rule")
+	}
+	if !ruleNames["AllowCustomSSHFromInternet"] {
+		t.Error("Should have custom SSH rule")
+	}
+	if !ruleNames["AllowHTTPSFromInternet"] {
+		t.Error("Should have HTTPS rule")
+	}
 
 	// Verify VNet configuration
 	vnetName := namer.VNetName()
 	vnet, err := env.Clients.NetworkClient.Get(ctx, env.ResourceGroupName, vnetName, nil)
-	require.NoError(t, err, "VNet should exist")
-	assert.Equal(t, vnetName, *vnet.Name, "VNet name should match")
+	if err != nil {
+		t.Fatalf("VNet should exist: %v", err)
+	}
+	if *vnet.Name != vnetName {
+		t.Errorf("VNet name should match: got %s, want %s", *vnet.Name, vnetName)
+	}
 
-	require.NotNil(t, vnet.Properties, "VNet properties should be set")
-	require.NotNil(t, vnet.Properties.AddressSpace, "VNet address space should be set")
-	require.Len(t, vnet.Properties.AddressSpace.AddressPrefixes, 1, "VNet should have one address prefix")
-	assert.Equal(t, "10.0.0.0/8", *vnet.Properties.AddressSpace.AddressPrefixes[0], "Address space should match")
+	if vnet.Properties == nil {
+		t.Fatal("VNet properties should be set")
+	}
+	if vnet.Properties.AddressSpace == nil {
+		t.Fatal("VNet address space should be set")
+	}
+	if len(vnet.Properties.AddressSpace.AddressPrefixes) != 1 {
+		t.Fatalf("VNet should have one address prefix, got %d", len(vnet.Properties.AddressSpace.AddressPrefixes))
+	}
+	if *vnet.Properties.AddressSpace.AddressPrefixes[0] != "10.0.0.0/8" {
+		t.Errorf("Address space should match: got %s, want 10.0.0.0/8", *vnet.Properties.AddressSpace.AddressPrefixes[0])
+	}
 
 	// Verify subnets
-	require.Len(t, vnet.Properties.Subnets, 2, "VNet should have two subnets")
+	if len(vnet.Properties.Subnets) != 2 {
+		t.Fatalf("VNet should have two subnets, got %d", len(vnet.Properties.Subnets))
+	}
 
 	subnetMap := make(map[string]*armnetwork.Subnet)
 	for _, subnet := range vnet.Properties.Subnets {
@@ -74,25 +106,51 @@ func TestNetworkInfrastructureIdempotency(t *testing.T) {
 	}
 
 	bastionSubnet, exists := subnetMap[namer.BastionSubnetName()]
-	require.True(t, exists, "Bastion subnet should exist")
-	assert.Equal(t, "10.0.0.0/24", *bastionSubnet.Properties.AddressPrefix, "Bastion subnet CIDR should match")
-	assert.NotNil(t, bastionSubnet.Properties.NetworkSecurityGroup, "Bastion subnet should have NSG attached")
-	assert.Equal(t, *nsg.ID, *bastionSubnet.Properties.NetworkSecurityGroup.ID, "Bastion subnet should reference correct NSG")
+	if !exists {
+		t.Fatal("Bastion subnet should exist")
+	}
+	if *bastionSubnet.Properties.AddressPrefix != "10.0.0.0/24" {
+		t.Errorf("Bastion subnet CIDR should match: got %s, want 10.0.0.0/24", *bastionSubnet.Properties.AddressPrefix)
+	}
+	if bastionSubnet.Properties.NetworkSecurityGroup == nil {
+		t.Error("Bastion subnet should have NSG attached")
+	}
+	if *bastionSubnet.Properties.NetworkSecurityGroup.ID != *nsg.ID {
+		t.Errorf("Bastion subnet should reference correct NSG: got %s, want %s", *bastionSubnet.Properties.NetworkSecurityGroup.ID, *nsg.ID)
+	}
 
 	boxesSubnet, exists := subnetMap[namer.BoxesSubnetName()]
-	require.True(t, exists, "Boxes subnet should exist")
-	assert.Equal(t, "10.1.0.0/16", *boxesSubnet.Properties.AddressPrefix, "Boxes subnet CIDR should match")
-	assert.Nil(t, boxesSubnet.Properties.NetworkSecurityGroup, "Boxes subnet should not have NSG attached")
+	if !exists {
+		t.Fatal("Boxes subnet should exist")
+	}
+	if *boxesSubnet.Properties.AddressPrefix != "10.1.0.0/16" {
+		t.Errorf("Boxes subnet CIDR should match: got %s, want 10.1.0.0/16", *boxesSubnet.Properties.AddressPrefix)
+	}
+	if boxesSubnet.Properties.NetworkSecurityGroup != nil {
+		t.Error("Boxes subnet should not have NSG attached")
+	}
 
 	// Verify subnet IDs were set in clients
-	assert.NotEmpty(t, env.Clients.BastionSubnetID, "Bastion subnet ID should be set")
-	assert.NotEmpty(t, env.Clients.BoxesSubnetID, "Boxes subnet ID should be set")
-	assert.Equal(t, *bastionSubnet.ID, env.Clients.BastionSubnetID, "Bastion subnet ID should match")
-	assert.Equal(t, *boxesSubnet.ID, env.Clients.BoxesSubnetID, "Boxes subnet ID should match")
+	if env.Clients.BastionSubnetID == "" {
+		t.Error("Bastion subnet ID should be set")
+	}
+	if env.Clients.BoxesSubnetID == "" {
+		t.Error("Boxes subnet ID should be set")
+	}
+	if env.Clients.BastionSubnetID != *bastionSubnet.ID {
+		t.Errorf("Bastion subnet ID should match: got %s, want %s", env.Clients.BastionSubnetID, *bastionSubnet.ID)
+	}
+	if env.Clients.BoxesSubnetID != *boxesSubnet.ID {
+		t.Errorf("Boxes subnet ID should match: got %s, want %s", env.Clients.BoxesSubnetID, *boxesSubnet.ID)
+	}
 
 	// Verify table storage was initialized
-	assert.NotEmpty(t, env.Clients.TableStorageConnectionString, "Table storage connection string should be set")
-	assert.NotNil(t, env.Clients.TableClient, "Table client should be initialized")
+	if env.Clients.TableStorageConnectionString == "" {
+		t.Error("Table storage connection string should be set")
+	}
+	if env.Clients.TableClient == nil {
+		t.Error("Table client should be initialized")
+	}
 
 	test.LogTestProgress(t, "attempting second creation to test idempotency")
 
@@ -103,13 +161,23 @@ func TestNetworkInfrastructureIdempotency(t *testing.T) {
 
 	// Verify everything still exists and is correct after second creation
 	nsg2, err := env.Clients.NSGClient.Get(ctx, env.ResourceGroupName, namer.BastionNSGName(), nil)
-	require.NoError(t, err, "NSG should still exist after second creation")
-	assert.Equal(t, *nsg.ID, *nsg2.ID, "NSG ID should be unchanged")
+	if err != nil {
+		t.Fatalf("NSG should still exist after second creation: %v", err)
+	}
+	if *nsg2.ID != *nsg.ID {
+		t.Errorf("NSG ID should be unchanged: got %s, want %s", *nsg2.ID, *nsg.ID)
+	}
 
 	vnet2, err := env.Clients.NetworkClient.Get(ctx, env.ResourceGroupName, namer.VNetName(), nil)
-	require.NoError(t, err, "VNet should still exist after second creation")
-	assert.Equal(t, *vnet.ID, *vnet2.ID, "VNet ID should be unchanged")
-	assert.Len(t, vnet2.Properties.Subnets, 2, "VNet should still have two subnets")
+	if err != nil {
+		t.Fatalf("VNet should still exist after second creation: %v", err)
+	}
+	if *vnet2.ID != *vnet.ID {
+		t.Errorf("VNet ID should be unchanged: got %s, want %s", *vnet2.ID, *vnet.ID)
+	}
+	if len(vnet2.Properties.Subnets) != 2 {
+		t.Errorf("VNet should still have two subnets, got %d", len(vnet2.Properties.Subnets))
+	}
 
 	test.LogTestProgress(t, "comprehensive infrastructure verification and idempotency test complete")
 }

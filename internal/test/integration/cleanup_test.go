@@ -2,12 +2,11 @@ package integration
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 
 	"shellbox/internal/infra"
 	"shellbox/internal/test"
@@ -22,10 +21,16 @@ func TestResourceCleanupIsolation(t *testing.T) {
 	env1 := test.SetupTestEnvironment(t)
 	env2 := test.SetupTestEnvironment(t)
 
-	assert.NotEqual(t, env1.Suffix, env2.Suffix, "test environments should have unique suffixes")
+	if env1.Suffix == env2.Suffix {
+		t.Error("test environments should have unique suffixes")
+	}
 	// Resource groups are shared, but suffixes should be unique
-	assert.Equal(t, env1.ResourceGroupName, env2.ResourceGroupName, "test environments should use the same shared resource group")
-	assert.Equal(t, "shellbox-testing", env1.ResourceGroupName, "should use shared resource group name")
+	if env1.ResourceGroupName != env2.ResourceGroupName {
+		t.Error("test environments should use the same shared resource group")
+	}
+	if env1.ResourceGroupName != "shellbox-testing" {
+		t.Errorf("should use shared resource group name: got %s, want shellbox-testing", env1.ResourceGroupName)
+	}
 
 	// Clean up both environments
 	env1.Cleanup()
@@ -45,15 +50,21 @@ func TestResourceGroupCleanupBehavior(t *testing.T) {
 
 	// Verify resource group exists
 	rg, err := env.Clients.ResourceClient.Get(ctx, env.ResourceGroupName, nil)
-	require.NoError(t, err, "resource group should exist initially")
-	assert.Equal(t, env.ResourceGroupName, *rg.Name, "resource group should have correct name")
+	if err != nil {
+		t.Fatalf("resource group should exist initially: %v", err)
+	}
+	if *rg.Name != env.ResourceGroupName {
+		t.Errorf("resource group should have correct name: got %s, want %s", *rg.Name, env.ResourceGroupName)
+	}
 
 	test.LogTestProgress(t, "creating test resources in resource group")
 
 	// Create some test resources in the resource group
 	config := &infra.VolumeConfig{DiskSize: infra.DefaultVolumeSizeGB}
 	volumeID, err := infra.CreateVolume(ctx, env.Clients, config)
-	require.NoError(t, err, "should create test volume")
+	if err != nil {
+		t.Fatalf("should create test volume: %v", err)
+	}
 
 	// Generate volume name from returned volume ID
 	namer := env.GetResourceNamer()
@@ -61,14 +72,20 @@ func TestResourceGroupCleanupBehavior(t *testing.T) {
 
 	// Verify resource exists
 	disk, err := env.Clients.DisksClient.Get(ctx, env.ResourceGroupName, volumeName, nil)
-	require.NoError(t, err, "test volume should exist")
-	assert.Equal(t, volumeName, *disk.Name, "test volume should have correct name")
+	if err != nil {
+		t.Fatalf("test volume should exist: %v", err)
+	}
+	if *disk.Name != volumeName {
+		t.Errorf("test volume should have correct name: got %s, want %s", *disk.Name, volumeName)
+	}
 
 	test.LogTestProgress(t, "performing cleanup")
 
 	// Perform suffix-based cleanup to delete resources created by this test
 	err = env.CleanupResourcesBySuffix(ctx)
-	require.NoError(t, err, "should clean up resources by suffix")
+	if err != nil {
+		t.Fatalf("should clean up resources by suffix: %v", err)
+	}
 
 	// Perform standard cleanup
 	env.Cleanup()
@@ -77,11 +94,15 @@ func TestResourceGroupCleanupBehavior(t *testing.T) {
 
 	// Shared resource group should still exist (not deleted)
 	_, err = env.Clients.ResourceClient.Get(ctx, env.ResourceGroupName, nil)
-	assert.NoError(t, err, "shared resource group should still exist after cleanup")
+	if err != nil {
+		t.Errorf("shared resource group should still exist after cleanup: %v", err)
+	}
 
 	// Individual test resource should be cleaned up
 	_, err = env.Clients.DisksClient.Get(ctx, env.ResourceGroupName, volumeName, nil)
-	assert.Error(t, err, "test volume should be deleted after cleanup")
+	if err == nil {
+		t.Error("test volume should be deleted after cleanup")
+	}
 }
 
 func TestCleanupTimeout(t *testing.T) {
@@ -92,8 +113,12 @@ func TestCleanupTimeout(t *testing.T) {
 	env := test.SetupTestEnvironment(t)
 
 	// Verify the test environment has a cleanup timeout configured
-	assert.NotZero(t, env.Config.CleanupTimeout, "test environment should have cleanup timeout configured")
-	assert.Greater(t, env.Config.CleanupTimeout, 1*time.Minute, "cleanup timeout should be reasonable")
+	if env.Config.CleanupTimeout == 0 {
+		t.Error("test environment should have cleanup timeout configured")
+	}
+	if env.Config.CleanupTimeout <= 1*time.Minute {
+		t.Error("cleanup timeout should be reasonable")
+	}
 
 	test.LogTestProgress(t, "cleanup timeout configured", "timeout", env.Config.CleanupTimeout)
 
@@ -119,11 +144,15 @@ func TestComprehensiveResourceNaming(t *testing.T) {
 
 	for i, env := range environments {
 		// Check suffix uniqueness
-		assert.False(t, suffixes[env.Suffix], "suffix %s should be unique", env.Suffix)
+		if suffixes[env.Suffix] {
+			t.Errorf("suffix %s should be unique", env.Suffix)
+		}
 		suffixes[env.Suffix] = true
 
 		// All environments should use the same shared resource group
-		assert.Equal(t, "shellbox-testing", env.ResourceGroupName, "all environments should use shared resource group")
+		if env.ResourceGroupName != "shellbox-testing" {
+			t.Errorf("all environments should use shared resource group: got %s, want shellbox-testing", env.ResourceGroupName)
+		}
 		resourceGroupNames[env.ResourceGroupName] = true
 
 		// Create namer for resource name testing
@@ -143,13 +172,19 @@ func TestComprehensiveResourceNaming(t *testing.T) {
 		volumeName := namer.VolumePoolDiskName(testVolumeID)
 		nsgName := namer.BastionNSGName()
 
-		assert.False(t, vmNames[vmName], "VM name %s should be unique across environments", vmName)
+		if vmNames[vmName] {
+			t.Errorf("VM name %s should be unique across environments", vmName)
+		}
 		vmNames[vmName] = true
 
-		assert.False(t, volumeNames[volumeName], "volume name %s should be unique across environments", volumeName)
+		if volumeNames[volumeName] {
+			t.Errorf("volume name %s should be unique across environments", volumeName)
+		}
 		volumeNames[volumeName] = true
 
-		assert.False(t, nsgNames[nsgName], "NSG name %s should be unique across environments", nsgName)
+		if nsgNames[nsgName] {
+			t.Errorf("NSG name %s should be unique across environments", nsgName)
+		}
 		nsgNames[nsgName] = true
 
 		test.LogTestProgress(t, "verified naming uniqueness", "env", i, "suffix", environments[i].Suffix)
@@ -198,9 +233,15 @@ func TestMinimalEnvironmentBehavior(t *testing.T) {
 	minimalEnv := test.SetupMinimalTestEnvironment(t)
 
 	// Verify minimal environment properties
-	assert.NotEmpty(t, minimalEnv.Suffix, "minimal environment should have suffix")
-	assert.Nil(t, minimalEnv.Clients, "minimal environment should not have Azure clients")
-	assert.Empty(t, minimalEnv.ResourceGroupName, "minimal environment should not have resource group name")
+	if minimalEnv.Suffix == "" {
+		t.Error("minimal environment should have suffix")
+	}
+	if minimalEnv.Clients != nil {
+		t.Error("minimal environment should not have Azure clients")
+	}
+	if minimalEnv.ResourceGroupName != "" {
+		t.Error("minimal environment should not have resource group name")
+	}
 
 	// Cleanup should be safe for minimal environment
 	minimalEnv.Cleanup() // Should not panic
@@ -218,15 +259,28 @@ func TestResourceTrackingBehavior(t *testing.T) {
 
 	// Verify initial state (environment starts with empty tracking)
 	initialResourceCount := len(env.CreatedResources)
-	assert.Equal(t, 0, initialResourceCount, "test environment should start with no tracked resources")
+	if initialResourceCount != 0 {
+		t.Errorf("test environment should start with no tracked resources, got %d", initialResourceCount)
+	}
 
 	// Track additional resources
 	testResourceName := "test-resource-" + uuid.New().String()
 	env.TrackResource(testResourceName)
 
 	// Verify resource was tracked
-	assert.Len(t, env.CreatedResources, initialResourceCount+1, "should track additional resource")
-	assert.Contains(t, env.CreatedResources, testResourceName, "should contain tracked resource")
+	if len(env.CreatedResources) != initialResourceCount+1 {
+		t.Errorf("should track additional resource: got %d, want %d", len(env.CreatedResources), initialResourceCount+1)
+	}
+	found := false
+	for _, resource := range env.CreatedResources {
+		if resource == testResourceName {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("should contain tracked resource %s", testResourceName)
+	}
 
 	// Track multiple resources
 	additionalResources := []string{
@@ -239,10 +293,21 @@ func TestResourceTrackingBehavior(t *testing.T) {
 	}
 
 	expectedTotal := initialResourceCount + 1 + len(additionalResources)
-	assert.Len(t, env.CreatedResources, expectedTotal, "should track all resources")
+	if len(env.CreatedResources) != expectedTotal {
+		t.Errorf("should track all resources: got %d, want %d", len(env.CreatedResources), expectedTotal)
+	}
 
-	for _, resource := range additionalResources {
-		assert.Contains(t, env.CreatedResources, resource, "should contain tracked resource %s", resource)
+	for _, expectedResource := range additionalResources {
+		found := false
+		for _, resource := range env.CreatedResources {
+			if resource == expectedResource {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("should contain tracked resource %s", expectedResource)
+		}
 	}
 
 	test.LogTestProgress(t, "resource tracking verified", "totalTracked", len(env.CreatedResources))
@@ -261,13 +326,21 @@ func TestUniqueResourceNaming(t *testing.T) {
 
 	for i := 0; i < 10; i++ {
 		uniqueName := env.GetUniqueResourceName(prefix)
-		assert.False(t, names[uniqueName], "generated name %s should be unique", uniqueName)
-		assert.Contains(t, uniqueName, prefix, "generated name should contain prefix")
-		assert.Contains(t, uniqueName, env.Suffix, "generated name should contain suffix")
+		if names[uniqueName] {
+			t.Errorf("generated name %s should be unique", uniqueName)
+		}
+		if !strings.Contains(uniqueName, prefix) {
+			t.Errorf("generated name should contain prefix: %s", uniqueName)
+		}
+		if !strings.Contains(uniqueName, env.Suffix) {
+			t.Errorf("generated name should contain suffix: %s", uniqueName)
+		}
 		names[uniqueName] = true
 	}
 
-	assert.Len(t, names, 10, "should generate 10 unique names")
+	if len(names) != 10 {
+		t.Errorf("should generate 10 unique names, got %d", len(names))
+	}
 
 	test.LogTestProgress(t, "unique resource naming verified", "uniqueNames", len(names))
 }

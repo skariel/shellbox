@@ -4,27 +4,13 @@ package unit
 
 import (
 	"testing"
-
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/suite"
+	"time"
 
 	"shellbox/internal/infra"
-	"shellbox/internal/test"
 )
 
-// ResourceParsingTestSuite tests resource info parsing functions
-type ResourceParsingTestSuite struct {
-	suite.Suite
-	env *test.Environment
-}
-
-// SetupSuite runs once before all tests in the suite
-func (suite *ResourceParsingTestSuite) SetupSuite() {
-	suite.env = test.SetupMinimalTestEnvironment(suite.T())
-}
-
 // TestParseBasicFields tests parsing of basic resource fields from Azure Resource Graph response
-func (suite *ResourceParsingTestSuite) TestParseBasicFields() {
+func TestParseBasicFields(t *testing.T) {
 	testCases := []struct {
 		name         string
 		resourceMap  map[string]interface{}
@@ -74,19 +60,25 @@ func (suite *ResourceParsingTestSuite) TestParseBasicFields() {
 	}
 
 	for _, tc := range testCases {
-		suite.T().Run(tc.name, func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			resource := &infra.ResourceInfo{}
 			infra.ParseBasicFields(resource, tc.resourceMap)
 
-			assert.Equal(t, tc.expectedName, resource.Name)
-			assert.Equal(t, tc.expectedID, resource.ID)
-			assert.Equal(t, tc.expectedLoc, resource.Location)
+			if resource.Name != tc.expectedName {
+				t.Errorf("Expected Name %q, got %q", tc.expectedName, resource.Name)
+			}
+			if resource.ID != tc.expectedID {
+				t.Errorf("Expected ID %q, got %q", tc.expectedID, resource.ID)
+			}
+			if resource.Location != tc.expectedLoc {
+				t.Errorf("Expected Location %q, got %q", tc.expectedLoc, resource.Location)
+			}
 		})
 	}
 }
 
 // TestParseTags tests parsing of resource tags from Azure Resource Graph response
-func (suite *ResourceParsingTestSuite) TestParseTags() {
+func TestParseTags(t *testing.T) {
 	testCases := []struct {
 		name        string
 		resourceMap map[string]interface{}
@@ -104,10 +96,12 @@ func (suite *ResourceParsingTestSuite) TestParseTags() {
 				},
 			},
 			expectedTag: func(r *infra.ResourceInfo) bool {
+				expectedCreated, _ := time.Parse(time.RFC3339, "2023-01-01T00:00:00Z")
+				expectedLastUsed, _ := time.Parse(time.RFC3339, "2023-01-01T12:00:00Z")
 				return r.Role == "instance" &&
 					r.Status == "free" &&
-					r.CreatedAt == "2023-01-01T00:00:00Z" &&
-					r.LastUsed == "2023-01-01T12:00:00Z"
+					r.CreatedAt != nil && r.CreatedAt.Equal(expectedCreated) &&
+					r.LastUsed != nil && r.LastUsed.Equal(expectedLastUsed)
 			},
 		},
 		{
@@ -119,7 +113,7 @@ func (suite *ResourceParsingTestSuite) TestParseTags() {
 				},
 			},
 			expectedTag: func(r *infra.ResourceInfo) bool {
-				return r.Role == "" && r.Status == "" && r.CreatedAt == "" && r.LastUsed == ""
+				return r.Role == "" && r.Status == "" && r.CreatedAt == nil && r.LastUsed == nil
 			},
 		},
 		{
@@ -140,7 +134,7 @@ func (suite *ResourceParsingTestSuite) TestParseTags() {
 				"name": "test-resource",
 			},
 			expectedTag: func(r *infra.ResourceInfo) bool {
-				return r.Role == "" && r.Status == "" && r.CreatedAt == "" && r.LastUsed == ""
+				return r.Role == "" && r.Status == "" && r.CreatedAt == nil && r.LastUsed == nil
 			},
 		},
 		{
@@ -149,23 +143,25 @@ func (suite *ResourceParsingTestSuite) TestParseTags() {
 				"tags": "not-a-map",
 			},
 			expectedTag: func(r *infra.ResourceInfo) bool {
-				return r.Role == "" && r.Status == "" && r.CreatedAt == "" && r.LastUsed == ""
+				return r.Role == "" && r.Status == "" && r.CreatedAt == nil && r.LastUsed == nil
 			},
 		},
 	}
 
 	for _, tc := range testCases {
-		suite.T().Run(tc.name, func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			resource := &infra.ResourceInfo{}
 			infra.ParseTags(resource, tc.resourceMap)
 
-			assert.True(t, tc.expectedTag(resource), "Tag parsing result should match expected pattern")
+			if !tc.expectedTag(resource) {
+				t.Error("Tag parsing result should match expected pattern")
+			}
 		})
 	}
 }
 
 // TestParseProjectedFields tests parsing of projected fields with specific tag extraction
-func (suite *ResourceParsingTestSuite) TestParseProjectedFields() {
+func TestParseProjectedFields(t *testing.T) {
 	testCases := []struct {
 		name         string
 		resourceMap  map[string]interface{}
@@ -213,17 +209,19 @@ func (suite *ResourceParsingTestSuite) TestParseProjectedFields() {
 	}
 
 	for _, tc := range testCases {
-		suite.T().Run(tc.name, func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			resource := &infra.ResourceInfo{}
 			infra.ParseProjectedFields(resource, tc.resourceMap)
 
-			assert.True(t, tc.expectedFunc(resource), "Projected fields parsing should match expected pattern")
+			if !tc.expectedFunc(resource) {
+				t.Error("Projected fields parsing should match expected pattern")
+			}
 		})
 	}
 }
 
 // TestCompleteResourceInfoParsing tests the complete parsing process
-func (suite *ResourceParsingTestSuite) TestCompleteResourceInfoParsing() {
+func TestCompleteResourceInfoParsing(t *testing.T) {
 	testCases := []struct {
 		name        string
 		resourceMap map[string]interface{}
@@ -245,13 +243,12 @@ func (suite *ResourceParsingTestSuite) TestCompleteResourceInfoParsing() {
 				"status": "free",
 			},
 			expected: infra.ResourceInfo{
-				Name:      "shellbox-box-abc123-test",
-				ID:        "/subscriptions/sub/resourceGroups/shellbox-test/providers/Microsoft.Compute/virtualMachines/shellbox-box-abc123-test",
-				Location:  "westus2",
-				Role:      "instance",
-				Status:    "free",
-				CreatedAt: "2023-01-01T00:00:00Z",
-				LastUsed:  "2023-01-01T12:00:00Z",
+				Name:     "shellbox-box-abc123-test",
+				ID:       "/subscriptions/sub/resourceGroups/shellbox-test/providers/Microsoft.Compute/virtualMachines/shellbox-box-abc123-test",
+				Location: "westus2",
+				Role:     "instance",
+				Status:   "free",
+				// Note: CreatedAt and LastUsed will be set by the parsing function
 			},
 		},
 		{
@@ -270,33 +267,56 @@ func (suite *ResourceParsingTestSuite) TestCompleteResourceInfoParsing() {
 				"status": "attached",
 			},
 			expected: infra.ResourceInfo{
-				Name:      "volume-pool-disk-456",
-				ID:        "/subscriptions/sub/resourceGroups/shellbox-test/providers/Microsoft.Compute/disks/volume-pool-disk-456",
-				Location:  "westus2",
-				Role:      "volume",
-				Status:    "attached",
-				CreatedAt: "2023-01-02T00:00:00Z",
-				LastUsed:  "2023-01-02T18:00:00Z",
+				Name:     "volume-pool-disk-456",
+				ID:       "/subscriptions/sub/resourceGroups/shellbox-test/providers/Microsoft.Compute/disks/volume-pool-disk-456",
+				Location: "westus2",
+				Role:     "volume",
+				Status:   "attached",
+				// Note: CreatedAt and LastUsed will be set by the parsing function
 			},
 		},
 	}
 
 	for _, tc := range testCases {
-		suite.T().Run(tc.name, func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			result := infra.ParseResourceInfo(tc.resourceMap)
 
-			assert.Equal(t, tc.expected.Name, result.Name)
-			assert.Equal(t, tc.expected.ID, result.ID)
-			assert.Equal(t, tc.expected.Location, result.Location)
-			assert.Equal(t, tc.expected.Role, result.Role)
-			assert.Equal(t, tc.expected.Status, result.Status)
-			assert.Equal(t, tc.expected.CreatedAt, result.CreatedAt)
-			assert.Equal(t, tc.expected.LastUsed, result.LastUsed)
+			if result.Name != tc.expected.Name {
+				t.Errorf("Expected Name %q, got %q", tc.expected.Name, result.Name)
+			}
+			if result.ID != tc.expected.ID {
+				t.Errorf("Expected ID %q, got %q", tc.expected.ID, result.ID)
+			}
+			if result.Location != tc.expected.Location {
+				t.Errorf("Expected Location %q, got %q", tc.expected.Location, result.Location)
+			}
+			if result.Role != tc.expected.Role {
+				t.Errorf("Expected Role %q, got %q", tc.expected.Role, result.Role)
+			}
+			if result.Status != tc.expected.Status {
+				t.Errorf("Expected Status %q, got %q", tc.expected.Status, result.Status)
+			}
+			// Check timestamps separately by parsing from the input
+			if tagsInterface, ok := tc.resourceMap["tags"]; ok {
+				if tagsMap, ok := tagsInterface.(map[string]interface{}); ok {
+					if createdStr, ok := tagsMap["shellbox:created"].(string); ok {
+						expectedCreated, _ := time.Parse(time.RFC3339, createdStr)
+						if result.CreatedAt == nil {
+							t.Errorf("Expected CreatedAt to be parsed, got nil")
+						} else if !result.CreatedAt.Equal(expectedCreated) {
+							t.Errorf("Expected CreatedAt %v, got %v", expectedCreated, *result.CreatedAt)
+						}
+					}
+					if lastUsedStr, ok := tagsMap["shellbox:lastused"].(string); ok {
+						expectedLastUsed, _ := time.Parse(time.RFC3339, lastUsedStr)
+						if result.LastUsed == nil {
+							t.Errorf("Expected LastUsed to be parsed, got nil")
+						} else if !result.LastUsed.Equal(expectedLastUsed) {
+							t.Errorf("Expected LastUsed %v, got %v", expectedLastUsed, *result.LastUsed)
+						}
+					}
+				}
+			}
 		})
 	}
-}
-
-// Run the test suite
-func TestResourceParsingTestSuite(t *testing.T) {
-	suite.Run(t, new(ResourceParsingTestSuite))
 }

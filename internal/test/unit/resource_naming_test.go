@@ -3,87 +3,194 @@ package unit
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-
 	"shellbox/internal/infra"
 )
+
+// Helper function to reduce cyclomatic complexity in naming tests
+func verifyNameMapping(t *testing.T, expected, actual map[string]string) {
+	t.Helper()
+	for key, expectedValue := range expected {
+		if actualValue := actual[key]; actualValue != expectedValue {
+			t.Errorf("%s = %q, want %q", key, actualValue, expectedValue)
+		}
+	}
+}
+
+func testBasicNaming(t *testing.T, namer *infra.ResourceNamer) {
+	t.Helper()
+	expected := map[string]string{
+		"ResourceGroup":       "shellbox-test123",
+		"VNetName":            "shellbox-test123-vnet",
+		"BastionSubnetName":   "shellbox-test123-bastion-subnet",
+		"BoxesSubnetName":     "shellbox-test123-boxes-subnet",
+		"BastionNSGName":      "shellbox-test123-bastion-nsg",
+		"BastionVMName":       "shellbox-test123-bastion-vm",
+		"BastionComputerName": "shellbox-bastion",
+		"BastionNICName":      "shellbox-test123-bastion-nic",
+		"BastionPublicIPName": "shellbox-test123-bastion-pip",
+		"BastionOSDiskName":   "shellbox-test123-bastion-os-disk",
+	}
+	actual := map[string]string{
+		"ResourceGroup":       namer.ResourceGroup(),
+		"VNetName":            namer.VNetName(),
+		"BastionSubnetName":   namer.BastionSubnetName(),
+		"BoxesSubnetName":     namer.BoxesSubnetName(),
+		"BastionNSGName":      namer.BastionNSGName(),
+		"BastionVMName":       namer.BastionVMName(),
+		"BastionComputerName": namer.BastionComputerName(),
+		"BastionNICName":      namer.BastionNICName(),
+		"BastionPublicIPName": namer.BastionPublicIPName(),
+		"BastionOSDiskName":   namer.BastionOSDiskName(),
+	}
+	verifyNameMapping(t, expected, actual)
+}
+
+func testBoxNaming(t *testing.T, namer *infra.ResourceNamer) {
+	t.Helper()
+	boxID := "abc123"
+	expected := map[string]string{
+		"BoxNSGName":      "shellbox-test123-box-abc123-nsg",
+		"BoxVMName":       "shellbox-test123-box-abc123-vm",
+		"BoxComputerName": "shellbox-box-abc123",
+		"BoxNICName":      "shellbox-test123-box-abc123-nic",
+		"BoxOSDiskName":   "shellbox-test123-box-abc123-os-disk",
+		"BoxDataDiskName": "shellbox-test123-box-abc123-data-disk",
+	}
+	actual := map[string]string{
+		"BoxNSGName":      namer.BoxNSGName(boxID),
+		"BoxVMName":       namer.BoxVMName(boxID),
+		"BoxComputerName": namer.BoxComputerName(boxID),
+		"BoxNICName":      namer.BoxNICName(boxID),
+		"BoxOSDiskName":   namer.BoxOSDiskName(boxID),
+		"BoxDataDiskName": namer.BoxDataDiskName(boxID),
+	}
+	verifyNameMapping(t, expected, actual)
+}
+
+func testStorageAccountNaming(t *testing.T) {
+	t.Helper()
+	testCases := []struct {
+		suffix   string
+		expected string
+		name     string
+	}{
+		{"test123", "sbtest123", "basic"},
+		{"Test-456", "sbest456", "with special chars"},
+	}
+
+	for _, tc := range testCases {
+		namer := infra.NewResourceNamer(tc.suffix)
+		if actual := namer.StorageAccountName(); actual != tc.expected {
+			t.Errorf("StorageAccountName() for %s = %q, want %q", tc.name, actual, tc.expected)
+		}
+	}
+
+	namer3 := infra.NewResourceNamer("verylongsuffixthatwillbetruncated")
+	result := namer3.StorageAccountName()
+	if len(result) > 24 {
+		t.Errorf("StorageAccountName() length = %d, should be <= 24", len(result))
+	}
+	if len(result) < 2 || result[:2] != "sb" {
+		t.Errorf("StorageAccountName() = %q, should start with 'sb'", result)
+	}
+}
+
+func testTableNaming(t *testing.T) {
+	t.Helper()
+	testCases := []struct {
+		suffix   string
+		expected map[string]string
+		name     string
+	}{
+		{
+			"test123",
+			map[string]string{
+				"EventLog":         "EventLogtest123",
+				"ResourceRegistry": "ResourceRegistrytest123",
+			},
+			"basic",
+		},
+		{
+			"test-456",
+			map[string]string{
+				"EventLog":         "EventLogtest456",
+				"ResourceRegistry": "ResourceRegistrytest456",
+			},
+			"with special chars",
+		},
+	}
+
+	for _, tc := range testCases {
+		namer := infra.NewResourceNamer(tc.suffix)
+		if actual := namer.EventLogTableName(); actual != tc.expected["EventLog"] {
+			t.Errorf("EventLogTableName() for %s = %q, want %q", tc.name, actual, tc.expected["EventLog"])
+		}
+		if actual := namer.ResourceRegistryTableName(); actual != tc.expected["ResourceRegistry"] {
+			t.Errorf("ResourceRegistryTableName() for %s = %q, want %q", tc.name, actual, tc.expected["ResourceRegistry"])
+		}
+	}
+}
 
 func TestResourceNamerTestSuite(t *testing.T) {
 	suffix := "test123"
 	namer := infra.NewResourceNamer(suffix)
 
 	t.Run("TestBasicNaming", func(t *testing.T) {
-		assert.Equal(t, "shellbox-test123", namer.ResourceGroup())
-		assert.Equal(t, "shellbox-test123-vnet", namer.VNetName())
-		assert.Equal(t, "shellbox-test123-bastion-subnet", namer.BastionSubnetName())
-		assert.Equal(t, "shellbox-test123-boxes-subnet", namer.BoxesSubnetName())
-		assert.Equal(t, "shellbox-test123-bastion-nsg", namer.BastionNSGName())
-		assert.Equal(t, "shellbox-test123-bastion-vm", namer.BastionVMName())
-		assert.Equal(t, "shellbox-bastion", namer.BastionComputerName())
-		assert.Equal(t, "shellbox-test123-bastion-nic", namer.BastionNICName())
-		assert.Equal(t, "shellbox-test123-bastion-pip", namer.BastionPublicIPName())
-		assert.Equal(t, "shellbox-test123-bastion-os-disk", namer.BastionOSDiskName())
+		testBasicNaming(t, namer)
 	})
 
 	t.Run("TestBoxNaming", func(t *testing.T) {
-		boxID := "abc123"
-		assert.Equal(t, "shellbox-test123-box-abc123-nsg", namer.BoxNSGName(boxID))
-		assert.Equal(t, "shellbox-test123-box-abc123-vm", namer.BoxVMName(boxID))
-		assert.Equal(t, "shellbox-box-abc123", namer.BoxComputerName(boxID))
-		assert.Equal(t, "shellbox-test123-box-abc123-nic", namer.BoxNICName(boxID))
-		assert.Equal(t, "shellbox-test123-box-abc123-os-disk", namer.BoxOSDiskName(boxID))
-		assert.Equal(t, "shellbox-test123-box-abc123-data-disk", namer.BoxDataDiskName(boxID))
+		testBoxNaming(t, namer)
 	})
 
 	t.Run("TestVolumeNaming", func(t *testing.T) {
 		volumeID := "vol456"
-		assert.Equal(t, "shellbox-test123-volume-vol456", namer.VolumePoolDiskName(volumeID))
+		expected := "shellbox-test123-volume-vol456"
+		actual := namer.VolumePoolDiskName(volumeID)
+		if actual != expected {
+			t.Errorf("VolumePoolDiskName(%q) = %q, want %q", volumeID, actual, expected)
+		}
 	})
 
 	t.Run("TestStorageAccountNaming", func(t *testing.T) {
-		// Storage account names must be lowercase letters and numbers only
-		namer := infra.NewResourceNamer("test123")
-		assert.Equal(t, "sbtest123", namer.StorageAccountName())
-
-		// Test with hyphens and uppercase (should be cleaned - uppercase gets filtered out)
-		namer2 := infra.NewResourceNamer("Test-456")
-		assert.Equal(t, "sbest456", namer2.StorageAccountName())
-
-		// Test length truncation (24 char limit)
-		namer3 := infra.NewResourceNamer("verylongsuffixthatwillbetruncated")
-		result := namer3.StorageAccountName()
-		assert.LessOrEqual(t, len(result), 24)
-		assert.True(t, len(result) >= 2 && result[:2] == "sb")
+		testStorageAccountNaming(t)
 	})
 
 	t.Run("TestTableNaming", func(t *testing.T) {
-		namer := infra.NewResourceNamer("test123")
-		assert.Equal(t, "EventLogtest123", namer.EventLogTableName())
-		assert.Equal(t, "ResourceRegistrytest123", namer.ResourceRegistryTableName())
-
-		// Test with special characters (should be cleaned)
-		namer2 := infra.NewResourceNamer("test-456")
-		assert.Equal(t, "EventLogtest456", namer2.EventLogTableName())
-		assert.Equal(t, "ResourceRegistrytest456", namer2.ResourceRegistryTableName())
+		testTableNaming(t)
 	})
 
 	t.Run("TestGoldenSnapshotNaming", func(t *testing.T) {
-		assert.Equal(t, "shellbox-test123-golden-snapshot", namer.GoldenSnapshotName())
+		expected := "shellbox-test123-golden-snapshot"
+		actual := namer.GoldenSnapshotName()
+		if actual != expected {
+			t.Errorf("GoldenSnapshotName() = %q, want %q", actual, expected)
+		}
 	})
 
 	t.Run("TestSharedStorageAccountName", func(t *testing.T) {
-		assert.Equal(t, "shellboxtest536567", namer.SharedStorageAccountName())
+		expected := "shellboxtest536567"
+		actual := namer.SharedStorageAccountName()
+		if actual != expected {
+			t.Errorf("SharedStorageAccountName() = %q, want %q", actual, expected)
+		}
 	})
 
 	t.Run("TestBoxComputerNameTruncation", func(t *testing.T) {
 		// Test long box ID truncation (8 char limit)
 		longBoxID := "verylongboxid123456789"
 		result := namer.BoxComputerName(longBoxID)
-		assert.Equal(t, "shellbox-box-verylong", result)
+		expected := "shellbox-box-verylong"
+		if result != expected {
+			t.Errorf("BoxComputerName(%q) = %q, want %q", longBoxID, result, expected)
+		}
 
 		// Test short box ID (no truncation)
 		shortBoxID := "short"
 		result2 := namer.BoxComputerName(shortBoxID)
-		assert.Equal(t, "shellbox-box-short", result2)
+		expected2 := "shellbox-box-short"
+		if result2 != expected2 {
+			t.Errorf("BoxComputerName(%q) = %q, want %q", shortBoxID, result2, expected2)
+		}
 	})
 }

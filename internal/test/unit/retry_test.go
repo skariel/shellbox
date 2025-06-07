@@ -3,30 +3,15 @@ package unit
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"github.com/stretchr/testify/suite"
-
 	"shellbox/internal/infra"
-	"shellbox/internal/test"
 )
 
-// RetryTestSuite tests the retry mechanism functionality
-type RetryTestSuite struct {
-	suite.Suite
-	env *test.Environment
-}
-
-// SetupSuite runs once before all tests in the suite
-func (suite *RetryTestSuite) SetupSuite() {
-	suite.env = test.SetupMinimalTestEnvironment(suite.T())
-}
-
 // TestRetryOperationSuccess tests successful operation on first try
-func (suite *RetryTestSuite) TestRetryOperationSuccess() {
+func TestRetryOperationSuccess(t *testing.T) {
 	ctx := context.Background()
 	callCount := 0
 
@@ -36,13 +21,16 @@ func (suite *RetryTestSuite) TestRetryOperationSuccess() {
 	}
 
 	err := infra.RetryOperation(ctx, operation, 5*time.Second, 100*time.Millisecond, "test-operation")
-
-	assert.NoError(suite.T(), err, "Operation should succeed")
-	assert.Equal(suite.T(), 1, callCount, "Operation should be called exactly once")
+	if err != nil {
+		t.Errorf("Operation should succeed, got error: %v", err)
+	}
+	if callCount != 1 {
+		t.Errorf("Operation should be called exactly once, got %d calls", callCount)
+	}
 }
 
 // TestRetryOperationEventualSuccess tests operation that succeeds after retries
-func (suite *RetryTestSuite) TestRetryOperationEventualSuccess() {
+func TestRetryOperationEventualSuccess(t *testing.T) {
 	ctx := context.Background()
 	callCount := 0
 
@@ -58,14 +46,22 @@ func (suite *RetryTestSuite) TestRetryOperationEventualSuccess() {
 	err := infra.RetryOperation(ctx, operation, 5*time.Second, 50*time.Millisecond, "test-operation")
 	elapsed := time.Since(start)
 
-	assert.NoError(suite.T(), err, "Operation should eventually succeed")
-	assert.Equal(suite.T(), 3, callCount, "Operation should be called three times")
-	assert.GreaterOrEqual(suite.T(), elapsed, 100*time.Millisecond, "Should wait between retries")
-	assert.Less(suite.T(), elapsed, 1*time.Second, "Should not take too long")
+	if err != nil {
+		t.Errorf("Operation should eventually succeed, got error: %v", err)
+	}
+	if callCount != 3 {
+		t.Errorf("Operation should be called three times, got %d calls", callCount)
+	}
+	if elapsed < 100*time.Millisecond {
+		t.Errorf("Should wait between retries, elapsed: %v", elapsed)
+	}
+	if elapsed >= 1*time.Second {
+		t.Errorf("Should not take too long, elapsed: %v", elapsed)
+	}
 }
 
 // TestRetryOperationTimeout tests operation that times out
-func (suite *RetryTestSuite) TestRetryOperationTimeout() {
+func TestRetryOperationTimeout(t *testing.T) {
 	ctx := context.Background()
 	callCount := 0
 
@@ -78,16 +74,28 @@ func (suite *RetryTestSuite) TestRetryOperationTimeout() {
 	err := infra.RetryOperation(ctx, operation, 200*time.Millisecond, 50*time.Millisecond, "test-operation")
 	elapsed := time.Since(start)
 
-	assert.Error(suite.T(), err, "Operation should fail due to timeout")
-	assert.Contains(suite.T(), err.Error(), "timeout waiting for test-operation", "Error should mention timeout")
-	assert.Contains(suite.T(), err.Error(), "persistent failure", "Error should include last error")
-	assert.GreaterOrEqual(suite.T(), elapsed, 200*time.Millisecond, "Should respect timeout")
-	assert.Less(suite.T(), elapsed, 500*time.Millisecond, "Should not wait much longer than timeout")
-	assert.GreaterOrEqual(suite.T(), callCount, 3, "Should attempt multiple times")
+	if err == nil {
+		t.Error("Operation should fail due to timeout")
+	}
+	if err != nil && !strings.Contains(err.Error(), "timeout waiting for test-operation") {
+		t.Errorf("Error should mention timeout, got: %v", err)
+	}
+	if err != nil && !strings.Contains(err.Error(), "persistent failure") {
+		t.Errorf("Error should include last error, got: %v", err)
+	}
+	if elapsed < 200*time.Millisecond {
+		t.Errorf("Should respect timeout, elapsed: %v", elapsed)
+	}
+	if elapsed >= 500*time.Millisecond {
+		t.Errorf("Should not wait much longer than timeout, elapsed: %v", elapsed)
+	}
+	if callCount < 3 {
+		t.Errorf("Should attempt multiple times, got %d calls", callCount)
+	}
 }
 
 // TestRetryOperationContextCancellation tests behavior when context is cancelled
-func (suite *RetryTestSuite) TestRetryOperationContextCancellation() {
+func TestRetryOperationContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	callCount := 0
 
@@ -101,13 +109,19 @@ func (suite *RetryTestSuite) TestRetryOperationContextCancellation() {
 
 	err := infra.RetryOperation(ctx, operation, 5*time.Second, 50*time.Millisecond, "test-operation")
 
-	assert.Error(suite.T(), err, "Operation should fail due to cancellation")
-	assert.Contains(suite.T(), err.Error(), "timeout waiting for test-operation", "Error should mention timeout")
-	assert.GreaterOrEqual(suite.T(), callCount, 2, "Should call operation at least twice")
+	if err == nil {
+		t.Error("Operation should fail due to cancellation")
+	}
+	if err != nil && !strings.Contains(err.Error(), "timeout waiting for test-operation") {
+		t.Errorf("Error should mention timeout, got: %v", err)
+	}
+	if callCount < 2 {
+		t.Errorf("Should call operation at least twice, got %d calls", callCount)
+	}
 }
 
 // TestRetryOperationWithShortTimeout tests very short timeout
-func (suite *RetryTestSuite) TestRetryOperationWithShortTimeout() {
+func TestRetryOperationWithShortTimeout(t *testing.T) {
 	ctx := context.Background()
 	callCount := 0
 
@@ -121,15 +135,25 @@ func (suite *RetryTestSuite) TestRetryOperationWithShortTimeout() {
 	err := infra.RetryOperation(ctx, operation, 50*time.Millisecond, 20*time.Millisecond, "fast-operation")
 	elapsed := time.Since(start)
 
-	assert.Error(suite.T(), err, "Operation should timeout")
-	assert.Contains(suite.T(), err.Error(), "timeout waiting for fast-operation", "Error should mention timeout")
-	assert.GreaterOrEqual(suite.T(), callCount, 1, "Should call at least once")
-	assert.LessOrEqual(suite.T(), callCount, 4, "Should not call too many times with short timeout")
-	assert.GreaterOrEqual(suite.T(), elapsed, 50*time.Millisecond, "Should respect minimum timeout")
+	if err == nil {
+		t.Error("Operation should timeout")
+	}
+	if !strings.Contains(err.Error(), "timeout waiting for fast-operation") {
+		t.Error("Error should mention timeout")
+	}
+	if callCount < 1 {
+		t.Error("Should call at least once")
+	}
+	if callCount > 4 {
+		t.Error("Should not call too many times with short timeout")
+	}
+	if elapsed < 50*time.Millisecond {
+		t.Error("Should respect minimum timeout")
+	}
 }
 
 // TestRetryOperationWithLongInterval tests retry with longer intervals
-func (suite *RetryTestSuite) TestRetryOperationWithLongInterval() {
+func TestRetryOperationWithLongInterval(t *testing.T) {
 	ctx := context.Background()
 	callCount := 0
 
@@ -145,13 +169,19 @@ func (suite *RetryTestSuite) TestRetryOperationWithLongInterval() {
 	err := infra.RetryOperation(ctx, operation, 1*time.Second, 200*time.Millisecond, "test-operation")
 	elapsed := time.Since(start)
 
-	assert.NoError(suite.T(), err, "Operation should succeed")
-	assert.Equal(suite.T(), 3, callCount, "Should call operation three times")
-	assert.GreaterOrEqual(suite.T(), elapsed, 400*time.Millisecond, "Should wait for intervals")
+	if err != nil {
+		t.Errorf("Operation should succeed, got error: %v", err)
+	}
+	if callCount != 3 {
+		t.Errorf("Should call operation three times, got %d", callCount)
+	}
+	if elapsed < 400*time.Millisecond {
+		t.Error("Should wait for intervals")
+	}
 }
 
 // TestRetryOperationNoTimeout tests operation without timeout (using parent context)
-func (suite *RetryTestSuite) TestRetryOperationNoTimeout() {
+func TestRetryOperationNoTimeout(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
 
@@ -164,12 +194,16 @@ func (suite *RetryTestSuite) TestRetryOperationNoTimeout() {
 	err := infra.RetryOperation(ctx, operation, 10*time.Second, 50*time.Millisecond, "test-operation")
 
 	// Should timeout from parent context, not from RetryOperation timeout
-	assert.Error(suite.T(), err, "Should timeout from parent context")
-	assert.GreaterOrEqual(suite.T(), callCount, 4, "Should make multiple attempts before timing out")
+	if err == nil {
+		t.Error("Should timeout from parent context")
+	}
+	if callCount < 4 {
+		t.Errorf("Should make multiple attempts before timing out, got %d", callCount)
+	}
 }
 
 // TestRetryOperationContextValuePropagation tests that context values are propagated
-func (suite *RetryTestSuite) TestRetryOperationContextValuePropagation() {
+func TestRetryOperationContextValuePropagation(t *testing.T) {
 	type contextKey string
 	key := contextKey("test-key")
 	expectedValue := "test-value"
@@ -178,16 +212,20 @@ func (suite *RetryTestSuite) TestRetryOperationContextValuePropagation() {
 
 	operation := func(ctx context.Context) error {
 		value := ctx.Value(key)
-		assert.Equal(suite.T(), expectedValue, value, "Context value should be propagated")
+		if value != expectedValue {
+			t.Errorf("Context value should be propagated, expected %v, got %v", expectedValue, value)
+		}
 		return nil // Success
 	}
 
 	err := infra.RetryOperation(ctx, operation, 1*time.Second, 50*time.Millisecond, "context-test")
-	assert.NoError(suite.T(), err, "Operation should succeed")
+	if err != nil {
+		t.Errorf("Operation should succeed, got error: %v", err)
+	}
 }
 
 // TestRetryOperationErrorWrapping tests that errors are properly wrapped
-func (suite *RetryTestSuite) TestRetryOperationErrorWrapping() {
+func TestRetryOperationErrorWrapping(t *testing.T) {
 	ctx := context.Background()
 	originalError := errors.New("original error message")
 
@@ -197,13 +235,19 @@ func (suite *RetryTestSuite) TestRetryOperationErrorWrapping() {
 
 	err := infra.RetryOperation(ctx, operation, 100*time.Millisecond, 20*time.Millisecond, "error-wrap-test")
 
-	require.Error(suite.T(), err, "Should return an error")
-	assert.Contains(suite.T(), err.Error(), "timeout waiting for error-wrap-test", "Should contain operation name")
-	assert.ErrorIs(suite.T(), err, originalError, "Should wrap the original error")
+	if err == nil {
+		t.Fatal("Should return an error")
+	}
+	if !strings.Contains(err.Error(), "timeout waiting for error-wrap-test") {
+		t.Errorf("Should contain operation name, got error: %v", err)
+	}
+	if !errors.Is(err, originalError) {
+		t.Errorf("Should wrap the original error, got: %v", err)
+	}
 }
 
 // TestRetryOperationConcurrentSafety tests that retry operations are safe to run concurrently
-func (suite *RetryTestSuite) TestRetryOperationConcurrentSafety() {
+func TestRetryOperationConcurrentSafety(t *testing.T) {
 	ctx := context.Background()
 
 	// Run multiple retry operations concurrently
@@ -229,11 +273,8 @@ func (suite *RetryTestSuite) TestRetryOperationConcurrentSafety() {
 	// Collect results
 	for i := 0; i < numGoroutines; i++ {
 		err := <-results
-		assert.NoError(suite.T(), err, "Concurrent retry operation should succeed")
+		if err != nil {
+			t.Errorf("Concurrent retry operation should succeed, got error: %v", err)
+		}
 	}
-}
-
-// Run the test suite
-func TestRetryTestSuite(t *testing.T) {
-	suite.Run(t, new(RetryTestSuite))
 }

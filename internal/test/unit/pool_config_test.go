@@ -6,107 +6,172 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/suite"
-
 	"shellbox/internal/infra"
-	"shellbox/internal/test"
 )
 
-// PoolConfigTestSuite tests pool configuration constructors and validation
-type PoolConfigTestSuite struct {
-	suite.Suite
-	env *test.Environment
-}
-
-// SetupSuite runs once before all tests in the suite
-func (suite *PoolConfigTestSuite) SetupSuite() {
-	suite.env = test.SetupMinimalTestEnvironment(suite.T())
-}
-
 // TestNewDefaultPoolConfig tests the production pool configuration constructor
-func (suite *PoolConfigTestSuite) TestNewDefaultPoolConfig() {
+func TestNewDefaultPoolConfig(t *testing.T) {
 	config := infra.NewDefaultPoolConfig()
 
 	// Test instance configuration
-	assert.Equal(suite.T(), infra.DefaultMinFreeInstances, config.MinFreeInstances, "Min free instances should match constant")
-	assert.Equal(suite.T(), infra.DefaultMaxFreeInstances, config.MaxFreeInstances, "Max free instances should match constant")
-	assert.Equal(suite.T(), infra.DefaultMaxTotalInstances, config.MaxTotalInstances, "Max total instances should match constant")
+	if config.MinFreeInstances != infra.DefaultMinFreeInstances {
+		t.Errorf("Min free instances should match constant, expected %d, got %d", infra.DefaultMinFreeInstances, config.MinFreeInstances)
+	}
+	if config.MaxFreeInstances != infra.DefaultMaxFreeInstances {
+		t.Errorf("Max free instances should match constant, expected %d, got %d", infra.DefaultMaxFreeInstances, config.MaxFreeInstances)
+	}
+	if config.MaxTotalInstances != infra.DefaultMaxTotalInstances {
+		t.Errorf("Max total instances should match constant, expected %d, got %d", infra.DefaultMaxTotalInstances, config.MaxTotalInstances)
+	}
 
 	// Test volume configuration
-	assert.Equal(suite.T(), infra.DefaultMinFreeVolumes, config.MinFreeVolumes, "Min free volumes should match constant")
-	assert.Equal(suite.T(), infra.DefaultMaxFreeVolumes, config.MaxFreeVolumes, "Max free volumes should match constant")
-	assert.Equal(suite.T(), infra.DefaultMaxTotalVolumes, config.MaxTotalVolumes, "Max total volumes should match constant")
+	if config.MinFreeVolumes != infra.DefaultMinFreeVolumes {
+		t.Errorf("Min free volumes should match constant, expected %d, got %d", infra.DefaultMinFreeVolumes, config.MinFreeVolumes)
+	}
+	if config.MaxFreeVolumes != infra.DefaultMaxFreeVolumes {
+		t.Errorf("Max free volumes should match constant, expected %d, got %d", infra.DefaultMaxFreeVolumes, config.MaxFreeVolumes)
+	}
+	if config.MaxTotalVolumes != infra.DefaultMaxTotalVolumes {
+		t.Errorf("Max total volumes should match constant, expected %d, got %d", infra.DefaultMaxTotalVolumes, config.MaxTotalVolumes)
+	}
 
 	// Test timing configuration
-	assert.Equal(suite.T(), infra.DefaultCheckInterval, config.CheckInterval, "Check interval should match constant")
-	assert.Equal(suite.T(), infra.DefaultScaleDownCooldown, config.ScaleDownCooldown, "Scale down cooldown should match constant")
+	if config.CheckInterval != infra.DefaultCheckInterval {
+		t.Errorf("Check interval should match constant, expected %v, got %v", infra.DefaultCheckInterval, config.CheckInterval)
+	}
+	if config.ScaleDownCooldown != infra.DefaultScaleDownCooldown {
+		t.Errorf("Scale down cooldown should match constant, expected %v, got %v", infra.DefaultScaleDownCooldown, config.ScaleDownCooldown)
+	}
 
 	// Test logical constraints for production
-	assert.LessOrEqual(suite.T(), config.MinFreeInstances, config.MaxFreeInstances, "Min free instances <= max free instances")
-	assert.LessOrEqual(suite.T(), config.MaxFreeInstances, config.MaxTotalInstances, "Max free instances <= max total instances")
-	assert.LessOrEqual(suite.T(), config.MinFreeVolumes, config.MaxFreeVolumes, "Min free volumes <= max free volumes")
-	assert.LessOrEqual(suite.T(), config.MaxFreeVolumes, config.MaxTotalVolumes, "Max free volumes <= max total volumes")
+	if config.MinFreeInstances > config.MaxFreeInstances {
+		t.Errorf("Min free instances <= max free instances, got min=%d, max=%d", config.MinFreeInstances, config.MaxFreeInstances)
+	}
+	if config.MaxFreeInstances > config.MaxTotalInstances {
+		t.Errorf("Max free instances <= max total instances, got free=%d, total=%d", config.MaxFreeInstances, config.MaxTotalInstances)
+	}
+	if config.MinFreeVolumes > config.MaxFreeVolumes {
+		t.Errorf("Min free volumes <= max free volumes, got min=%d, max=%d", config.MinFreeVolumes, config.MaxFreeVolumes)
+	}
+	if config.MaxFreeVolumes > config.MaxTotalVolumes {
+		t.Errorf("Max free volumes <= max total volumes, got free=%d, total=%d", config.MaxFreeVolumes, config.MaxTotalVolumes)
+	}
 
 	// Test reasonable production values
-	assert.GreaterOrEqual(suite.T(), config.MinFreeInstances, 1, "Should maintain at least 1 free instance")
-	assert.GreaterOrEqual(suite.T(), config.MinFreeVolumes, 1, "Should maintain at least 1 free volume")
-	assert.GreaterOrEqual(suite.T(), config.CheckInterval, 30*time.Second, "Check interval should be reasonable")
-	assert.GreaterOrEqual(suite.T(), config.ScaleDownCooldown, 1*time.Minute, "Cooldown should be reasonable")
+	if config.MinFreeInstances < 1 {
+		t.Errorf("Should maintain at least 1 free instance, got %d", config.MinFreeInstances)
+	}
+	if config.MinFreeVolumes < 1 {
+		t.Errorf("Should maintain at least 1 free volume, got %d", config.MinFreeVolumes)
+	}
+	if config.CheckInterval < 30*time.Second {
+		t.Errorf("Check interval should be reasonable (>= 30s), got %v", config.CheckInterval)
+	}
+	if config.ScaleDownCooldown < 1*time.Minute {
+		t.Errorf("Cooldown should be reasonable (>= 1m), got %v", config.ScaleDownCooldown)
+	}
 }
 
 // TestNewDevPoolConfig tests the development pool configuration constructor
-func (suite *PoolConfigTestSuite) TestNewDevPoolConfig() {
+func TestNewDevPoolConfig(t *testing.T) {
 	config := infra.NewDevPoolConfig()
 
 	// Test instance configuration
-	assert.Equal(suite.T(), infra.DevMinFreeInstances, config.MinFreeInstances, "Dev min free instances should match constant")
-	assert.Equal(suite.T(), infra.DevMaxFreeInstances, config.MaxFreeInstances, "Dev max free instances should match constant")
-	assert.Equal(suite.T(), infra.DevMaxTotalInstances, config.MaxTotalInstances, "Dev max total instances should match constant")
+	if config.MinFreeInstances != infra.DevMinFreeInstances {
+		t.Errorf("Dev min free instances should match constant, expected %d, got %d", infra.DevMinFreeInstances, config.MinFreeInstances)
+	}
+	if config.MaxFreeInstances != infra.DevMaxFreeInstances {
+		t.Errorf("Dev max free instances should match constant, expected %d, got %d", infra.DevMaxFreeInstances, config.MaxFreeInstances)
+	}
+	if config.MaxTotalInstances != infra.DevMaxTotalInstances {
+		t.Errorf("Dev max total instances should match constant, expected %d, got %d", infra.DevMaxTotalInstances, config.MaxTotalInstances)
+	}
 
 	// Test volume configuration
-	assert.Equal(suite.T(), infra.DevMinFreeVolumes, config.MinFreeVolumes, "Dev min free volumes should match constant")
-	assert.Equal(suite.T(), infra.DevMaxFreeVolumes, config.MaxFreeVolumes, "Dev max free volumes should match constant")
-	assert.Equal(suite.T(), infra.DevMaxTotalVolumes, config.MaxTotalVolumes, "Dev max total volumes should match constant")
+	if config.MinFreeVolumes != infra.DevMinFreeVolumes {
+		t.Errorf("Dev min free volumes should match constant, expected %d, got %d", infra.DevMinFreeVolumes, config.MinFreeVolumes)
+	}
+	if config.MaxFreeVolumes != infra.DevMaxFreeVolumes {
+		t.Errorf("Dev max free volumes should match constant, expected %d, got %d", infra.DevMaxFreeVolumes, config.MaxFreeVolumes)
+	}
+	if config.MaxTotalVolumes != infra.DevMaxTotalVolumes {
+		t.Errorf("Dev max total volumes should match constant, expected %d, got %d", infra.DevMaxTotalVolumes, config.MaxTotalVolumes)
+	}
 
 	// Test timing configuration
-	assert.Equal(suite.T(), infra.DevCheckInterval, config.CheckInterval, "Dev check interval should match constant")
-	assert.Equal(suite.T(), infra.DevScaleDownCooldown, config.ScaleDownCooldown, "Dev scale down cooldown should match constant")
+	if config.CheckInterval != infra.DevCheckInterval {
+		t.Errorf("Dev check interval should match constant, expected %v, got %v", infra.DevCheckInterval, config.CheckInterval)
+	}
+	if config.ScaleDownCooldown != infra.DevScaleDownCooldown {
+		t.Errorf("Dev scale down cooldown should match constant, expected %v, got %v", infra.DevScaleDownCooldown, config.ScaleDownCooldown)
+	}
 
 	// Test logical constraints for development
-	assert.LessOrEqual(suite.T(), config.MinFreeInstances, config.MaxFreeInstances, "Dev min free instances <= max free instances")
-	assert.LessOrEqual(suite.T(), config.MaxFreeInstances, config.MaxTotalInstances, "Dev max free instances <= max total instances")
-	assert.LessOrEqual(suite.T(), config.MinFreeVolumes, config.MaxFreeVolumes, "Dev min free volumes <= max free volumes")
-	assert.LessOrEqual(suite.T(), config.MaxFreeVolumes, config.MaxTotalVolumes, "Dev max free volumes <= max total volumes")
+	if config.MinFreeInstances > config.MaxFreeInstances {
+		t.Errorf("Dev min free instances <= max free instances, got min=%d, max=%d", config.MinFreeInstances, config.MaxFreeInstances)
+	}
+	if config.MaxFreeInstances > config.MaxTotalInstances {
+		t.Errorf("Dev max free instances <= max total instances, got free=%d, total=%d", config.MaxFreeInstances, config.MaxTotalInstances)
+	}
+	if config.MinFreeVolumes > config.MaxFreeVolumes {
+		t.Errorf("Dev min free volumes <= max free volumes, got min=%d, max=%d", config.MinFreeVolumes, config.MaxFreeVolumes)
+	}
+	if config.MaxFreeVolumes > config.MaxTotalVolumes {
+		t.Errorf("Dev max free volumes <= max total volumes, got free=%d, total=%d", config.MaxFreeVolumes, config.MaxTotalVolumes)
+	}
 
 	// Test reasonable development values
-	assert.GreaterOrEqual(suite.T(), config.MinFreeInstances, 1, "Dev should maintain at least 1 free instance")
-	assert.GreaterOrEqual(suite.T(), config.MinFreeVolumes, 1, "Dev should maintain at least 1 free volume")
-	assert.GreaterOrEqual(suite.T(), config.CheckInterval, 10*time.Second, "Dev check interval should be reasonable")
-	assert.GreaterOrEqual(suite.T(), config.ScaleDownCooldown, 30*time.Second, "Dev cooldown should be reasonable")
+	if config.MinFreeInstances < 1 {
+		t.Errorf("Dev should maintain at least 1 free instance, got %d", config.MinFreeInstances)
+	}
+	if config.MinFreeVolumes < 1 {
+		t.Errorf("Dev should maintain at least 1 free volume, got %d", config.MinFreeVolumes)
+	}
+	if config.CheckInterval < 10*time.Second {
+		t.Errorf("Dev check interval should be reasonable (>= 10s), got %v", config.CheckInterval)
+	}
+	if config.ScaleDownCooldown < 30*time.Second {
+		t.Errorf("Dev cooldown should be reasonable (>= 30s), got %v", config.ScaleDownCooldown)
+	}
 }
 
 // TestPoolConfigComparison tests that dev config is appropriately smaller than production
-func (suite *PoolConfigTestSuite) TestPoolConfigComparison() {
+func TestPoolConfigComparison(t *testing.T) {
 	defaultConfig := infra.NewDefaultPoolConfig()
 	devConfig := infra.NewDevPoolConfig()
 
 	// Dev should have smaller or equal limits than production
-	assert.LessOrEqual(suite.T(), devConfig.MinFreeInstances, defaultConfig.MinFreeInstances, "Dev min instances <= production")
-	assert.LessOrEqual(suite.T(), devConfig.MaxFreeInstances, defaultConfig.MaxFreeInstances, "Dev max free instances <= production")
-	assert.LessOrEqual(suite.T(), devConfig.MaxTotalInstances, defaultConfig.MaxTotalInstances, "Dev max total instances <= production")
+	if devConfig.MinFreeInstances > defaultConfig.MinFreeInstances {
+		t.Errorf("Dev min instances <= production, got dev=%d, prod=%d", devConfig.MinFreeInstances, defaultConfig.MinFreeInstances)
+	}
+	if devConfig.MaxFreeInstances > defaultConfig.MaxFreeInstances {
+		t.Errorf("Dev max free instances <= production, got dev=%d, prod=%d", devConfig.MaxFreeInstances, defaultConfig.MaxFreeInstances)
+	}
+	if devConfig.MaxTotalInstances > defaultConfig.MaxTotalInstances {
+		t.Errorf("Dev max total instances <= production, got dev=%d, prod=%d", devConfig.MaxTotalInstances, defaultConfig.MaxTotalInstances)
+	}
 
-	assert.LessOrEqual(suite.T(), devConfig.MinFreeVolumes, defaultConfig.MinFreeVolumes, "Dev min volumes <= production")
-	assert.LessOrEqual(suite.T(), devConfig.MaxFreeVolumes, defaultConfig.MaxFreeVolumes, "Dev max free volumes <= production")
-	assert.LessOrEqual(suite.T(), devConfig.MaxTotalVolumes, defaultConfig.MaxTotalVolumes, "Dev max total volumes <= production")
+	if devConfig.MinFreeVolumes > defaultConfig.MinFreeVolumes {
+		t.Errorf("Dev min volumes <= production, got dev=%d, prod=%d", devConfig.MinFreeVolumes, defaultConfig.MinFreeVolumes)
+	}
+	if devConfig.MaxFreeVolumes > defaultConfig.MaxFreeVolumes {
+		t.Errorf("Dev max free volumes <= production, got dev=%d, prod=%d", devConfig.MaxFreeVolumes, defaultConfig.MaxFreeVolumes)
+	}
+	if devConfig.MaxTotalVolumes > defaultConfig.MaxTotalVolumes {
+		t.Errorf("Dev max total volumes <= production, got dev=%d, prod=%d", devConfig.MaxTotalVolumes, defaultConfig.MaxTotalVolumes)
+	}
 
 	// Dev should have faster checks and shorter cooldowns
-	assert.LessOrEqual(suite.T(), devConfig.CheckInterval, defaultConfig.CheckInterval, "Dev check interval <= production")
-	assert.LessOrEqual(suite.T(), devConfig.ScaleDownCooldown, defaultConfig.ScaleDownCooldown, "Dev cooldown <= production")
+	if devConfig.CheckInterval > defaultConfig.CheckInterval {
+		t.Errorf("Dev check interval <= production, got dev=%v, prod=%v", devConfig.CheckInterval, defaultConfig.CheckInterval)
+	}
+	if devConfig.ScaleDownCooldown > defaultConfig.ScaleDownCooldown {
+		t.Errorf("Dev cooldown <= production, got dev=%v, prod=%v", devConfig.ScaleDownCooldown, defaultConfig.ScaleDownCooldown)
+	}
 }
 
 // TestPoolConfigStructure tests that the PoolConfig struct is properly defined
-func (suite *PoolConfigTestSuite) TestPoolConfigStructure() {
+func TestPoolConfigStructure(t *testing.T) {
 	config := infra.PoolConfig{}
 
 	// Test that all fields can be set (testing struct completeness)
@@ -120,18 +185,34 @@ func (suite *PoolConfigTestSuite) TestPoolConfigStructure() {
 	config.ScaleDownCooldown = 2 * time.Minute
 
 	// Verify all fields were set properly
-	assert.Equal(suite.T(), 1, config.MinFreeInstances)
-	assert.Equal(suite.T(), 2, config.MaxFreeInstances)
-	assert.Equal(suite.T(), 10, config.MaxTotalInstances)
-	assert.Equal(suite.T(), 3, config.MinFreeVolumes)
-	assert.Equal(suite.T(), 5, config.MaxFreeVolumes)
-	assert.Equal(suite.T(), 20, config.MaxTotalVolumes)
-	assert.Equal(suite.T(), 30*time.Second, config.CheckInterval)
-	assert.Equal(suite.T(), 2*time.Minute, config.ScaleDownCooldown)
+	if config.MinFreeInstances != 1 {
+		t.Errorf("Expected MinFreeInstances=1, got %d", config.MinFreeInstances)
+	}
+	if config.MaxFreeInstances != 2 {
+		t.Errorf("Expected MaxFreeInstances=2, got %d", config.MaxFreeInstances)
+	}
+	if config.MaxTotalInstances != 10 {
+		t.Errorf("Expected MaxTotalInstances=10, got %d", config.MaxTotalInstances)
+	}
+	if config.MinFreeVolumes != 3 {
+		t.Errorf("Expected MinFreeVolumes=3, got %d", config.MinFreeVolumes)
+	}
+	if config.MaxFreeVolumes != 5 {
+		t.Errorf("Expected MaxFreeVolumes=5, got %d", config.MaxFreeVolumes)
+	}
+	if config.MaxTotalVolumes != 20 {
+		t.Errorf("Expected MaxTotalVolumes=20, got %d", config.MaxTotalVolumes)
+	}
+	if config.CheckInterval != 30*time.Second {
+		t.Errorf("Expected CheckInterval=30s, got %v", config.CheckInterval)
+	}
+	if config.ScaleDownCooldown != 2*time.Minute {
+		t.Errorf("Expected ScaleDownCooldown=2m, got %v", config.ScaleDownCooldown)
+	}
 }
 
 // TestPoolConfigValidation tests pool configuration validation logic
-func (suite *PoolConfigTestSuite) TestPoolConfigValidation() {
+func TestPoolConfigValidation(t *testing.T) {
 	testCases := []struct {
 		name    string
 		config  infra.PoolConfig
@@ -213,9 +294,11 @@ func (suite *PoolConfigTestSuite) TestPoolConfigValidation() {
 	}
 
 	for _, tc := range testCases {
-		suite.T().Run(tc.name, func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			isValid := validatePoolConfigHelper(tc.config)
-			assert.Equal(t, tc.isValid, isValid, tc.reason)
+			if isValid != tc.isValid {
+				t.Errorf("%s: expected valid=%v, got %v", tc.reason, tc.isValid, isValid)
+			}
 		})
 	}
 }
@@ -256,29 +339,56 @@ func validatePoolConfigHelper(config infra.PoolConfig) bool {
 }
 
 // TestPoolConfigConstants tests that the constants used are reasonable
-func (suite *PoolConfigTestSuite) TestPoolConfigConstants() {
+func TestPoolConfigConstants(t *testing.T) {
 	// Test production constants
-	assert.Equal(suite.T(), 5, infra.DefaultMinFreeInstances, "Production min free instances")
-	assert.Equal(suite.T(), 10, infra.DefaultMaxFreeInstances, "Production max free instances")
-	assert.Equal(suite.T(), 100, infra.DefaultMaxTotalInstances, "Production max total instances")
-	assert.Equal(suite.T(), 20, infra.DefaultMinFreeVolumes, "Production min free volumes")
-	assert.Equal(suite.T(), 50, infra.DefaultMaxFreeVolumes, "Production max free volumes")
-	assert.Equal(suite.T(), 500, infra.DefaultMaxTotalVolumes, "Production max total volumes")
-	assert.Equal(suite.T(), 1*time.Minute, infra.DefaultCheckInterval, "Production check interval")
-	assert.Equal(suite.T(), 10*time.Minute, infra.DefaultScaleDownCooldown, "Production scale down cooldown")
+	if infra.DefaultMinFreeInstances != 5 {
+		t.Errorf("Production min free instances: expected 5, got %d", infra.DefaultMinFreeInstances)
+	}
+	if infra.DefaultMaxFreeInstances != 10 {
+		t.Errorf("Production max free instances: expected 10, got %d", infra.DefaultMaxFreeInstances)
+	}
+	if infra.DefaultMaxTotalInstances != 100 {
+		t.Errorf("Production max total instances: expected 100, got %d", infra.DefaultMaxTotalInstances)
+	}
+	if infra.DefaultMinFreeVolumes != 20 {
+		t.Errorf("Production min free volumes: expected 20, got %d", infra.DefaultMinFreeVolumes)
+	}
+	if infra.DefaultMaxFreeVolumes != 50 {
+		t.Errorf("Production max free volumes: expected 50, got %d", infra.DefaultMaxFreeVolumes)
+	}
+	if infra.DefaultMaxTotalVolumes != 500 {
+		t.Errorf("Production max total volumes: expected 500, got %d", infra.DefaultMaxTotalVolumes)
+	}
+	if infra.DefaultCheckInterval != 1*time.Minute {
+		t.Errorf("Production check interval: expected 1m, got %v", infra.DefaultCheckInterval)
+	}
+	if infra.DefaultScaleDownCooldown != 10*time.Minute {
+		t.Errorf("Production scale down cooldown: expected 10m, got %v", infra.DefaultScaleDownCooldown)
+	}
 
 	// Test development constants
-	assert.Equal(suite.T(), 1, infra.DevMinFreeInstances, "Dev min free instances")
-	assert.Equal(suite.T(), 2, infra.DevMaxFreeInstances, "Dev max free instances")
-	assert.Equal(suite.T(), 5, infra.DevMaxTotalInstances, "Dev max total instances")
-	assert.Equal(suite.T(), 2, infra.DevMinFreeVolumes, "Dev min free volumes")
-	assert.Equal(suite.T(), 5, infra.DevMaxFreeVolumes, "Dev max free volumes")
-	assert.Equal(suite.T(), 20, infra.DevMaxTotalVolumes, "Dev max total volumes")
-	assert.Equal(suite.T(), 30*time.Second, infra.DevCheckInterval, "Dev check interval")
-	assert.Equal(suite.T(), 2*time.Minute, infra.DevScaleDownCooldown, "Dev scale down cooldown")
-}
-
-// Run the test suite
-func TestPoolConfigTestSuite(t *testing.T) {
-	suite.Run(t, new(PoolConfigTestSuite))
+	if infra.DevMinFreeInstances != 1 {
+		t.Errorf("Dev min free instances: expected 1, got %d", infra.DevMinFreeInstances)
+	}
+	if infra.DevMaxFreeInstances != 2 {
+		t.Errorf("Dev max free instances: expected 2, got %d", infra.DevMaxFreeInstances)
+	}
+	if infra.DevMaxTotalInstances != 5 {
+		t.Errorf("Dev max total instances: expected 5, got %d", infra.DevMaxTotalInstances)
+	}
+	if infra.DevMinFreeVolumes != 2 {
+		t.Errorf("Dev min free volumes: expected 2, got %d", infra.DevMinFreeVolumes)
+	}
+	if infra.DevMaxFreeVolumes != 5 {
+		t.Errorf("Dev max free volumes: expected 5, got %d", infra.DevMaxFreeVolumes)
+	}
+	if infra.DevMaxTotalVolumes != 20 {
+		t.Errorf("Dev max total volumes: expected 20, got %d", infra.DevMaxTotalVolumes)
+	}
+	if infra.DevCheckInterval != 30*time.Second {
+		t.Errorf("Dev check interval: expected 30s, got %v", infra.DevCheckInterval)
+	}
+	if infra.DevScaleDownCooldown != 2*time.Minute {
+		t.Errorf("Dev scale down cooldown: expected 2m, got %v", infra.DevScaleDownCooldown)
+	}
 }

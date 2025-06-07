@@ -4,13 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/data/aztables"
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 
 	"shellbox/internal/infra"
 	"shellbox/internal/test"
@@ -33,20 +32,34 @@ func TestTableStorageCreationAndIdempotency(t *testing.T) {
 
 	// Create table storage resources first time
 	result1 := infra.CreateTableStorageResources(ctx, env.Clients, storageAccountName, tableNames)
-	require.NoError(t, result1.Error, "should create table storage resources without error")
-	require.NotEmpty(t, result1.ConnectionString, "should return valid connection string")
+	if result1.Error != nil {
+		t.Fatalf("should create table storage resources without error: %v", result1.Error)
+	}
+	if result1.ConnectionString == "" {
+		t.Fatalf("should return valid connection string")
+	}
 
 	// Verify connection string format
-	assert.Contains(t, result1.ConnectionString, "DefaultEndpointsProtocol=https", "connection string should use HTTPS")
-	assert.Contains(t, result1.ConnectionString, fmt.Sprintf("AccountName=%s", storageAccountName), "connection string should contain account name")
-	assert.Contains(t, result1.ConnectionString, "EndpointSuffix=core.windows.net", "connection string should contain endpoint suffix")
+	if !strings.Contains(result1.ConnectionString, "DefaultEndpointsProtocol=https") {
+		t.Errorf("connection string should use HTTPS")
+	}
+	if !strings.Contains(result1.ConnectionString, fmt.Sprintf("AccountName=%s", storageAccountName)) {
+		t.Errorf("connection string should contain account name")
+	}
+	if !strings.Contains(result1.ConnectionString, "EndpointSuffix=core.windows.net") {
+		t.Errorf("connection string should contain endpoint suffix")
+	}
 
 	test.LogTestProgress(t, "verifying table client creation from connection string")
 
 	// Test that we can create a client from the connection string
 	tableClient1, err := aztables.NewServiceClientFromConnectionString(result1.ConnectionString, nil)
-	require.NoError(t, err, "should be able to create table client from connection string")
-	require.NotNil(t, tableClient1, "table client should not be nil")
+	if err != nil {
+		t.Fatalf("should be able to create table client from connection string: %v", err)
+	}
+	if tableClient1 == nil {
+		t.Fatalf("table client should not be nil")
+	}
 
 	test.LogTestProgress(t, "verifying tables were created")
 
@@ -58,21 +71,29 @@ func TestTableStorageCreationAndIdempotency(t *testing.T) {
 		// Try to list entities to verify table exists (will return empty list if table is empty)
 		pager := specificTableClient.NewListEntitiesPager(nil)
 		_, err := pager.NextPage(ctx)
-		assert.NoError(t, err, "table %s should exist and be queryable", tableName)
+		if err != nil {
+			t.Errorf("table %s should exist and be queryable: %v", tableName, err)
+		}
 	}
 
 	test.LogTestProgress(t, "testing table storage idempotency (second creation)")
 
 	// Create table storage second time (should be idempotent)
 	result2 := infra.CreateTableStorageResources(ctx, env.Clients, storageAccountName, tableNames)
-	require.NoError(t, result2.Error, "second creation should succeed (idempotent)")
+	if result2.Error != nil {
+		t.Fatalf("second creation should succeed (idempotent): %v", result2.Error)
+	}
 
 	// Connection strings should be the same
-	assert.Equal(t, result1.ConnectionString, result2.ConnectionString, "connection strings should be identical")
+	if result1.ConnectionString != result2.ConnectionString {
+		t.Errorf("connection strings should be identical")
+	}
 
 	// Verify tables still exist and are functional after second creation
 	tableClient2, err := aztables.NewServiceClientFromConnectionString(result2.ConnectionString, nil)
-	require.NoError(t, err, "should create table client after idempotent creation")
+	if err != nil {
+		t.Fatalf("should create table client after idempotent creation: %v", err)
+	}
 
 	env.Clients.TableStorageConnectionString = result2.ConnectionString
 	env.Clients.TableClient = tableClient2
@@ -87,7 +108,9 @@ func TestTableStorageCreationAndIdempotency(t *testing.T) {
 	}
 
 	err = infra.WriteEventLog(ctx, env.Clients, testEntity)
-	assert.NoError(t, err, "should be able to write to tables after idempotent creation")
+	if err != nil {
+		t.Errorf("should be able to write to tables after idempotent creation: %v", err)
+	}
 
 	test.LogTestProgress(t, "table storage creation and idempotency test completed")
 }
@@ -107,12 +130,16 @@ func TestTableStorageEntityOperations(t *testing.T) {
 	tableNames := []string{namer.EventLogTableName(), namer.ResourceRegistryTableName()}
 
 	result := infra.CreateTableStorageResources(ctx, env.Clients, storageAccountName, tableNames)
-	require.NoError(t, result.Error, "should create table storage resources")
+	if result.Error != nil {
+		t.Fatalf("should create table storage resources: %v", result.Error)
+	}
 
 	// Set up table client in the environment
 	env.Clients.TableStorageConnectionString = result.ConnectionString
 	tableClient, err := aztables.NewServiceClientFromConnectionString(result.ConnectionString, nil)
-	require.NoError(t, err, "should create table client")
+	if err != nil {
+		t.Fatalf("should create table client: %v", err)
+	}
 	env.Clients.TableClient = tableClient
 
 	test.LogTestProgress(t, "testing EventLog entity operations")
@@ -135,27 +162,47 @@ func TestTableStorageEntityOperations(t *testing.T) {
 
 		// Write event log
 		err := infra.WriteEventLog(ctx, env.Clients, eventEntity)
-		require.NoError(t, err, "should write event log without error")
+		if err != nil {
+			t.Fatalf("should write event log without error: %v", err)
+		}
 
 		// Verify entity was written by querying it back
 		eventLogClient := tableClient.NewClient(namer.EventLogTableName())
 
 		// Get the entity
 		response, err := eventLogClient.GetEntity(ctx, eventEntity.PartitionKey, eventEntity.RowKey, nil)
-		require.NoError(t, err, "should be able to retrieve written event log")
+		if err != nil {
+			t.Fatalf("should be able to retrieve written event log: %v", err)
+		}
 
 		var retrievedEntity infra.EventLogEntity
 		err = json.Unmarshal(response.Value, &retrievedEntity)
-		require.NoError(t, err, "should be able to unmarshal retrieved entity")
+		if err != nil {
+			t.Fatalf("should be able to unmarshal retrieved entity: %v", err)
+		}
 
 		// Verify entity fields
-		assert.Equal(t, eventEntity.PartitionKey, retrievedEntity.PartitionKey, "partition key should match")
-		assert.Equal(t, eventEntity.RowKey, retrievedEntity.RowKey, "row key should match")
-		assert.Equal(t, eventEntity.EventType, retrievedEntity.EventType, "event type should match")
-		assert.Equal(t, eventEntity.SessionID, retrievedEntity.SessionID, "session ID should match")
-		assert.Equal(t, eventEntity.BoxID, retrievedEntity.BoxID, "box ID should match")
-		assert.Equal(t, eventEntity.UserKey, retrievedEntity.UserKey, "user key should match")
-		assert.Equal(t, eventEntity.Details, retrievedEntity.Details, "details should match")
+		if eventEntity.PartitionKey != retrievedEntity.PartitionKey {
+			t.Errorf("partition key should match: expected %s, got %s", eventEntity.PartitionKey, retrievedEntity.PartitionKey)
+		}
+		if eventEntity.RowKey != retrievedEntity.RowKey {
+			t.Errorf("row key should match: expected %s, got %s", eventEntity.RowKey, retrievedEntity.RowKey)
+		}
+		if eventEntity.EventType != retrievedEntity.EventType {
+			t.Errorf("event type should match: expected %s, got %s", eventEntity.EventType, retrievedEntity.EventType)
+		}
+		if eventEntity.SessionID != retrievedEntity.SessionID {
+			t.Errorf("session ID should match: expected %s, got %s", eventEntity.SessionID, retrievedEntity.SessionID)
+		}
+		if eventEntity.BoxID != retrievedEntity.BoxID {
+			t.Errorf("box ID should match: expected %s, got %s", eventEntity.BoxID, retrievedEntity.BoxID)
+		}
+		if eventEntity.UserKey != retrievedEntity.UserKey {
+			t.Errorf("user key should match: expected %s, got %s", eventEntity.UserKey, retrievedEntity.UserKey)
+		}
+		if eventEntity.Details != retrievedEntity.Details {
+			t.Errorf("details should match: expected %s, got %s", eventEntity.Details, retrievedEntity.Details)
+		}
 	})
 
 	test.LogTestProgress(t, "testing ResourceRegistry entity operations")
@@ -177,25 +224,41 @@ func TestTableStorageEntityOperations(t *testing.T) {
 
 		// Write resource registry entry
 		err := infra.WriteResourceRegistry(ctx, env.Clients, resourceEntity)
-		require.NoError(t, err, "should write resource registry without error")
+		if err != nil {
+			t.Fatalf("should write resource registry without error: %v", err)
+		}
 
 		// Verify entity was written by querying it back
 		registryClient := tableClient.NewClient(namer.ResourceRegistryTableName())
 
 		// Get the entity
 		response, err := registryClient.GetEntity(ctx, resourceEntity.PartitionKey, resourceEntity.RowKey, nil)
-		require.NoError(t, err, "should be able to retrieve written resource registry entry")
+		if err != nil {
+			t.Fatalf("should be able to retrieve written resource registry entry: %v", err)
+		}
 
 		var retrievedEntity infra.ResourceRegistryEntity
 		err = json.Unmarshal(response.Value, &retrievedEntity)
-		require.NoError(t, err, "should be able to unmarshal retrieved entity")
+		if err != nil {
+			t.Fatalf("should be able to unmarshal retrieved entity: %v", err)
+		}
 
 		// Verify entity fields
-		assert.Equal(t, resourceEntity.PartitionKey, retrievedEntity.PartitionKey, "partition key should match")
-		assert.Equal(t, resourceEntity.RowKey, retrievedEntity.RowKey, "row key should match")
-		assert.Equal(t, resourceEntity.Status, retrievedEntity.Status, "status should match")
-		assert.Equal(t, resourceEntity.VMName, retrievedEntity.VMName, "VM name should match")
-		assert.Equal(t, resourceEntity.Metadata, retrievedEntity.Metadata, "metadata should match")
+		if resourceEntity.PartitionKey != retrievedEntity.PartitionKey {
+			t.Errorf("partition key should match: expected %s, got %s", resourceEntity.PartitionKey, retrievedEntity.PartitionKey)
+		}
+		if resourceEntity.RowKey != retrievedEntity.RowKey {
+			t.Errorf("row key should match: expected %s, got %s", resourceEntity.RowKey, retrievedEntity.RowKey)
+		}
+		if resourceEntity.Status != retrievedEntity.Status {
+			t.Errorf("status should match: expected %s, got %s", resourceEntity.Status, retrievedEntity.Status)
+		}
+		if resourceEntity.VMName != retrievedEntity.VMName {
+			t.Errorf("VM name should match: expected %s, got %s", resourceEntity.VMName, retrievedEntity.VMName)
+		}
+		if resourceEntity.Metadata != retrievedEntity.Metadata {
+			t.Errorf("metadata should match: expected %s, got %s", resourceEntity.Metadata, retrievedEntity.Metadata)
+		}
 	})
 }
 
@@ -214,11 +277,15 @@ func TestTableStorageQueryOperations(t *testing.T) {
 	tableNames := []string{namer.EventLogTableName(), namer.ResourceRegistryTableName()}
 
 	result := infra.CreateTableStorageResources(ctx, env.Clients, storageAccountName, tableNames)
-	require.NoError(t, result.Error, "should create table storage resources")
+	if result.Error != nil {
+		t.Fatalf("should create table storage resources: %v", result.Error)
+	}
 
 	env.Clients.TableStorageConnectionString = result.ConnectionString
 	tableClient, err := aztables.NewServiceClientFromConnectionString(result.ConnectionString, nil)
-	require.NoError(t, err, "should create table client")
+	if err != nil {
+		t.Fatalf("should create table client: %v", err)
+	}
 	env.Clients.TableClient = tableClient
 
 	test.LogTestProgress(t, "creating multiple entities for query testing")
@@ -261,7 +328,9 @@ func TestTableStorageQueryOperations(t *testing.T) {
 	// Write all entities
 	for _, entity := range entities {
 		err := infra.WriteEventLog(ctx, env.Clients, entity)
-		require.NoError(t, err, "should write entity %s", entity.RowKey)
+		if err != nil {
+			t.Fatalf("should write entity %s: %v", entity.RowKey, err)
+		}
 	}
 
 	test.LogTestProgress(t, "testing query operations")
@@ -279,18 +348,24 @@ func TestTableStorageQueryOperations(t *testing.T) {
 
 	for pager.More() {
 		page, err := pager.NextPage(ctx)
-		require.NoError(t, err, "should get page without error")
+		if err != nil {
+			t.Fatalf("should get page without error: %v", err)
+		}
 
 		for _, entity := range page.Entities {
 			var eventEntity infra.EventLogEntity
 			err := json.Unmarshal(entity, &eventEntity)
-			require.NoError(t, err, "should unmarshal entity")
+			if err != nil {
+				t.Fatalf("should unmarshal entity: %v", err)
+			}
 			retrievedEntities = append(retrievedEntities, eventEntity)
 		}
 	}
 
 	// Verify we got all entities
-	assert.Len(t, retrievedEntities, 3, "should retrieve all 3 entities")
+	if len(retrievedEntities) != 3 {
+		t.Errorf("should retrieve all 3 entities, got %d", len(retrievedEntities))
+	}
 
 	// Verify specific entities
 	retrievedByRowKey := make(map[string]infra.EventLogEntity)
@@ -300,10 +375,18 @@ func TestTableStorageQueryOperations(t *testing.T) {
 
 	for _, originalEntity := range entities {
 		retrieved, exists := retrievedByRowKey[originalEntity.RowKey]
-		assert.True(t, exists, "should find entity with row key %s", originalEntity.RowKey)
-		assert.Equal(t, originalEntity.EventType, retrieved.EventType, "event type should match for %s", originalEntity.RowKey)
-		assert.Equal(t, originalEntity.SessionID, retrieved.SessionID, "session ID should match for %s", originalEntity.RowKey)
-		assert.Equal(t, originalEntity.BoxID, retrieved.BoxID, "box ID should match for %s", originalEntity.RowKey)
+		if !exists {
+			t.Errorf("should find entity with row key %s", originalEntity.RowKey)
+		}
+		if originalEntity.EventType != retrieved.EventType {
+			t.Errorf("event type should match for %s: expected %s, got %s", originalEntity.RowKey, originalEntity.EventType, retrieved.EventType)
+		}
+		if originalEntity.SessionID != retrieved.SessionID {
+			t.Errorf("session ID should match for %s: expected %s, got %s", originalEntity.RowKey, originalEntity.SessionID, retrieved.SessionID)
+		}
+		if originalEntity.BoxID != retrieved.BoxID {
+			t.Errorf("box ID should match for %s: expected %s, got %s", originalEntity.RowKey, originalEntity.BoxID, retrieved.BoxID)
+		}
 	}
 
 	test.LogTestProgress(t, "testing filtered query operations")
@@ -319,20 +402,28 @@ func TestTableStorageQueryOperations(t *testing.T) {
 
 	for sessionPager.More() {
 		page, err := sessionPager.NextPage(ctx)
-		require.NoError(t, err, "should get filtered page without error")
+		if err != nil {
+			t.Fatalf("should get filtered page without error: %v", err)
+		}
 
 		for _, entity := range page.Entities {
 			var eventEntity infra.EventLogEntity
 			err := json.Unmarshal(entity, &eventEntity)
-			require.NoError(t, err, "should unmarshal filtered entity")
+			if err != nil {
+				t.Fatalf("should unmarshal filtered entity: %v", err)
+			}
 			sessionEntities = append(sessionEntities, eventEntity)
 		}
 	}
 
 	// Should only get entities from session-1
-	assert.Len(t, sessionEntities, 2, "should retrieve only 2 entities for session-1")
+	if len(sessionEntities) != 2 {
+		t.Errorf("should retrieve only 2 entities for session-1, got %d", len(sessionEntities))
+	}
 	for _, entity := range sessionEntities {
-		assert.Equal(t, "session-1", entity.SessionID, "all entities should be from session-1")
+		if entity.SessionID != "session-1" {
+			t.Errorf("all entities should be from session-1, got %s", entity.SessionID)
+		}
 	}
 }
 
@@ -351,11 +442,15 @@ func TestTableStorageUpdateOperations(t *testing.T) {
 	tableNames := []string{namer.EventLogTableName(), namer.ResourceRegistryTableName()}
 
 	result := infra.CreateTableStorageResources(ctx, env.Clients, storageAccountName, tableNames)
-	require.NoError(t, result.Error, "should create table storage resources")
+	if result.Error != nil {
+		t.Fatalf("should create table storage resources: %v", result.Error)
+	}
 
 	env.Clients.TableStorageConnectionString = result.ConnectionString
 	tableClient, err := aztables.NewServiceClientFromConnectionString(result.ConnectionString, nil)
-	require.NoError(t, err, "should create table client")
+	if err != nil {
+		t.Fatalf("should create table client: %v", err)
+	}
 	env.Clients.TableClient = tableClient
 
 	test.LogTestProgress(t, "testing entity update operations")
@@ -377,7 +472,9 @@ func TestTableStorageUpdateOperations(t *testing.T) {
 
 	// Write initial entity
 	err = infra.WriteResourceRegistry(ctx, env.Clients, resourceEntity)
-	require.NoError(t, err, "should write initial entity")
+	if err != nil {
+		t.Fatalf("should write initial entity: %v", err)
+	}
 
 	// Update the entity
 	resourceEntity.Status = "active"
@@ -386,22 +483,34 @@ func TestTableStorageUpdateOperations(t *testing.T) {
 
 	// Use update function for updating existing entity
 	err = infra.UpdateResourceRegistry(ctx, env.Clients, resourceEntity)
-	require.NoError(t, err, "should update entity without error")
+	if err != nil {
+		t.Fatalf("should update entity without error: %v", err)
+	}
 
 	test.LogTestProgress(t, "verifying entity was updated")
 
 	// Retrieve and verify updated entity
 	response, err := registryClient.GetEntity(ctx, resourceEntity.PartitionKey, resourceEntity.RowKey, nil)
-	require.NoError(t, err, "should retrieve updated entity")
+	if err != nil {
+		t.Fatalf("should retrieve updated entity: %v", err)
+	}
 
 	var updatedEntity infra.ResourceRegistryEntity
 	err = json.Unmarshal(response.Value, &updatedEntity)
-	require.NoError(t, err, "should unmarshal updated entity")
+	if err != nil {
+		t.Fatalf("should unmarshal updated entity: %v", err)
+	}
 
 	// Verify updates
-	assert.Equal(t, "active", updatedEntity.Status, "status should be updated")
-	assert.Equal(t, `{"updated": "data", "cpu": 4}`, updatedEntity.Metadata, "metadata should be updated")
-	assert.Equal(t, resourceEntity.VMName, updatedEntity.VMName, "VM name should remain unchanged")
+	if updatedEntity.Status != "active" {
+		t.Errorf("status should be updated: expected 'active', got %s", updatedEntity.Status)
+	}
+	if updatedEntity.Metadata != `{"updated": "data", "cpu": 4}` {
+		t.Errorf("metadata should be updated: expected %s, got %s", `{"updated": "data", "cpu": 4}`, updatedEntity.Metadata)
+	}
+	if updatedEntity.VMName != resourceEntity.VMName {
+		t.Errorf("VM name should remain unchanged: expected %s, got %s", resourceEntity.VMName, updatedEntity.VMName)
+	}
 }
 
 func TestTableStorageDeleteOperations(t *testing.T) {
@@ -419,11 +528,15 @@ func TestTableStorageDeleteOperations(t *testing.T) {
 	tableNames := []string{namer.EventLogTableName(), namer.ResourceRegistryTableName()}
 
 	result := infra.CreateTableStorageResources(ctx, env.Clients, storageAccountName, tableNames)
-	require.NoError(t, result.Error, "should create table storage resources")
+	if result.Error != nil {
+		t.Fatalf("should create table storage resources: %v", result.Error)
+	}
 
 	env.Clients.TableStorageConnectionString = result.ConnectionString
 	tableClient, err := aztables.NewServiceClientFromConnectionString(result.ConnectionString, nil)
-	require.NoError(t, err, "should create table client")
+	if err != nil {
+		t.Fatalf("should create table client: %v", err)
+	}
 	env.Clients.TableClient = tableClient
 
 	test.LogTestProgress(t, "testing entity delete operations")
@@ -444,23 +557,31 @@ func TestTableStorageDeleteOperations(t *testing.T) {
 
 	// Write entity
 	err = infra.WriteEventLog(ctx, env.Clients, eventEntity)
-	require.NoError(t, err, "should write entity to be deleted")
+	if err != nil {
+		t.Fatalf("should write entity to be deleted: %v", err)
+	}
 
 	// Verify entity exists
 	_, err = eventLogClient.GetEntity(ctx, eventEntity.PartitionKey, eventEntity.RowKey, nil)
-	require.NoError(t, err, "entity should exist before deletion")
+	if err != nil {
+		t.Fatalf("entity should exist before deletion: %v", err)
+	}
 
 	test.LogTestProgress(t, "deleting entity")
 
 	// Delete entity
 	_, err = eventLogClient.DeleteEntity(ctx, eventEntity.PartitionKey, eventEntity.RowKey, nil)
-	require.NoError(t, err, "should delete entity without error")
+	if err != nil {
+		t.Fatalf("should delete entity without error: %v", err)
+	}
 
 	test.LogTestProgress(t, "verifying entity was deleted")
 
 	// Verify entity is deleted
 	_, err = eventLogClient.GetEntity(ctx, eventEntity.PartitionKey, eventEntity.RowKey, nil)
-	assert.Error(t, err, "should not be able to retrieve deleted entity")
+	if err == nil {
+		t.Errorf("should not be able to retrieve deleted entity")
+	}
 }
 
 func TestTableStorageErrorHandling(t *testing.T) {
@@ -487,14 +608,20 @@ func TestTableStorageErrorHandling(t *testing.T) {
 	}
 
 	err := infra.WriteEventLog(ctx, clientsWithoutTable, eventEntity)
-	assert.Error(t, err, "should error when table client is not available")
-	assert.Contains(t, err.Error(), "table client not available", "should have appropriate error message")
+	if err == nil {
+		t.Errorf("should error when table client is not available")
+	}
+	if err != nil && !strings.Contains(err.Error(), "table client not available") {
+		t.Errorf("should have appropriate error message, got: %v", err)
+	}
 
 	// Test 2: Invalid storage account name
 	invalidAccountName := "invalid-account-name-with-special-chars!"
 	invalidTableNames := []string{"InvalidTable"}
 	result := infra.CreateTableStorageResources(ctx, env.Clients, invalidAccountName, invalidTableNames)
-	assert.Error(t, result.Error, "should error with invalid storage account name")
+	if result.Error == nil {
+		t.Errorf("should error with invalid storage account name")
+	}
 
 	test.LogTestProgress(t, "error handling tests completed")
 }

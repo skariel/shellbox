@@ -4,31 +4,25 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-
 	"shellbox/internal/infra"
 )
 
 func TestClientsHelpersTestSuite(t *testing.T) {
-	t.Run("TestFatalOnError", func(t *testing.T) {
+	t.Run("TestFatalOnError", func(_ *testing.T) {
 		// Test with nil error (should not panic or exit)
-		assert.NotPanics(t, func() {
-			// We can't easily test log.Fatal without causing the test to exit
-			// But we can test that FatalOnError exists and can be called with nil
-			// Note: We can't actually test the fatal case without special test setup
-		})
+		// We can't easily test log.Fatal without causing the test to exit
+		// But we can test that FatalOnError exists and can be called with nil
+		// Note: We can't actually test the fatal case without special test setup
 	})
 
-	t.Run("TestFatalOnErrorStructure", func(t *testing.T) {
+	t.Run("TestFatalOnErrorStructure", func(_ *testing.T) {
 		// Test that FatalOnError function signature exists and can be called
 		// We test with nil error since non-nil would cause fatal exit
 		err := error(nil)
 		message := "test message"
 
 		// This should not panic for nil error
-		assert.NotPanics(t, func() {
-			infra.FatalOnError(err, message)
-		})
+		infra.FatalOnError(err, message)
 	})
 
 	t.Run("TestErrorTypes", func(t *testing.T) {
@@ -36,20 +30,31 @@ func TestClientsHelpersTestSuite(t *testing.T) {
 		err1 := errors.New("simple error")
 		err2 := errors.New("another error")
 
-		assert.NotNil(t, err1)
-		assert.NotNil(t, err2)
-		assert.NotEqual(t, err1, err2)
-		assert.Contains(t, err1.Error(), "simple error")
-		assert.Contains(t, err2.Error(), "another error")
+		if err1 == nil {
+			t.Errorf("err1 should not be nil")
+		}
+		if err2 == nil {
+			t.Errorf("err2 should not be nil")
+		}
+		if err1 == err2 {
+			t.Errorf("err1 and err2 should not be equal")
+		}
+		if err1.Error() != "simple error" {
+			t.Errorf("err1.Error() = %q, want %q", err1.Error(), "simple error")
+		}
+		if err2.Error() != "another error" {
+			t.Errorf("err2.Error() = %q, want %q", err2.Error(), "another error")
+		}
 	})
 
-	t.Run("TestNewAzureClientsExists", func(t *testing.T) {
-		// Test that NewAzureClients function exists by checking it's not nil
+	t.Run("TestNewAzureClientsExists", func(_ *testing.T) {
+		// Test that NewAzureClients function exists by verifying it compiles
 		// We can't actually call it without Azure credentials as it will timeout
-		// But we can verify the function signature compiles
+		// But we can verify the function signature exists
 
-		var newClientFunc func(string, bool) *infra.AzureClients = infra.NewAzureClients
-		assert.NotNil(t, newClientFunc, "NewAzureClients function should exist")
+		// Just verify that the function can be assigned to a variable with the correct signature
+		newClientFunc := infra.NewAzureClients
+		_ = newClientFunc // Use the variable to avoid unused variable warning
 	})
 
 	t.Run("TestAzureClientsFields", func(t *testing.T) {
@@ -60,21 +65,33 @@ func TestClientsHelpersTestSuite(t *testing.T) {
 			ResourceGroupName: "shellbox-test123",
 		}
 
-		assert.Equal(t, "test123", clients.Suffix)
-		assert.Equal(t, "sub-456", clients.SubscriptionID)
-		assert.Equal(t, "shellbox-test123", clients.ResourceGroupName)
+		if clients.Suffix != "test123" {
+			t.Errorf("clients.Suffix = %q, want %q", clients.Suffix, "test123")
+		}
+		if clients.SubscriptionID != "sub-456" {
+			t.Errorf("clients.SubscriptionID = %q, want %q", clients.SubscriptionID, "sub-456")
+		}
+		if clients.ResourceGroupName != "shellbox-test123" {
+			t.Errorf("clients.ResourceGroupName = %q, want %q", clients.ResourceGroupName, "shellbox-test123")
+		}
 	})
 
 	t.Run("TestDefaultPollOptions", func(t *testing.T) {
 		// Test that DefaultPollOptions is properly configured
 		options := infra.DefaultPollOptions
 
-		assert.NotNil(t, options.Frequency)
-		assert.True(t, options.Frequency > 0)
+		if options.Frequency == 0 {
+			t.Errorf("options.Frequency should not be zero")
+		}
+		if options.Frequency <= 0 {
+			t.Errorf("options.Frequency should be > 0, got %v", options.Frequency)
+		}
 
 		// Should be 2 seconds based on the constants
 		expectedFrequency := 2
 		actualSeconds := int(options.Frequency.Seconds())
-		assert.Equal(t, expectedFrequency, actualSeconds)
+		if actualSeconds != expectedFrequency {
+			t.Errorf("options.Frequency.Seconds() = %d, want %d", actualSeconds, expectedFrequency)
+		}
 	})
 }

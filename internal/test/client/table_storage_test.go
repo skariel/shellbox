@@ -5,18 +5,18 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/data/aztables"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 
 	"shellbox/internal/infra"
 	"shellbox/internal/test"
 )
 
 func TestTableStorageClientCreation(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name             string
 		connectionString string
@@ -57,20 +57,30 @@ func TestTableStorageClientCreation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			client, err := aztables.NewServiceClientFromConnectionString(tt.connectionString, nil)
 
 			if tt.expectError {
-				assert.Error(t, err, tt.description)
-				assert.Nil(t, client, "Client should be nil when error expected")
+				if err == nil {
+					t.Errorf("%s: expected error but got none", tt.description)
+				}
+				if client != nil {
+					t.Errorf("Client should be nil when error expected")
+				}
 			} else {
-				assert.NoError(t, err, tt.description)
-				assert.NotNil(t, client, "Client should not be nil when no error expected")
+				if err != nil {
+					t.Errorf("%s: unexpected error: %v", tt.description, err)
+				}
+				if client == nil {
+					t.Errorf("Client should not be nil when no error expected")
+				}
 			}
 		})
 	}
 }
 
 func TestTableStorageConfigFileHandling(t *testing.T) {
+	t.Parallel()
 	// Create temporary directory for test config files
 	tempDir := t.TempDir()
 
@@ -117,12 +127,15 @@ func TestTableStorageConfigFileHandling(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			// Create config file if content provided
 			configFilePath := ""
 			if tt.configContent != "" {
 				configFilePath = filepath.Join(tempDir, tt.fileName)
 				err := os.WriteFile(configFilePath, []byte(tt.configContent), 0o600)
-				require.NoError(t, err, "Failed to create test config file")
+				if err != nil {
+					t.Fatalf("Failed to create test config file: %v", err)
+				}
 			} else if tt.fileName != "nonexistent.json" {
 				configFilePath = filepath.Join(tempDir, tt.fileName)
 			} else {
@@ -133,20 +146,64 @@ func TestTableStorageConfigFileHandling(t *testing.T) {
 			config, err := readTableStorageConfig(configFilePath)
 
 			if tt.expectError {
-				assert.Error(t, err, tt.description)
+				if err == nil {
+					t.Errorf("%s: expected error but got none", tt.description)
+				}
 			} else {
-				assert.NoError(t, err, tt.description)
+				if err != nil {
+					t.Errorf("%s: unexpected error: %v", tt.description, err)
+				}
 				if tt.name == "ValidConfigFile" {
-					assert.Contains(t, config.ConnectionString, "AccountName=teststorage", "Connection string should be parsed correctly")
+					if !strings.Contains(config.ConnectionString, "AccountName=teststorage") {
+						t.Errorf("Connection string should be parsed correctly")
+					}
 				}
 			}
 		})
 	}
 }
 
+// Helper functions to reduce cyclomatic complexity
+func testEventLogEntityFields(t *testing.T, entity, unmarshaled infra.EventLogEntity) {
+	t.Helper()
+	fields := map[string][2]string{
+		"PartitionKey": {entity.PartitionKey, unmarshaled.PartitionKey},
+		"RowKey":       {entity.RowKey, unmarshaled.RowKey},
+		"EventType":    {entity.EventType, unmarshaled.EventType},
+		"SessionID":    {entity.SessionID, unmarshaled.SessionID},
+		"BoxID":        {entity.BoxID, unmarshaled.BoxID},
+		"UserKey":      {entity.UserKey, unmarshaled.UserKey},
+		"Details":      {entity.Details, unmarshaled.Details},
+	}
+
+	for fieldName, values := range fields {
+		if values[0] != values[1] {
+			t.Errorf("%s mismatch: expected %q, got %q", fieldName, values[0], values[1])
+		}
+	}
+}
+
+func testResourceRegistryEntityFields(t *testing.T, entity, unmarshaled infra.ResourceRegistryEntity) {
+	t.Helper()
+	fields := map[string][2]string{
+		"PartitionKey": {entity.PartitionKey, unmarshaled.PartitionKey},
+		"RowKey":       {entity.RowKey, unmarshaled.RowKey},
+		"Status":       {entity.Status, unmarshaled.Status},
+		"VMName":       {entity.VMName, unmarshaled.VMName},
+		"Metadata":     {entity.Metadata, unmarshaled.Metadata},
+	}
+
+	for fieldName, values := range fields {
+		if values[0] != values[1] {
+			t.Errorf("%s mismatch: expected %q, got %q", fieldName, values[0], values[1])
+		}
+	}
+}
+
 func TestTableOperationEntities(t *testing.T) {
+	t.Parallel()
 	t.Run("EventLogEntity", func(t *testing.T) {
-		// Test EventLogEntity marshaling
+		t.Parallel()
 		entity := infra.EventLogEntity{
 			PartitionKey: "test-partition",
 			RowKey:       "test-row-123",
@@ -158,27 +215,22 @@ func TestTableOperationEntities(t *testing.T) {
 			Details:      "Test event details",
 		}
 
-		// Test JSON marshaling
 		data, err := json.Marshal(entity)
-		require.NoError(t, err, "EventLogEntity should marshal to JSON")
+		if err != nil {
+			t.Fatalf("EventLogEntity should marshal to JSON: %v", err)
+		}
 
-		// Test JSON unmarshaling
 		var unmarshaled infra.EventLogEntity
 		err = json.Unmarshal(data, &unmarshaled)
-		require.NoError(t, err, "EventLogEntity should unmarshal from JSON")
+		if err != nil {
+			t.Fatalf("EventLogEntity should unmarshal from JSON: %v", err)
+		}
 
-		// Verify fields
-		assert.Equal(t, entity.PartitionKey, unmarshaled.PartitionKey)
-		assert.Equal(t, entity.RowKey, unmarshaled.RowKey)
-		assert.Equal(t, entity.EventType, unmarshaled.EventType)
-		assert.Equal(t, entity.SessionID, unmarshaled.SessionID)
-		assert.Equal(t, entity.BoxID, unmarshaled.BoxID)
-		assert.Equal(t, entity.UserKey, unmarshaled.UserKey)
-		assert.Equal(t, entity.Details, unmarshaled.Details)
+		testEventLogEntityFields(t, entity, unmarshaled)
 	})
 
 	t.Run("ResourceRegistryEntity", func(t *testing.T) {
-		// Test ResourceRegistryEntity marshaling
+		t.Parallel()
 		now := time.Now()
 		entity := infra.ResourceRegistryEntity{
 			PartitionKey: "resource-partition",
@@ -191,25 +243,23 @@ func TestTableOperationEntities(t *testing.T) {
 			Metadata:     `{"cpu": 2, "memory": "4GB"}`,
 		}
 
-		// Test JSON marshaling
 		data, err := json.Marshal(entity)
-		require.NoError(t, err, "ResourceRegistryEntity should marshal to JSON")
+		if err != nil {
+			t.Fatalf("ResourceRegistryEntity should marshal to JSON: %v", err)
+		}
 
-		// Test JSON unmarshaling
 		var unmarshaled infra.ResourceRegistryEntity
 		err = json.Unmarshal(data, &unmarshaled)
-		require.NoError(t, err, "ResourceRegistryEntity should unmarshal from JSON")
+		if err != nil {
+			t.Fatalf("ResourceRegistryEntity should unmarshal from JSON: %v", err)
+		}
 
-		// Verify fields
-		assert.Equal(t, entity.PartitionKey, unmarshaled.PartitionKey)
-		assert.Equal(t, entity.RowKey, unmarshaled.RowKey)
-		assert.Equal(t, entity.Status, unmarshaled.Status)
-		assert.Equal(t, entity.VMName, unmarshaled.VMName)
-		assert.Equal(t, entity.Metadata, unmarshaled.Metadata)
+		testResourceRegistryEntityFields(t, entity, unmarshaled)
 	})
 }
 
 func TestTableStorageClientIntegration(t *testing.T) {
+	t.Parallel()
 	// Test that table storage client integrates properly with AzureClients
 	env := test.SetupMinimalTestEnvironment(t)
 
@@ -220,7 +270,9 @@ func TestTableStorageClientIntegration(t *testing.T) {
 
 	// Test missing table storage config (should not cause fatal error)
 	// This simulates the production behavior where table storage is optional
-	assert.Nil(t, clients.TableClient, "TableClient should be nil when no config available")
+	if clients.TableClient != nil {
+		t.Errorf("TableClient should be nil when no config available")
+	}
 
 	// Test with valid connection string
 	testConnectionString := "DefaultEndpointsProtocol=https;AccountName=teststorage;AccountKey=dGVzdGtleXZhbHVlMTIzNDU2Nzg5MA==;EndpointSuffix=core.windows.net"
@@ -228,14 +280,21 @@ func TestTableStorageClientIntegration(t *testing.T) {
 
 	// Test client creation
 	tableClient, err := aztables.NewServiceClientFromConnectionString(testConnectionString, nil)
-	require.NoError(t, err, "Should be able to create table client with valid connection string")
-	require.NotNil(t, tableClient, "Table client should not be nil")
+	if err != nil {
+		t.Fatalf("Should be able to create table client with valid connection string: %v", err)
+	}
+	if tableClient == nil {
+		t.Fatalf("Table client should not be nil")
+	}
 
 	clients.TableClient = tableClient
-	assert.NotNil(t, clients.TableClient, "TableClient should be set")
+	if clients.TableClient == nil {
+		t.Errorf("TableClient should be set")
+	}
 }
 
 func TestTableStorageConstants(t *testing.T) {
+	t.Parallel()
 	// Test that required table names are defined
 	// Note: These are internal constants, so we test them indirectly by checking
 	// they're used in the table creation patterns
@@ -243,12 +302,23 @@ func TestTableStorageConstants(t *testing.T) {
 	expectedTables := []string{"EventLog", "ResourceRegistry"}
 
 	for _, tableName := range expectedTables {
-		assert.NotEmpty(t, tableName, "Table name should not be empty")
-		assert.Regexp(t, `^[A-Za-z][A-Za-z0-9]*$`, tableName, "Table name should follow Azure table naming conventions")
+		if tableName == "" {
+			t.Errorf("Table name should not be empty")
+		}
+		if !strings.ContainsAny(tableName, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz") {
+			t.Errorf("Table name %q should start with a letter", tableName)
+		}
+		// Check that table name follows Azure table naming conventions (letters and numbers only)
+		for _, char := range tableName {
+			if !((char >= 'A' && char <= 'Z') || (char >= 'a' && char <= 'z') || (char >= '0' && char <= '9')) {
+				t.Errorf("Table name %q contains invalid character %c", tableName, char)
+			}
+		}
 	}
 }
 
 func TestConnectionStringGeneration(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name        string
 		accountName string
@@ -271,20 +341,35 @@ func TestConnectionStringGeneration(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			// Test the connection string format that would be generated
 			connectionString := fmt.Sprintf("DefaultEndpointsProtocol=https;AccountName=%s;AccountKey=%s;EndpointSuffix=core.windows.net",
 				tt.accountName, tt.accountKey)
 
 			// Verify format
-			assert.Contains(t, connectionString, "DefaultEndpointsProtocol=https", "Should contain HTTPS protocol")
-			assert.Contains(t, connectionString, fmt.Sprintf("AccountName=%s", tt.accountName), "Should contain account name")
-			assert.Contains(t, connectionString, fmt.Sprintf("AccountKey=%s", tt.accountKey), "Should contain account key")
-			assert.Contains(t, connectionString, "EndpointSuffix=core.windows.net", "Should contain endpoint suffix")
+			if !strings.Contains(connectionString, "DefaultEndpointsProtocol=https") {
+				t.Errorf("Should contain HTTPS protocol")
+			}
+			expectedAccountName := fmt.Sprintf("AccountName=%s", tt.accountName)
+			if !strings.Contains(connectionString, expectedAccountName) {
+				t.Errorf("Should contain account name")
+			}
+			expectedAccountKey := fmt.Sprintf("AccountKey=%s", tt.accountKey)
+			if !strings.Contains(connectionString, expectedAccountKey) {
+				t.Errorf("Should contain account key")
+			}
+			if !strings.Contains(connectionString, "EndpointSuffix=core.windows.net") {
+				t.Errorf("Should contain endpoint suffix")
+			}
 
 			// Test that client can be created with generated connection string
 			client, err := aztables.NewServiceClientFromConnectionString(connectionString, nil)
-			assert.NoError(t, err, tt.description)
-			assert.NotNil(t, client, "Client should be created successfully")
+			if err != nil {
+				t.Errorf("%s: %v", tt.description, err)
+			}
+			if client == nil {
+				t.Errorf("Client should be created successfully")
+			}
 		})
 	}
 }

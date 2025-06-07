@@ -5,27 +5,12 @@ package unit
 import (
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/suite"
-
 	"shellbox/internal/infra"
 	"shellbox/internal/sshserver"
-	"shellbox/internal/test"
 )
 
-// ParsingTestSuite tests string and data parsing functions
-type ParsingTestSuite struct {
-	suite.Suite
-	env *test.Environment
-}
-
-// SetupSuite runs once before all tests in the suite
-func (suite *ParsingTestSuite) SetupSuite() {
-	suite.env = test.SetupMinimalTestEnvironment(suite.T())
-}
-
 // TestExtractDiskNameFromID tests disk name extraction from Azure resource ID
-func (suite *ParsingTestSuite) TestExtractDiskNameFromID() {
+func TestExtractDiskNameFromID(t *testing.T) {
 	testCases := []struct {
 		name     string
 		diskID   string
@@ -64,15 +49,17 @@ func (suite *ParsingTestSuite) TestExtractDiskNameFromID() {
 	}
 
 	for _, tc := range testCases {
-		suite.T().Run(tc.name, func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			result := infra.ExtractDiskNameFromID(tc.diskID)
-			assert.Equal(t, tc.expected, result)
+			if result != tc.expected {
+				t.Errorf("Expected %q, got %q", tc.expected, result)
+			}
 		})
 	}
 }
 
 // TestExtractSuffix tests suffix extraction from resource group names
-func (suite *ParsingTestSuite) TestExtractSuffix() {
+func TestExtractSuffix(t *testing.T) {
 	testCases := []struct {
 		name          string
 		resourceGroup string
@@ -111,15 +98,17 @@ func (suite *ParsingTestSuite) TestExtractSuffix() {
 	}
 
 	for _, tc := range testCases {
-		suite.T().Run(tc.name, func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			result := infra.ExtractSuffix(tc.resourceGroup)
-			assert.Equal(t, tc.expected, result)
+			if result != tc.expected {
+				t.Errorf("Expected %q, got %q", tc.expected, result)
+			}
 		})
 	}
 }
 
 // TestExtractInstanceIDFromVMName tests instance ID extraction from VM names
-func (suite *ParsingTestSuite) TestExtractInstanceIDFromVMName() {
+func TestExtractInstanceIDFromVMName(t *testing.T) {
 	testCases := []struct {
 		name     string
 		vmName   string
@@ -158,15 +147,17 @@ func (suite *ParsingTestSuite) TestExtractInstanceIDFromVMName() {
 	}
 
 	for _, tc := range testCases {
-		suite.T().Run(tc.name, func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			result := infra.ExtractInstanceIDFromVMName(tc.vmName)
-			assert.Equal(t, tc.expected, result)
+			if result != tc.expected {
+				t.Errorf("Expected %q, got %q", tc.expected, result)
+			}
 		})
 	}
 }
 
 // TestVolumeTagsToMap tests conversion of volume tags to Azure tags map
-func (suite *ParsingTestSuite) TestVolumeTagsToMap() {
+func TestVolumeTagsToMap(t *testing.T) {
 	testCases := []struct {
 		name     string
 		tags     infra.VolumeTags
@@ -203,29 +194,39 @@ func (suite *ParsingTestSuite) TestVolumeTagsToMap() {
 	}
 
 	for _, tc := range testCases {
-		suite.T().Run(tc.name, func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			result := infra.VolumeTagsToMap(tc.tags)
 
 			// Compare each key-value pair
 			for key, expectedValue := range tc.expected {
 				actualValue, exists := result[key]
-				assert.True(t, exists, "Key %s should exist in result", key)
+				if !exists {
+					t.Errorf("Key %s should exist in result", key)
+					continue
+				}
 				if expectedValue == nil {
-					assert.Nil(t, actualValue, "Value for key %s should be nil", key)
+					if actualValue != nil {
+						t.Errorf("Value for key %s should be nil", key)
+					}
 				} else {
-					assert.NotNil(t, actualValue, "Value for key %s should not be nil", key)
-					assert.Equal(t, *expectedValue, *actualValue, "Value for key %s should match", key)
+					if actualValue == nil {
+						t.Errorf("Value for key %s should not be nil", key)
+					} else if *expectedValue != *actualValue {
+						t.Errorf("Value for key %s should match: expected %q, got %q", key, *expectedValue, *actualValue)
+					}
 				}
 			}
 
 			// Ensure no extra keys
-			assert.Len(t, result, len(tc.expected), "Result should have same number of keys")
+			if len(result) != len(tc.expected) {
+				t.Errorf("Result should have same number of keys: expected %d, got %d", len(tc.expected), len(result))
+			}
 		})
 	}
 }
 
 // TestParseArgs tests command line argument parsing
-func (suite *ParsingTestSuite) TestParseArgs() {
+func TestParseArgs(t *testing.T) {
 	testCases := []struct {
 		name     string
 		cmdLine  string
@@ -269,9 +270,17 @@ func (suite *ParsingTestSuite) TestParseArgs() {
 	}
 
 	for _, tc := range testCases {
-		suite.T().Run(tc.name, func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			result := sshserver.ParseArgs(tc.cmdLine)
-			assert.Equal(t, tc.expected, result)
+			if len(result) != len(tc.expected) {
+				t.Errorf("Expected %d arguments, got %d", len(tc.expected), len(result))
+				return
+			}
+			for i, expected := range tc.expected {
+				if result[i] != expected {
+					t.Errorf("Argument %d: expected %q, got %q", i, expected, result[i])
+				}
+			}
 		})
 	}
 }
@@ -279,9 +288,4 @@ func (suite *ParsingTestSuite) TestParseArgs() {
 // stringPtr returns a pointer to the given string
 func stringPtr(s string) *string {
 	return &s
-}
-
-// Run the test suite
-func TestParsingTestSuite(t *testing.T) {
-	suite.Run(t, new(ParsingTestSuite))
 }

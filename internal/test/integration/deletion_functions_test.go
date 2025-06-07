@@ -5,12 +5,111 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-
 	"shellbox/internal/infra"
 	"shellbox/internal/test"
 )
+
+// Helper functions to reduce cyclomatic complexity in deletion tests
+func testDeleteDisk(ctx context.Context, t *testing.T, env *test.Environment) {
+	t.Helper()
+	test.LogTestProgress(t, "testing DeleteDisk function")
+
+	config := &infra.VolumeConfig{DiskSize: infra.DefaultVolumeSizeGB}
+	volumeID, err := infra.CreateVolume(ctx, env.Clients, config)
+	if err != nil {
+		t.Fatalf("should create test volume: %v", err)
+	}
+
+	namer := env.GetResourceNamer()
+	volumeName := namer.VolumePoolDiskName(volumeID)
+
+	disk, err := env.Clients.DisksClient.Get(ctx, env.ResourceGroupName, volumeName, nil)
+	if err != nil {
+		t.Fatalf("test volume should exist: %v", err)
+	}
+	if *disk.Name != volumeName {
+		t.Errorf("volume should have correct name: expected %s, got %s", volumeName, *disk.Name)
+	}
+
+	test.LogTestProgress(t, "deleting disk using DeleteDisk function", "diskName", volumeName)
+	infra.DeleteDisk(ctx, env.Clients, env.ResourceGroupName, volumeName, "test disk")
+
+	time.Sleep(5 * time.Second)
+	_, err = env.Clients.DisksClient.Get(ctx, env.ResourceGroupName, volumeName, nil)
+	if err == nil {
+		t.Errorf("disk should be deleted after DeleteDisk call")
+	}
+
+	test.LogTestProgress(t, "DeleteDisk test completed")
+}
+
+func waitForVMDeletion(ctx context.Context, clients *infra.AzureClients, resourceGroupName, vmName string) {
+	for i := 0; i < 30; i++ {
+		_, err := clients.ComputeClient.Get(ctx, resourceGroupName, vmName, nil)
+		if err != nil {
+			break
+		}
+		time.Sleep(5 * time.Second)
+	}
+	time.Sleep(10 * time.Second)
+}
+
+func verifyResourceDeleted(t *testing.T, err error, resourceType string) {
+	t.Helper()
+	if err == nil {
+		t.Errorf("%s should be deleted", resourceType)
+	}
+}
+
+func testDeleteVMWithNICAndNSG(ctx context.Context, t *testing.T, env *test.Environment) {
+	t.Helper()
+	test.LogTestProgress(t, "testing DeleteVM, DeleteNIC, and DeleteNSG functions")
+
+	infra.CreateNetworkInfrastructure(ctx, env.Clients, env.Config.UseAzureCLI)
+
+	vmConfig := &infra.VMConfig{
+		VMSize:        infra.VMSize,
+		AdminUsername: infra.AdminUsername,
+		SSHPublicKey:  "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC7... test-key",
+	}
+
+	instanceID, err := infra.CreateInstance(ctx, env.Clients, vmConfig)
+	if err != nil {
+		t.Fatalf("should create test instance: %v", err)
+	}
+
+	namer := env.GetResourceNamer()
+	vmName := namer.BoxVMName(instanceID)
+	nicName := namer.BoxNICName(instanceID)
+	nsgName := namer.BoxNSGName(instanceID)
+
+	nic, err := env.Clients.NICClient.Get(ctx, env.ResourceGroupName, nicName, nil)
+	if err != nil {
+		t.Fatalf("test NIC should exist: %v", err)
+	}
+
+	test.LogTestProgress(t, "testing individual deletion functions",
+		"vmName", vmName, "nicName", nicName, "nsgName", nsgName)
+
+	infra.DeleteVM(ctx, env.Clients, env.ResourceGroupName, vmName, true)
+
+	test.LogTestProgress(t, "waiting for VM deletion to complete")
+	waitForVMDeletion(ctx, env.Clients, env.ResourceGroupName, vmName)
+
+	infra.DeleteNIC(ctx, env.Clients, env.ResourceGroupName, nicName, *nic.ID)
+	infra.DeleteNSG(ctx, env.Clients, env.ResourceGroupName, nsgName)
+
+	_, err = env.Clients.ComputeClient.Get(ctx, env.ResourceGroupName, vmName, nil)
+	verifyResourceDeleted(t, err, "VM")
+
+	_, err = env.Clients.NICClient.Get(ctx, env.ResourceGroupName, nicName, nil)
+	verifyResourceDeleted(t, err, "NIC")
+
+	_, err = env.Clients.NSGClient.Get(ctx, env.ResourceGroupName, nsgName, nil)
+	verifyResourceDeleted(t, err, "NSG")
+
+	test.LogTestProgress(t, "individual deletion functions test completed")
+}
 
 func TestDeletionFunctions(t *testing.T) {
 	t.Parallel()
@@ -24,105 +123,10 @@ func TestDeletionFunctions(t *testing.T) {
 	test.LogTestProgress(t, "testing individual deletion functions")
 
 	t.Run("DeleteDisk", func(t *testing.T) {
-		test.LogTestProgress(t, "testing DeleteDisk function")
-
-		// Create a volume first
-		config := &infra.VolumeConfig{DiskSize: infra.DefaultVolumeSizeGB}
-		volumeID, err := infra.CreateVolume(ctx, env.Clients, config)
-		require.NoError(t, err, "should create test volume")
-
-		namer := env.GetResourceNamer()
-		volumeName := namer.VolumePoolDiskName(volumeID)
-
-		// Verify volume exists
-		disk, err := env.Clients.DisksClient.Get(ctx, env.ResourceGroupName, volumeName, nil)
-		require.NoError(t, err, "test volume should exist")
-		assert.Equal(t, volumeName, *disk.Name, "volume should have correct name")
-
-		test.LogTestProgress(t, "deleting disk using DeleteDisk function", "diskName", volumeName)
-
-		// Test DeleteDisk function
-		infra.DeleteDisk(ctx, env.Clients, env.ResourceGroupName, volumeName, "test disk")
-
-		// Verify disk is deleted (allow some time for deletion to complete)
-		time.Sleep(5 * time.Second)
-		_, err = env.Clients.DisksClient.Get(ctx, env.ResourceGroupName, volumeName, nil)
-		assert.Error(t, err, "disk should be deleted after DeleteDisk call")
-
-		test.LogTestProgress(t, "DeleteDisk test completed")
+		testDeleteDisk(ctx, t, env)
 	})
 
 	t.Run("DeleteVM_with_DeleteNIC_and_DeleteNSG", func(t *testing.T) {
-		test.LogTestProgress(t, "testing DeleteVM, DeleteNIC, and DeleteNSG functions")
-
-		// Create network infrastructure first
-		infra.CreateNetworkInfrastructure(ctx, env.Clients, env.Config.UseAzureCLI)
-
-		// Create an instance to get VM, NIC, and NSG
-		vmConfig := &infra.VMConfig{
-			VMSize:        infra.VMSize,
-			AdminUsername: infra.AdminUsername,
-			SSHPublicKey:  "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC7... test-key",
-		}
-
-		instanceID, err := infra.CreateInstance(ctx, env.Clients, vmConfig)
-		require.NoError(t, err, "should create test instance")
-
-		namer := env.GetResourceNamer()
-		vmName := namer.BoxVMName(instanceID)
-		nicName := namer.BoxNICName(instanceID)
-		nsgName := namer.BoxNSGName(instanceID)
-
-		// Verify all resources exist
-		vm, err := env.Clients.ComputeClient.Get(ctx, env.ResourceGroupName, vmName, nil)
-		require.NoError(t, err, "test VM should exist")
-		assert.Equal(t, vmName, *vm.Name, "VM should have correct name")
-
-		nic, err := env.Clients.NICClient.Get(ctx, env.ResourceGroupName, nicName, nil)
-		require.NoError(t, err, "test NIC should exist")
-		assert.Equal(t, nicName, *nic.Name, "NIC should have correct name")
-
-		nsg, err := env.Clients.NSGClient.Get(ctx, env.ResourceGroupName, nsgName, nil)
-		require.NoError(t, err, "test NSG should exist")
-		assert.Equal(t, nsgName, *nsg.Name, "NSG should have correct name")
-
-		test.LogTestProgress(t, "testing individual deletion functions",
-			"vmName", vmName, "nicName", nicName, "nsgName", nsgName)
-
-		// Test DeleteVM function (this also deletes associated disks)
-		infra.DeleteVM(ctx, env.Clients, env.ResourceGroupName, vmName, true)
-
-		// Wait for VM deletion to complete before attempting to delete NIC/NSG
-		// Azure keeps the NIC reserved for 180 seconds after VM deletion starts
-		test.LogTestProgress(t, "waiting for VM deletion to complete")
-		for i := 0; i < 30; i++ {
-			_, err := env.Clients.ComputeClient.Get(ctx, env.ResourceGroupName, vmName, nil)
-			if err != nil {
-				// VM is deleted
-				break
-			}
-			time.Sleep(5 * time.Second)
-		}
-
-		// Additional wait to ensure NIC is released
-		time.Sleep(10 * time.Second)
-
-		// Test DeleteNIC function
-		infra.DeleteNIC(ctx, env.Clients, env.ResourceGroupName, nicName, *nic.ID)
-
-		// Test DeleteNSG function
-		infra.DeleteNSG(ctx, env.Clients, env.ResourceGroupName, nsgName)
-
-		// Verify all resources are deleted
-		_, err = env.Clients.ComputeClient.Get(ctx, env.ResourceGroupName, vmName, nil)
-		assert.Error(t, err, "VM should be deleted after DeleteVM call")
-
-		_, err = env.Clients.NICClient.Get(ctx, env.ResourceGroupName, nicName, nil)
-		assert.Error(t, err, "NIC should be deleted after DeleteNIC call")
-
-		_, err = env.Clients.NSGClient.Get(ctx, env.ResourceGroupName, nsgName, nil)
-		assert.Error(t, err, "NSG should be deleted after DeleteNSG call")
-
-		test.LogTestProgress(t, "individual deletion functions test completed")
+		testDeleteVMWithNICAndNSG(ctx, t, env)
 	})
 }
