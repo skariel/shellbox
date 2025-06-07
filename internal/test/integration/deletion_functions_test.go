@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"shellbox/internal/infra"
+	"shellbox/internal/sshutil"
 	"shellbox/internal/test"
 )
 
@@ -67,10 +68,15 @@ func testDeleteVMWithNICAndNSG(ctx context.Context, t *testing.T, env *test.Envi
 
 	infra.CreateNetworkInfrastructure(ctx, env.Clients, env.Config.UseAzureCLI)
 
+	_, sshPublicKey, err := sshutil.LoadKeyPair("/home/ubuntu/.ssh/id_ed25519")
+	if err != nil {
+		t.Fatalf("should load SSH key: %v", err)
+	}
+
 	vmConfig := &infra.VMConfig{
 		VMSize:        infra.VMSize,
 		AdminUsername: infra.AdminUsername,
-		SSHPublicKey:  "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC7... test-key",
+		SSHPublicKey:  sshPublicKey,
 	}
 
 	instanceID, err := infra.CreateInstance(ctx, env.Clients, vmConfig)
