@@ -8,7 +8,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v7"
 
 	"shellbox/internal/infra"
-	"shellbox/internal/test"
+	"shellbox/test"
 )
 
 func TestNetworkInfrastructureIdempotency(t *testing.T) {

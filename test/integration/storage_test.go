@@ -11,7 +11,7 @@ import (
 
 	"shellbox/internal/infra"
 	"shellbox/internal/sshutil"
-	"shellbox/internal/test"
+	"shellbox/test"
 )
 
 func TestVolumeCreationAndDeletion(t *testing.T) {

@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"shellbox/internal/infra"
-	"shellbox/internal/test"
+	"shellbox/test"
 )
 
 // TestResourceNamerBasics tests basic resource naming functionality

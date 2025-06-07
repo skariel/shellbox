@@ -10,7 +10,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 
 	"shellbox/internal/infra"
-	"shellbox/internal/test"
+	"shellbox/test"
 )
 
 // Helper function to reduce cyclomatic complexity

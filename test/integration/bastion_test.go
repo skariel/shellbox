@@ -8,7 +8,7 @@ import (
 
 	"shellbox/internal/infra"
 	"shellbox/internal/sshutil"
-	"shellbox/internal/test"
+	"shellbox/test"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v7"

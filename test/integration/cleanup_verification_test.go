@@ -3,7 +3,7 @@ package integration
 import (
 	"context"
 
-	"shellbox/internal/test"
+	"shellbox/test"
 )
 
 // checkVMs lists all VMs in the resource group

@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"shellbox/internal/infra"
-	"shellbox/internal/test"
+	"shellbox/test"
 )
 
 // TestFormatConfig tests the configuration formatting function

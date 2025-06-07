@@ -7,7 +7,7 @@ import (
 
 	"shellbox/internal/infra"
 	"shellbox/internal/sshutil"
-	"shellbox/internal/test"
+	"shellbox/test"
 )
 
 // Helper functions to reduce cyclomatic complexity in deletion tests

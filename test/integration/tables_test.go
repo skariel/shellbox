@@ -12,7 +12,7 @@ import (
 	"github.com/google/uuid"
 
 	"shellbox/internal/infra"
-	"shellbox/internal/test"
+	"shellbox/test"
 )
 
 func TestTableStorageCreationAndIdempotency(t *testing.T) {
