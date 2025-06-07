@@ -27,15 +27,52 @@ go build -o deploy ./cmd/deploy
 ```bash
 # All formatting, linting, security scanning, static analysis
 ./tst.sh
+```
 
-# Structural code search (preferred over grep)
+### Code Navigation & Refactoring
+
+**IMPORTANT: Always use LSP (Language Server Protocol) for code navigation and refactoring**. The Go LSP provides accurate, context-aware code intelligence that is far superior to text-based search tools.
+
+#### LSP Operations (STRONGLY PREFERRED)
+Use these LSP commands for all code navigation:
+- **Find function/type definitions**: Use `mcp__go-language-server__definition` to jump to where a symbol is defined
+- **Find all references**: Use `mcp__go-language-server__references` to find all usages of a symbol across the codebase
+- **Get type information**: Use `mcp__go-language-server__hover` to see type info and documentation at a position
+- **Rename symbols**: Use `mcp__go-language-server__rename_symbol` to safely rename across all files
+- **Get diagnostics**: Use `mcp__go-language-server__diagnostics` to check for errors in a file
+- **Edit files**: Use `mcp__go-language-server__edit_file` for LSP-aware file modifications
+
+Examples:
+```bash
+# Find where a function is defined
+mcp__go-language-server__definition symbolName="CountInstancesByStatus"
+
+# Find all places where a type/function is used
+mcp__go-language-server__references symbolName="ResourceGraphQueries"
+
+# Get type info at specific position
+mcp__go-language-server__hover filePath="/path/to/file.go" line=42 column=15
+
+# Rename a symbol across entire codebase
+mcp__go-language-server__rename_symbol filePath="/path/to/file.go" line=10 column=5 newName="NewSymbolName"
+```
+
+**IMPORTANT**: For methods, always use fully qualified names with the receiver type:
+- Use `Type.Method` format (e.g., `ResourceGraphQueries.CountInstancesByStatus`)
+- For standalone functions, just the function name is sufficient
+- For interface methods, use `InterfaceName.MethodName`
+
+#### Structural Search (Fallback Only)
+Only use comby when LSP cannot help (e.g., finding patterns rather than specific symbols):
+```bash
+# Structural code search (use only when LSP is insufficient)
 comby ':[pattern]' '' -language go -match-only
 
-# Structural code refactoring (preferred over grep/sed)
+# Structural code refactoring (use only when LSP rename is insufficient)
 comby ':[pattern]' ':[replacement]' -language go
 ```
 
-**Comby**: Use the [comby tool](https://comby.dev) for structural search-and-replace operations. It understands code structure better than regex, handles nested expressions, comments, and strings correctly. Prefer comby over grep/sed for search and refactoring tasks.
+**Comby**: Use the [comby tool](https://comby.dev) for structural search-and-replace operations. It understands code structure better than regex, handles nested expressions, comments, and strings correctly. Prefer comby over grep/sed for pattern-based search tasks, but always prefer LSP for symbol-based operations.
 
 #### Comby Search Examples
 ```bash
@@ -124,8 +161,9 @@ vmName := namer.BoxVMName(instanceID)
 
 ## Guidelines
 
+- **ALWAYS use LSP** for finding functions, types, references, and renaming symbols
 - Use `./tst.sh` for all code quality checks
-- Use `comby` for structural code refactoring
+- Use `comby` for structural pattern matching (only when LSP is insufficient)
 - Maintain backwards compatibility, prefer minimal changes
 - Handle errors gracefully at runtime, fail fast during deployment
 

@@ -92,14 +92,26 @@ func TestDeletionFunctions(t *testing.T) {
 		// Test DeleteVM function (this also deletes associated disks)
 		infra.DeleteVM(ctx, env.Clients, env.ResourceGroupName, vmName, true)
 
+		// Wait for VM deletion to complete before attempting to delete NIC/NSG
+		// Azure keeps the NIC reserved for 180 seconds after VM deletion starts
+		test.LogTestProgress(t, "waiting for VM deletion to complete")
+		for i := 0; i < 30; i++ {
+			_, err := env.Clients.ComputeClient.Get(ctx, env.ResourceGroupName, vmName, nil)
+			if err != nil {
+				// VM is deleted
+				break
+			}
+			time.Sleep(5 * time.Second)
+		}
+
+		// Additional wait to ensure NIC is released
+		time.Sleep(10 * time.Second)
+
 		// Test DeleteNIC function
 		infra.DeleteNIC(ctx, env.Clients, env.ResourceGroupName, nicName, *nic.ID)
 
 		// Test DeleteNSG function
 		infra.DeleteNSG(ctx, env.Clients, env.ResourceGroupName, nsgName)
-
-		// Allow some time for deletion to complete
-		time.Sleep(10 * time.Second)
 
 		// Verify all resources are deleted
 		_, err = env.Clients.ComputeClient.Get(ctx, env.ResourceGroupName, vmName, nil)

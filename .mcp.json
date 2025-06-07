@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "go-language-server": {
+      "command": "mcp-language-server",
+      "args": ["--workspace", "/home/ubuntu/prog/shellbox", "--lsp", "gopls"]
+    }
+  }
+}

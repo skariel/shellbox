@@ -1,0 +1,7 @@
+NAME	TYPE	LOCATION
+shellbox-test-test-25632-bastion-nsg	Network security group	West US 2
+shellbox-test-test-25632-box-f593ecc0-a2a3-406b-8fcb-c52e89b8413e-nic	Network Interface	West US 2
+shellbox-test-test-25632-box-f593ecc0-a2a3-406b-8fcb-c52e89b8413e-nsg	Network security group	West US 2
+shellbox-test-test-25632-vnet	Virtual network	West US 2
+shellboxtest536567	Storage account	West US 2
+
