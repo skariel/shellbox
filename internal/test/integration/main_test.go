@@ -12,6 +12,7 @@ import (
 	"shellbox/internal/test"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/storage/armstorage"
 )
 
@@ -60,6 +61,11 @@ func createSharedStorageAccount() error {
 	// Create minimal clients for storage account creation
 	clients := infra.NewAzureClients("test-setup", true)
 	clients.ResourceGroupName = "shellbox-testing"
+
+	// Ensure resource group exists first
+	if err := createResourceGroupIfNotExists(ctx, clients); err != nil {
+		return fmt.Errorf("failed to ensure resource group exists: %w", err)
+	}
 
 	// Get the shared storage account name
 	namer := infra.NewResourceNamer("test")
@@ -138,6 +144,36 @@ func deleteSharedStorageAccount() error {
 	}
 
 	log.Printf("Successfully deleted shared storage account: %s", storageAccountName)
+	return nil
+}
+
+// createResourceGroupIfNotExists creates the resource group if it doesn't exist
+func createResourceGroupIfNotExists(ctx context.Context, clients *infra.AzureClients) error {
+	// Check if resource group already exists
+	_, err := clients.ResourceClient.Get(ctx, clients.ResourceGroupName, nil)
+	if err == nil {
+		// Resource group already exists
+		log.Printf("Resource group %s already exists", clients.ResourceGroupName)
+		return nil
+	}
+
+	// Resource group doesn't exist, create it
+	log.Printf("Creating resource group: %s", clients.ResourceGroupName)
+
+	_, err = clients.ResourceClient.CreateOrUpdate(ctx, clients.ResourceGroupName, armresources.ResourceGroup{
+		Location: to.Ptr(infra.Location),
+		Tags: map[string]*string{
+			"purpose":     to.Ptr("integration-tests"),
+			"created":     to.Ptr(time.Now().Format(time.RFC3339)),
+			"description": to.Ptr("Shared resource group for all integration tests"),
+			"persistent":  to.Ptr("true"),
+		},
+	}, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create resource group %s: %w", clients.ResourceGroupName, err)
+	}
+
+	log.Printf("Successfully created resource group: %s", clients.ResourceGroupName)
 	return nil
 }
 
