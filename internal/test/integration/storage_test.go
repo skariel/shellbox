@@ -365,8 +365,8 @@ func TestUpdateVolumeStatus(t *testing.T) {
 	}
 }
 
-func setupNetworkForTesting(ctx context.Context, env *test.Environment) {
-	test.LogTestProgress(nil, "setting up network infrastructure for instance creation")
+func setupNetworkForTesting(ctx context.Context, t *testing.T, env *test.Environment) {
+	test.LogTestProgress(t, "setting up network infrastructure for instance creation")
 	infra.CreateNetworkInfrastructure(ctx, env.Clients, env.Config.UseAzureCLI)
 }
 
@@ -473,7 +473,7 @@ func TestVolumeAttachmentToInstance(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Minute)
 	defer cancel()
 
-	setupNetworkForTesting(ctx, env)
+	setupNetworkForTesting(ctx, t, env)
 	volumeID := createTestVolumeForAttachment(ctx, t, env)
 	instanceID := createTestInstanceForAttachment(ctx, t, env)
 

@@ -2,8 +2,6 @@ package integration
 
 import (
 	"context"
-	"testing"
-	"time"
 
 	"shellbox/internal/test"
 )
@@ -80,36 +78,5 @@ func checkVNets(ctx context.Context, env *test.Environment, resourceGroupName st
 	return resources
 }
 
-// TestZZZResourceGroupIsEmpty tests that the shared test resource group is empty after all tests
-// Named with ZZZ prefix to ensure this test runs last alphabetically after all other tests
-// This test does NOT call t.Parallel() so it runs in the main test goroutine after all parallel tests complete
-func TestZZZResourceGroupIsEmpty(t *testing.T) {
-	// Set up test environment
-	env := test.SetupTestEnvironment(t)
-	defer env.Cleanup()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer cancel()
-
-	resourceGroupName := "shellbox-testing"
-	var foundResources []string
-
-	// Check all resource types
-	foundResources = append(foundResources, checkVMs(ctx, env, resourceGroupName)...)
-	foundResources = append(foundResources, checkNICs(ctx, env, resourceGroupName)...)
-	foundResources = append(foundResources, checkNSGs(ctx, env, resourceGroupName)...)
-	foundResources = append(foundResources, checkVNets(ctx, env, resourceGroupName)...)
-
-	// Verify no resources remain
-	if len(foundResources) > 0 {
-		t.Logf("Found %d remaining resources in %s:", len(foundResources), resourceGroupName)
-		for i, resourceID := range foundResources {
-			t.Logf("  %d: %s", i+1, resourceID)
-		}
-		t.Fatalf("Resource group %s should be empty after all tests complete. "+
-			"Found %d remaining resources. This indicates test cleanup failures.",
-			resourceGroupName, len(foundResources))
-	}
-
-	t.Logf("✅ Resource group %s is clean - no resources remain after tests", resourceGroupName)
-}
+// Note: Resource group verification is now handled by TestMain in main_test.go
+// which runs the verification both before and after all tests
