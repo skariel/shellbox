@@ -5,6 +5,4 @@ go.sum
 *.log
 *.out
 *.html
-server
-deploy
 integration.test
