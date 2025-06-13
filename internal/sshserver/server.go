@@ -347,8 +347,8 @@ func (s *Server) handleSpinupCommand(ctx CommandContext, result CommandResult, s
 	boxName := result.Args[0]
 	s.logger.Info("Spinup command received", "user", ctx.UserID, "box", boxName)
 
-	// Allocate resources with box name (uses free volume from pool)
-	allocatedResources, err := s.allocator.AllocateResourcesForUser(context.Background(), ctx.UserID, boxName)
+	// Reserve volume for user with box name
+	volumeID, err := s.allocator.ReserveVolumeForUser(context.Background(), ctx.UserID, boxName)
 	if err != nil {
 		errorMsg := fmt.Sprintf("Failed to create box '%s': %v\n", boxName, err)
 		if _, writeErr := sess.Write([]byte(errorMsg)); writeErr != nil {
@@ -360,13 +360,11 @@ func (s *Server) handleSpinupCommand(ctx CommandContext, result CommandResult, s
 		return
 	}
 
-	s.logger.Info("Box created successfully", "user", ctx.UserID, "box", boxName, "instanceID", allocatedResources.InstanceID, "volumeID", allocatedResources.VolumeID)
+	s.logger.Info("Box created successfully", "user", ctx.UserID, "box", boxName, "volumeID", volumeID)
 
-	successMsg := fmt.Sprintf("Box '%s' created successfully!\n\nInstance ID: %s\nVolume ID: %s\nIP Address: %s\n\nTo connect to your box, use:\n  ssh -p 2222 %s@shellbox.dev\n",
+	successMsg := fmt.Sprintf("Box '%s' created successfully!\n\nVolume ID: %s\n\nTo connect to your box, use:\n  ssh shellbox.dev box %s\n",
 		boxName,
-		allocatedResources.InstanceID,
-		allocatedResources.VolumeID,
-		allocatedResources.InstanceIP,
+		volumeID,
 		boxName)
 
 	if _, err := sess.Write([]byte(successMsg)); err != nil {
@@ -392,8 +390,8 @@ func (s *Server) handleBoxCommand(ctx CommandContext, result CommandResult, sess
 	boxName := result.Args[0]
 	s.logger.Info("Box command received", "user", ctx.UserID, "box", boxName)
 
-	// Allocate existing resources for this user and box
-	allocatedResources, err := s.allocator.AllocateExistingResourcesForUser(context.Background(), ctx.UserID, boxName)
+	// Allocate resources for this user and box
+	allocatedResources, err := s.allocator.AllocateResourcesForUser(context.Background(), ctx.UserID, boxName)
 	if err != nil {
 		errorMsg := fmt.Sprintf("Failed to connect to box '%s': %v\n", boxName, err)
 		if _, writeErr := sess.Write([]byte(errorMsg)); writeErr != nil {
