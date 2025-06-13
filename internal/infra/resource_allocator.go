@@ -5,6 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
+
+	"github.com/google/uuid"
 )
 
 // AllocatedResources represents resources allocated to a user session
@@ -55,6 +58,49 @@ func (ra *ResourceAllocator) AllocateResourcesForUser(ctx context.Context, userI
 	return &AllocatedResources{
 		InstanceID: instance.ResourceID,
 		VolumeID:   volume.ResourceID,
+		InstanceIP: instanceIP,
+	}, nil
+}
+
+// AllocateResourcesForUserWithBox finds a free instance and creates a new volume from golden snapshot for a user with a specific box name
+func (ra *ResourceAllocator) AllocateResourcesForUserWithBox(ctx context.Context, userID, boxName string) (*AllocatedResources, error) {
+	// Find available instance
+	freeInstances, err := ra.resourceQueries.GetInstancesByStatus(ctx, ResourceStatusFree)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query free instances: %w", err)
+	}
+	if len(freeInstances) == 0 {
+		return nil, fmt.Errorf("no free instances available")
+	}
+	instance := freeInstances[0]
+
+	// Create volume from golden snapshot
+	volume, err := ra.createVolumeFromGoldenSnapshot(ctx, userID, boxName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create volume from golden snapshot: %w", err)
+	}
+
+	// Perform allocation steps with rollback on failure
+	if err := ra.performAllocationWithBox(ctx, instance, *volume, userID, boxName); err != nil {
+		// Clean up the volume we just created
+		if deleteErr := DeleteVolume(ctx, ra.clients, ra.clients.ResourceGroupName, volume.Name); deleteErr != nil {
+			slog.Warn("Failed to cleanup created volume after allocation failure", "volumeName", volume.Name, "error", deleteErr)
+		}
+		return nil, err
+	}
+
+	// Get instance IP and start QEMU
+	instanceIP, err := ra.finalizeAllocation(ctx, instance, ResourceInfo{ResourceID: volume.VolumeID})
+	if err != nil {
+		ra.rollbackAllocation(ctx, instance.ResourceID, volume.VolumeID)
+		return nil, err
+	}
+
+	slog.Info("resources allocated with box", "instanceID", instance.ResourceID, "volumeID", volume.VolumeID, "userID", userID, "boxName", boxName)
+
+	return &AllocatedResources{
+		InstanceID: instance.ResourceID,
+		VolumeID:   volume.VolumeID,
 		InstanceIP: instanceIP,
 	}, nil
 }
@@ -164,5 +210,61 @@ func (ra *ResourceAllocator) ReleaseResources(ctx context.Context, instanceID, v
 	}
 
 	slog.Info("resources released", "instanceID", instanceID, "volumeID", volumeID)
+	return nil
+}
+
+// createVolumeFromGoldenSnapshot creates a new volume from the golden snapshot
+func (ra *ResourceAllocator) createVolumeFromGoldenSnapshot(ctx context.Context, userID, boxName string) (*VolumeInfo, error) {
+	// Get the golden snapshot
+	goldenSnapshot, err := CreateGoldenSnapshotIfNotExists(ctx, ra.clients, "", "")
+	if err != nil {
+		return nil, fmt.Errorf("failed to ensure golden snapshot exists: %w", err)
+	}
+
+	// Generate unique volume name
+	namer := NewResourceNamer(ra.clients.Suffix)
+	volumeID := uuid.New().String()
+	volumeName := namer.VolumePoolDiskName(volumeID)
+
+	// Create volume tags
+	now := time.Now().UTC()
+	tags := VolumeTags{
+		Role:      ResourceRoleVolume,
+		Status:    ResourceStatusFree,
+		CreatedAt: now.Format(time.RFC3339),
+		LastUsed:  now.Format(time.RFC3339),
+		VolumeID:  volumeID,
+		UserID:    userID,
+		BoxName:   boxName,
+	}
+
+	// Create volume from snapshot
+	volumeInfo, err := CreateVolumeFromSnapshot(ctx, ra.clients, ra.clients.ResourceGroupName, volumeName, goldenSnapshot.ResourceID, tags)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create volume from snapshot: %w", err)
+	}
+
+	return volumeInfo, nil
+}
+
+// performAllocationWithBox marks resources as allocated with box name and attaches volume
+func (ra *ResourceAllocator) performAllocationWithBox(ctx context.Context, instance ResourceInfo, volume VolumeInfo, userID, boxName string) error {
+	// Mark instance as connected and set userID
+	if err := UpdateInstanceStatusAndUser(ctx, ra.clients, instance.ResourceID, ResourceStatusConnected, userID); err != nil {
+		return fmt.Errorf("failed to mark instance as connected: %w", err)
+	}
+
+	// Mark volume as attached and set userID and boxName
+	if err := UpdateVolumeStatusUserAndBox(ctx, ra.clients, volume.VolumeID, ResourceStatusAttached, userID, boxName); err != nil {
+		ra.rollbackInstanceStatus(ctx, instance.ResourceID)
+		return fmt.Errorf("failed to mark volume as attached: %w", err)
+	}
+
+	// Attach volume to instance
+	if err := AttachVolumeToInstance(ctx, ra.clients, instance.ResourceID, volume.VolumeID); err != nil {
+		ra.rollbackAllocation(ctx, instance.ResourceID, volume.VolumeID)
+		return fmt.Errorf("failed to attach volume to instance: %w", err)
+	}
+
 	return nil
 }

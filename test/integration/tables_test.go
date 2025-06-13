@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/data/aztables"
-	"github.com/google/uuid"
-
 	"shellbox/internal/infra"
 	"shellbox/test"
+
+	"github.com/Azure/azure-sdk-for-go/sdk/data/aztables"
+	"github.com/google/uuid"
 )
 
 func TestTableStorageCreationAndIdempotency(t *testing.T) {

@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/data/aztables"
-
 	"shellbox/internal/infra"
 	"shellbox/test"
+
+	"github.com/Azure/azure-sdk-for-go/sdk/data/aztables"
 )
 
 func TestTableStorageClientCreation(t *testing.T) {

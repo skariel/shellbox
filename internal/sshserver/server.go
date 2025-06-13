@@ -355,10 +355,27 @@ func (s *Server) handleSpinupCommand(ctx CommandContext, result CommandResult, s
 	boxName := result.Args[0]
 	s.logger.Info("Spinup command received", "user", ctx.UserID, "box", boxName)
 
-	// TODO: Implement actual box creation/allocation logic here
-	// For now, just simulate successful box creation
+	// Allocate resources with box name (creates volume from golden snapshot)
+	allocatedResources, err := s.allocator.AllocateResourcesForUserWithBox(context.Background(), ctx.UserID, boxName)
+	if err != nil {
+		errorMsg := fmt.Sprintf("Failed to create box '%s': %v\n", boxName, err)
+		if _, writeErr := sess.Write([]byte(errorMsg)); writeErr != nil {
+			s.logger.Error("Error writing spinup error message", "error", writeErr)
+		}
+		if exitErr := sess.Exit(1); exitErr != nil {
+			s.logger.Error("Error during exit(1)", "error", exitErr)
+		}
+		return
+	}
 
-	successMsg := fmt.Sprintf("Box '%s' created successfully!\n\nTo connect to your box, use:\n  ssh -p 2222 %s@shellbox.dev\n", boxName, boxName)
+	s.logger.Info("Box created successfully", "user", ctx.UserID, "box", boxName, "instanceID", allocatedResources.InstanceID, "volumeID", allocatedResources.VolumeID)
+
+	successMsg := fmt.Sprintf("Box '%s' created successfully!\n\nInstance ID: %s\nVolume ID: %s\nIP Address: %s\n\nTo connect to your box, use:\n  ssh -p 2222 %s@shellbox.dev\n",
+		boxName,
+		allocatedResources.InstanceID,
+		allocatedResources.VolumeID,
+		allocatedResources.InstanceIP,
+		boxName)
 
 	if _, err := sess.Write([]byte(successMsg)); err != nil {
 		s.logger.Error("Error writing spinup success message", "error", err)

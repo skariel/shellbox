@@ -6,12 +6,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
-	"github.com/google/uuid"
-
 	"shellbox/internal/infra"
 	"shellbox/internal/sshutil"
 	"shellbox/test"
+
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
+	"github.com/google/uuid"
 )
 
 func TestVolumeCreationAndDeletion(t *testing.T) {

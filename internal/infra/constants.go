@@ -87,6 +87,7 @@ const (
 	TagKeyVolumeID   = "shellbox:volumeid"
 	TagKeyInstanceID = "shellbox:instanceid"
 	TagKeyUserID     = "shellbox:userid"
+	TagKeyBoxName    = "shellbox:boxname"
 )
 
 // Tag keys for golden snapshot resources (separate namespace)

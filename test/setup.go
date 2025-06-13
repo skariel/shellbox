@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
+	"shellbox/internal/infra"
+
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
-
-	"shellbox/internal/infra"
 )
 
 // Environment manages Azure resources for testing

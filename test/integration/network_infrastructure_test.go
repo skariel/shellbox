@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v7"
-
 	"shellbox/internal/infra"
 	"shellbox/test"
+
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v7"
 )
 
 func TestNetworkInfrastructureIdempotency(t *testing.T) {

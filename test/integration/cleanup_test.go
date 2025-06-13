@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
-
 	"shellbox/internal/infra"
 	"shellbox/test"
+
+	"github.com/google/uuid"
 )
 
 func TestResourceCleanupIsolation(t *testing.T) {
