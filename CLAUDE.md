@@ -42,6 +42,20 @@ When you change some files -- run the reindexing again!
 
 Use the [comby tool](https://comby.dev) for structural search-and-replace operations. It understands code structure better than regex, handles nested expressions, comments, and strings correctly. Prefer comby over grep/sed for pattern-based search tasks, but always prefer LSP for symbol-based operations.
 
+don't hard-code values and string, use instead constants from the constants.go file. Define new constants as needed.
+
+Azure SDK: always use pointers and consistent polling
+
+Retry operations with centralized helper
+
+Resource naming with consistent patterns
+
+resourse graph is used instead of keeping any local copy that could go inconsistent.
+
+resources have tags for querying with the resource graph.
+
+for operations on Azure, we wait with the retry function until we see it in the resource graph
+
 ### Go Standards
 - **Go 1.24** with modern idioms
 - **Error Handling**: `log.Fatal()` for deployment, error returns for runtime
@@ -57,30 +71,6 @@ Use the [comby tool](https://comby.dev) for structural search-and-replace operat
 - `internal/infra/`: Azure resource management (VMs, networking, storage)
 - `internal/sshserver/`: SSH proxy and command handling
 - `internal/sshutil/`: SSH key management and remote operations
-
-## Codebase Architecture
-
-### Core Infrastructure (`internal/infra/`)
-
-**Resource Management:**
-- `instances.go` (676 lines) - Azure VM lifecycle with networking setup
-- `volumes.go` (262 lines) - Managed disk operations and attachment
-- `pool.go` (369 lines) - Dynamic resource pool scaling and maintenance
-- `resource_allocator.go` (168 lines) - User resource allocation with rollback
-- `resource_graph_queries.go` (367 lines) - Azure Resource Graph discovery
-
-**Infrastructure Setup:**
-- `bastion.go` (308 lines) - Bastion host deployment with cloud-init
-- `network.go` (185 lines) - VNet, subnet, NSG management
-- `golden_snapshot.go` (556 lines) - QEMU base image creation
-- `qemu_manager.go` (104 lines) - Remote QEMU process management
-
-**Support Systems:**
-- `clients.go` (170 lines) - Azure SDK client initialization
-- `tables.go` (249 lines) - Azure Table Storage for events/registry
-- `retry.go` (37 lines) - Centralized retry logic (`RetryOperation`)
-- `resource_naming.go` (133 lines) - Consistent naming conventions
-- `constants.go` (202 lines) - Configuration constants
 
 ### SSH Server (`internal/sshserver/`)
 - `server.go` (415 lines) - SSH proxy with session management
@@ -108,17 +98,6 @@ infra.FatalOnError(err, "deployment failed")
 if err != nil { return fmt.Errorf("operation failed: %w", err) }
 ```
 
-Azure SDK: always use pointers and consistent polling
-
-Retry operations with centralized helper
-
-Resource naming with consistent patterns
-
-resourse graph is used instead of keeping any local copy that could go inconsistent.
-
-resources have tags for querying with the resource graph.
-
-for operations on Azure, we wait with the retry function until we see it in the resource graph
 
 ### Struct Conventions
 - **Metadata**: `*Tags` structs (e.g., `InstanceTags`, `VolumeTags`)

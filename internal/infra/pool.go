@@ -182,7 +182,7 @@ func (p *BoxPool) scaleUpInstances(ctx context.Context, currentSize int) {
 				PartitionKey: now.Format("2006-01-02"),
 				RowKey:       fmt.Sprintf("%s_instance_create", now.Format("20060102T150405")),
 				Timestamp:    now,
-				EventType:    "instance_create",
+				EventType:    EventTypeInstanceCreate,
 				BoxID:        instanceID,
 				Details:      fmt.Sprintf(`{"status":"%s"}`, ResourceStatusFree),
 			}
@@ -253,7 +253,7 @@ func (p *BoxPool) scaleDownInstances(ctx context.Context, currentSize int) {
 				PartitionKey: now.Format("2006-01-02"),
 				RowKey:       fmt.Sprintf("%s_instance_delete", now.Format("20060102T150405")),
 				Timestamp:    now,
-				EventType:    "instance_delete",
+				EventType:    EventTypeInstanceDelete,
 				BoxID:        inst.ResourceID,
 				Details:      `{"reason":"pool_shrink"}`,
 			}
@@ -307,7 +307,7 @@ func (p *BoxPool) scaleUpVolumes(ctx context.Context, currentSize int) {
 				PartitionKey: now.Format("2006-01-02"),
 				RowKey:       fmt.Sprintf("%s_volume_create_%s", now.Format("20060102T150405.000"), volumeID),
 				Timestamp:    now,
-				EventType:    "volume_create",
+				EventType:    EventTypeVolumeCreate,
 				BoxID:        volumeID,
 				Details:      fmt.Sprintf(`{"status":"%s","size_gb":%d}`, ResourceStatusFree, DefaultVolumeSizeGB),
 			}
@@ -375,7 +375,7 @@ func (p *BoxPool) scaleDownVolumes(ctx context.Context, currentSize int) {
 				PartitionKey: now.Format("2006-01-02"),
 				RowKey:       fmt.Sprintf("%s_volume_delete", now.Format("20060102T150405")),
 				Timestamp:    now,
-				EventType:    "volume_delete",
+				EventType:    EventTypeVolumeDelete,
 				BoxID:        vol.ResourceID,
 				Details:      `{"reason":"pool_shrink"}`,
 			}

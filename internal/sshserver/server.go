@@ -54,7 +54,7 @@ func New(port int, clients *infra.AzureClients) (*Server, error) {
 		allocator: allocator,
 		logger:    infra.NewLogger(),
 		boxSSHConfig: &ssh.ClientConfig{
-			User: "ubuntu",
+			User: infra.SystemUserUbuntu,
 			Auth: []ssh.AuthMethod{
 				ssh.PublicKeys(signer),
 			},
@@ -146,7 +146,7 @@ func (s *Server) handleShellSession(sess gssh.Session, resources *infra.Allocate
 		PartitionKey: now.Format("2006-01-02"),
 		RowKey:       fmt.Sprintf("%s_session_start", now.Format("20060102T150405")),
 		Timestamp:    now,
-		EventType:    "session_start",
+		EventType:    infra.EventTypeSessionStart,
 		SessionID:    sessionID,
 		UserKey:      userKeyHash,
 		BoxID:        resources.InstanceID,
@@ -180,7 +180,7 @@ func (s *Server) handleShellSession(sess gssh.Session, resources *infra.Allocate
 		PartitionKey: now.Format("2006-01-02"),
 		RowKey:       fmt.Sprintf("%s_resource_connect", time.Now().Format("20060102T150405")),
 		Timestamp:    time.Now(),
-		EventType:    "resource_connect",
+		EventType:    infra.EventTypeResourceConnect,
 		SessionID:    sessionID,
 		UserKey:      userKeyHash,
 		BoxID:        resources.InstanceID,

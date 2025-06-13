@@ -197,7 +197,7 @@ func copyTableStorageConfig(ctx context.Context, clients *AzureClients, config *
 	tableStorageConfigContent := fmt.Sprintf(`{"connectionString": "%s"}`, clients.TableStorageConnectionString)
 
 	// Create temporary local file
-	tempFile := "/tmp/tablestorage.json"
+	tempFile := TempConfigPath
 	if err := os.WriteFile(tempFile, []byte(tableStorageConfigContent), 0o600); err != nil {
 		return fmt.Errorf("failed to create temporary Table Storage config file: %w", err)
 	}

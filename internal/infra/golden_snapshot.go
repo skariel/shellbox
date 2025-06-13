@@ -237,7 +237,7 @@ func createBoxWithDataVolume(ctx context.Context, clients *AzureClients, resourc
 			},
 		},
 		Tags: map[string]*string{
-			GoldenTagKeyRole:    to.Ptr("temp-data-disk"),
+			GoldenTagKeyRole:    to.Ptr(GoldenRoleTempDataDisk),
 			GoldenTagKeyPurpose: to.Ptr("golden-snapshot-creation"),
 			GoldenTagKeyCreated: to.Ptr(now.Format(time.RFC3339)),
 			GoldenTagKeyStage:   to.Ptr("creating"),
@@ -315,7 +315,7 @@ func waitForQEMUSetup(ctx context.Context, _ *AzureClients, tempBox *tempBoxInfo
 			"-o", "ConnectTimeout=5",
 			"-o", "StrictHostKeyChecking=no",
 			"-p", fmt.Sprintf("%d", BoxSSHPort),
-			fmt.Sprintf("ubuntu@%s", tempBox.PrivateIP),
+			fmt.Sprintf("%s@%s", SystemUserUbuntu, tempBox.PrivateIP),
 			"echo 'SSH test successful'")
 		if output, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("QEMU VM SSH not yet ready: %w: %s", err, string(output))
@@ -352,7 +352,7 @@ func createSnapshotFromDataVolume(ctx context.Context, clients *AzureClients, re
 			},
 		},
 		Tags: map[string]*string{
-			GoldenTagKeyRole:    to.Ptr("golden-snapshot"),
+			GoldenTagKeyRole:    to.Ptr(GoldenRoleSnapshot),
 			GoldenTagKeyPurpose: to.Ptr("qemu-base-image"),
 			GoldenTagKeyCreated: to.Ptr(time.Now().Format(time.RFC3339)),
 			GoldenTagKeyStage:   to.Ptr("ready"),
@@ -441,7 +441,7 @@ func createBoxVMWithDataDisk(ctx context.Context, clients *AzureClients, resourc
 			},
 		},
 		Tags: map[string]*string{
-			GoldenTagKeyRole:    to.Ptr("temp-vm"),
+			GoldenTagKeyRole:    to.Ptr(GoldenRoleTempVM),
 			GoldenTagKeyPurpose: to.Ptr("golden-snapshot-creation"),
 			GoldenTagKeyCreated: to.Ptr(time.Now().Format(time.RFC3339)),
 			GoldenTagKeyStage:   to.Ptr("creating"),

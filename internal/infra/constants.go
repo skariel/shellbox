@@ -101,6 +101,38 @@ const (
 	GoldenTagKeyStage   = "golden:stage"
 )
 
+// Event types for logging
+const (
+	EventTypeInstanceCreate  = "instance_create"
+	EventTypeInstanceDelete  = "instance_delete"
+	EventTypeVolumeCreate    = "volume_create"
+	EventTypeVolumeDelete    = "volume_delete"
+	EventTypeSessionStart    = "session_start"
+	EventTypeResourceConnect = "resource_connect"
+)
+
+// Golden snapshot role values
+const (
+	GoldenRoleTempDataDisk = "temp-data-disk"
+	GoldenRoleTempVM       = "temp-vm"
+	GoldenRoleSnapshot     = "golden-snapshot"
+)
+
+// System user constants
+const (
+	SystemUserUbuntu = "ubuntu"
+)
+
+// File system paths
+const (
+	QEMUMemoryPath    = "/mnt/userdata/qemu-memory/ubuntu-mem"
+	QEMUDisksPath     = "/mnt/userdata/qemu-disks"
+	QEMUBaseDiskPath  = "/mnt/userdata/qemu-disks/ubuntu-base.qcow2"
+	QEMUCloudInitPath = "/mnt/userdata/qemu-disks/cloud-init.iso"
+	QEMUMonitorSocket = "/tmp/qemu-monitor.sock"
+	TempConfigPath    = "/tmp/tablestorage.json"
+)
+
 // Azure resource types for Resource Graph queries
 const (
 	AzureResourceTypeVM   = "microsoft.compute/virtualmachines"

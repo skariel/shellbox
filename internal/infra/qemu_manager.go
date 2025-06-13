@@ -45,13 +45,13 @@ sudo qemu-system-x86_64 \
    -enable-kvm \
    -m 24G \
    -mem-prealloc \
-   -mem-path /mnt/userdata/qemu-memory/ubuntu-mem \
+   -mem-path ` + QEMUMemoryPath + ` \
    -smp 8 \
    -cpu host \
-   -drive file=/mnt/userdata/qemu-disks/ubuntu-base.qcow2,format=qcow2 \
-   -drive file=/mnt/userdata/qemu-disks/cloud-init.iso,format=raw \
+   -drive file=` + QEMUBaseDiskPath + `,format=qcow2 \
+   -drive file=` + QEMUCloudInitPath + `,format=raw \
    -nographic \
-   -monitor unix:/tmp/qemu-monitor.sock,server,nowait \
+   -monitor unix:` + QEMUMonitorSocket + `,server,nowait \
    -nic user,model=virtio,hostfwd=tcp::2222-:22,dns=8.8.8.8 \
    -loadvm ssh-ready &
 
@@ -96,7 +96,7 @@ sudo pkill qemu-system-x86_64 || true
 func (qm *QEMUManager) waitForQEMUSSH(ctx context.Context, instanceIP string) error {
 	return RetryOperation(ctx, func(ctx context.Context) error {
 		testCmd := fmt.Sprintf(`
-timeout 5 ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -p %d ubuntu@localhost 'echo QEMU SSH ready' || exit 1
+timeout 5 ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -p %d `+SystemUserUbuntu+`@localhost 'echo QEMU SSH ready' || exit 1
 `, BoxSSHPort)
 
 		return sshutil.ExecuteCommand(ctx, testCmd, AdminUsername, instanceIP)
