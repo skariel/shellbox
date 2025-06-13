@@ -1,6 +1,9 @@
 package infra
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 type ResourceNamer struct {
 	suffix string
@@ -102,7 +105,7 @@ func (r *ResourceNamer) VolumePoolDiskName(volumeID string) string {
 // Uses TestingStorageAccountBaseName for testing (when suffix is "testing")
 // Uses ProductionStorageAccountBaseName for production environments
 func (r *ResourceNamer) SharedStorageAccountName() string {
-	if r.suffix == "testing" {
+	if strings.Contains(r.suffix, "test") {
 		return TestingStorageAccountBaseName
 	}
 	return ProductionStorageAccountBaseName
