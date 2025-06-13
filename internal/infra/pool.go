@@ -10,6 +10,30 @@ import (
 	"github.com/google/uuid"
 )
 
+// Pool configuration constants for production
+const (
+	DefaultMinFreeInstances  = 5
+	DefaultMaxFreeInstances  = 10
+	DefaultMaxTotalInstances = 100
+	DefaultMinFreeVolumes    = 20
+	DefaultMaxFreeVolumes    = 50
+	DefaultMaxTotalVolumes   = 500
+	DefaultCheckInterval     = 1 * time.Minute
+	DefaultScaleDownCooldown = 10 * time.Minute
+)
+
+// Pool configuration constants for development
+const (
+	DevMinFreeInstances  = 1
+	DevMaxFreeInstances  = 2
+	DevMaxTotalInstances = 5
+	DevMinFreeVolumes    = 2
+	DevMaxFreeVolumes    = 5
+	DevMaxTotalVolumes   = 20
+	DevCheckInterval     = 30 * time.Second
+	DevScaleDownCooldown = 2 * time.Minute
+)
+
 // PoolConfig holds configuration for dual pool management (instances + volumes)
 type PoolConfig struct {
 	// Instance pool settings

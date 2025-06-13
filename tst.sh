@@ -13,7 +13,7 @@ find . -name "*.go" -not -path "./vendor/*" -exec goimports -w {} \;
 
 # Static analysis and linting
 echo "🔍 Running static analysis..."
-golangci-lint run
+golangci-lint run --timeout 10m
 
 # Security vulnerability check
 echo "🛡️  Checking for security vulnerabilities..."

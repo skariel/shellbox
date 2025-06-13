@@ -76,12 +76,7 @@ func (r *ResourceNamer) BoxOSDiskName(boxID string) string {
 func (r *ResourceNamer) StorageAccountName() string {
 	// Storage account names must be 3-24 chars, lowercase letters and numbers only
 	// Remove hyphens and truncate suffix if needed
-	cleanSuffix := ""
-	for _, char := range r.suffix {
-		if (char >= 'a' && char <= 'z') || (char >= '0' && char <= '9') {
-			cleanSuffix += string(char)
-		}
-	}
+	cleanSuffix := r.cleanSuffixAlphanumeric(false) // lowercase only
 	// Ensure total length is <= 24 chars
 	prefix := "sb" // shortened from "shellbox"
 	maxSuffixLen := 24 - len(prefix)
@@ -123,9 +118,20 @@ func (r *ResourceNamer) ResourceRegistryTableName() string {
 // cleanSuffixForTable removes invalid characters from suffix for Azure Table names
 // Table names can only contain alphanumeric characters
 func (r *ResourceNamer) cleanSuffixForTable() string {
+	return r.cleanSuffixAlphanumeric(true) // allow uppercase
+}
+
+// cleanSuffixAlphanumeric removes non-alphanumeric characters from suffix
+// If allowUppercase is true, allows both upper and lowercase letters
+// If allowUppercase is false, allows only lowercase letters and numbers
+func (r *ResourceNamer) cleanSuffixAlphanumeric(allowUppercase bool) string {
 	cleanSuffix := ""
 	for _, char := range r.suffix {
-		if (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') || (char >= '0' && char <= '9') {
+		isLower := char >= 'a' && char <= 'z'
+		isUpper := char >= 'A' && char <= 'Z'
+		isDigit := char >= '0' && char <= '9'
+
+		if isDigit || isLower || (allowUppercase && isUpper) {
 			cleanSuffix += string(char)
 		}
 	}
