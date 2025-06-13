@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os/exec"
 	"time"
 
 	"shellbox/internal/sshutil"
@@ -95,10 +96,16 @@ sudo pkill qemu-system-x86_64 || true
 // waitForQEMUSSH waits for QEMU VM to be SSH-accessible
 func (qm *QEMUManager) waitForQEMUSSH(ctx context.Context, instanceIP string) error {
 	return RetryOperation(ctx, func(ctx context.Context) error {
-		testCmd := fmt.Sprintf(`
-timeout 5 ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no -p %d `+SystemUserUbuntu+`@localhost 'echo QEMU SSH ready' || exit 1
-`, BoxSSHPort)
-
-		return sshutil.ExecuteCommand(ctx, testCmd, AdminUsername, instanceIP)
+		// Test SSH connection directly to the QEMU VM from bastion
+		cmd := exec.CommandContext(ctx, "ssh",
+			"-o", "ConnectTimeout=5",
+			"-o", "StrictHostKeyChecking=no",
+			"-p", fmt.Sprintf("%d", BoxSSHPort),
+			fmt.Sprintf("%s@%s", SystemUserUbuntu, instanceIP),
+			"echo 'QEMU SSH ready'")
+		if output, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("QEMU VM SSH not yet ready: %w: %s", err, string(output))
+		}
+		return nil
 	}, 2*time.Minute, 10*time.Second, "QEMU SSH connectivity")
 }
