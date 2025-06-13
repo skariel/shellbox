@@ -13,6 +13,7 @@ func TestVolumeTagsToMap(t *testing.T) {
 		CreatedAt: "2024-01-01T00:00:00Z",
 		LastUsed:  "2024-01-01T01:00:00Z",
 		VolumeID:  "vol123",
+		UserID:    "abc123def456",
 	}
 
 	tagMap := infra.VolumeTagsToMap(tags)
@@ -21,8 +22,8 @@ func TestVolumeTagsToMap(t *testing.T) {
 		t.Errorf("tagMap should not be nil")
 		return
 	}
-	if len(tagMap) != 5 {
-		t.Errorf("tagMap should have 5 entries, got %d", len(tagMap))
+	if len(tagMap) != 6 {
+		t.Errorf("tagMap should have 6 entries, got %d", len(tagMap))
 	}
 	if tagMap[infra.TagKeyRole] == nil || *tagMap[infra.TagKeyRole] != "volume" {
 		t.Errorf("TagKeyRole should be 'volume'")
@@ -39,6 +40,9 @@ func TestVolumeTagsToMap(t *testing.T) {
 	if tagMap[infra.TagKeyVolumeID] == nil || *tagMap[infra.TagKeyVolumeID] != "vol123" {
 		t.Errorf("TagKeyVolumeID should be 'vol123'")
 	}
+	if tagMap[infra.TagKeyUserID] == nil || *tagMap[infra.TagKeyUserID] != "abc123def456" {
+		t.Errorf("TagKeyUserID should be 'abc123def456'")
+	}
 }
 
 func TestVolumeTagsToMapEmptyValues(t *testing.T) {
@@ -49,8 +53,8 @@ func TestVolumeTagsToMapEmptyValues(t *testing.T) {
 		t.Errorf("tagMap should not be nil")
 		return
 	}
-	if len(tagMap) != 5 {
-		t.Errorf("tagMap should have 5 entries, got %d", len(tagMap))
+	if len(tagMap) != 6 {
+		t.Errorf("tagMap should have 6 entries, got %d", len(tagMap))
 	}
 	for key, value := range tagMap {
 		if value == nil || *value != "" {

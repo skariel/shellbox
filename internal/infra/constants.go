@@ -15,6 +15,11 @@ const (
 	Location = "westus2"
 )
 
+// User identification
+const (
+	UserIDLength = 32
+)
+
 // Network configuration
 const (
 	vnetAddressSpace = "10.0.0.0/8"
@@ -75,11 +80,13 @@ const (
 
 // Tag keys for pool resources
 const (
-	TagKeyRole     = "shellbox:role"
-	TagKeyStatus   = "shellbox:status"
-	TagKeyCreated  = "shellbox:created"
-	TagKeyLastUsed = "shellbox:lastused"
-	TagKeyVolumeID = "shellbox:volumeid"
+	TagKeyRole       = "shellbox:role"
+	TagKeyStatus     = "shellbox:status"
+	TagKeyCreated    = "shellbox:created"
+	TagKeyLastUsed   = "shellbox:lastused"
+	TagKeyVolumeID   = "shellbox:volumeid"
+	TagKeyInstanceID = "shellbox:instanceid"
+	TagKeyUserID     = "shellbox:userid"
 )
 
 // Tag keys for golden snapshot resources (separate namespace)

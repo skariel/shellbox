@@ -171,13 +171,15 @@ func TestVolumeTagsToMap(t *testing.T) {
 				CreatedAt: "2023-01-01T00:00:00Z",
 				LastUsed:  "2023-01-01T12:00:00Z",
 				VolumeID:  "vol-123",
+				UserID:    "abc123def456",
 			},
 			expected: map[string]*string{
 				"shellbox:role":     stringPtr("volume"),
 				"shellbox:status":   stringPtr("free"),
 				"shellbox:created":  stringPtr("2023-01-01T00:00:00Z"),
 				"shellbox:lastused": stringPtr("2023-01-01T12:00:00Z"),
-				"volumeID":          stringPtr("vol-123"),
+				"shellbox:volumeid": stringPtr("vol-123"),
+				"shellbox:userid":   stringPtr("abc123def456"),
 			},
 		},
 		{
@@ -188,7 +190,8 @@ func TestVolumeTagsToMap(t *testing.T) {
 				"shellbox:status":   stringPtr(""),
 				"shellbox:created":  stringPtr(""),
 				"shellbox:lastused": stringPtr(""),
-				"volumeID":          stringPtr(""),
+				"shellbox:volumeid": stringPtr(""),
+				"shellbox:userid":   stringPtr(""),
 			},
 		},
 	}

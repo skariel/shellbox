@@ -21,6 +21,7 @@ type InstanceTags struct {
 	CreatedAt  string
 	LastUsed   string
 	InstanceID string
+	UserID     string
 }
 
 // CreateInstance creates a new instance VM with proper networking setup.
@@ -224,11 +225,12 @@ func createInstanceNIC(ctx context.Context, clients *AzureClients, nicName strin
 func createInstanceVM(ctx context.Context, clients *AzureClients, vmName string, nicID string, config *VMConfig, tags InstanceTags) (*armcompute.VirtualMachine, error) {
 	namer := NewResourceNamer(clients.Suffix)
 	tagsMap := map[string]*string{
-		TagKeyRole:     to.Ptr(tags.Role),
-		TagKeyStatus:   to.Ptr(tags.Status),
-		TagKeyCreated:  to.Ptr(tags.CreatedAt),
-		TagKeyLastUsed: to.Ptr(tags.LastUsed),
-		"instanceID":   to.Ptr(tags.InstanceID),
+		TagKeyRole:       to.Ptr(tags.Role),
+		TagKeyStatus:     to.Ptr(tags.Status),
+		TagKeyCreated:    to.Ptr(tags.CreatedAt),
+		TagKeyLastUsed:   to.Ptr(tags.LastUsed),
+		TagKeyInstanceID: to.Ptr(tags.InstanceID),
+		TagKeyUserID:     to.Ptr(tags.UserID),
 	}
 
 	vmParams := armcompute.VirtualMachine{
@@ -548,6 +550,39 @@ func UpdateInstanceStatus(ctx context.Context, clients *AzureClients, instanceID
 	}
 	vm.Tags[TagKeyStatus] = to.Ptr(status)
 	vm.Tags[TagKeyLastUsed] = to.Ptr(time.Now().UTC().Format(time.RFC3339))
+
+	// Update the VM
+	poller, err := clients.ComputeClient.BeginCreateOrUpdate(ctx, clients.ResourceGroupName, vmName, vm.VirtualMachine, nil)
+	if err != nil {
+		return fmt.Errorf("failed to start VM status update: %w", err)
+	}
+
+	_, err = poller.PollUntilDone(ctx, &DefaultPollOptions)
+	if err != nil {
+		return fmt.Errorf("failed to update VM status: %w", err)
+	}
+
+	return nil
+}
+
+// UpdateInstanceStatusAndUser updates the status and userID tags of an instance
+func UpdateInstanceStatusAndUser(ctx context.Context, clients *AzureClients, instanceID, status, userID string) error {
+	namer := NewResourceNamer(clients.Suffix)
+	vmName := namer.BoxVMName(instanceID)
+
+	// Get current VM
+	vm, err := clients.ComputeClient.Get(ctx, clients.ResourceGroupName, vmName, nil)
+	if err != nil {
+		return fmt.Errorf("failed to get VM for status update: %w", err)
+	}
+
+	// Update status and userID tags
+	if vm.Tags == nil {
+		vm.Tags = make(map[string]*string)
+	}
+	vm.Tags[TagKeyStatus] = to.Ptr(status)
+	vm.Tags[TagKeyLastUsed] = to.Ptr(time.Now().UTC().Format(time.RFC3339))
+	vm.Tags[TagKeyUserID] = to.Ptr(userID)
 
 	// Update the VM
 	poller, err := clients.ComputeClient.BeginCreateOrUpdate(ctx, clients.ResourceGroupName, vmName, vm.VirtualMachine, nil)

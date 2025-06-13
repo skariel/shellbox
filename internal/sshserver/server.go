@@ -102,10 +102,28 @@ func (s *Server) handleSession(sess gssh.Session) {
 		return
 	}
 
-	s.handleShellSession(sess)
+	// Reject interactive sessions without commands
+	helpMsg := `Interactive shell sessions require specifying a box name.
+
+Usage:
+  ssh shellbox.dev box <box_name>
+
+Examples:
+  ssh shellbox.dev box dev1
+  ssh shellbox.dev spinup myproject
+
+For more help:
+  ssh shellbox.dev help
+`
+	if _, err := sess.Write([]byte(helpMsg)); err != nil {
+		s.logger.Error("Error writing help message", "error", err)
+	}
+	if err := sess.Exit(1); err != nil {
+		s.logger.Error("Error during exit(1)", "error", err)
+	}
 }
 
-func (s *Server) handleShellSession(sess gssh.Session) {
+func (s *Server) handleShellSession(sess gssh.Session, boxName string) {
 	if _, err := sess.Write([]byte("\n\nHI FROM SHELLBOX!\n\n")); err != nil {
 		s.logger.Error("Error writing to SSH session", "error", err)
 		return
@@ -119,6 +137,9 @@ func (s *Server) handleShellSession(sess gssh.Session) {
 		userKeyHash = hex.EncodeToString(hash[:])[:16]
 	}
 
+	// Log the box name
+	s.logger.Info("starting shell session", "sessionID", sessionID, "userKeyHash", userKeyHash, "boxName", boxName)
+
 	// Log session start event
 	now := time.Now()
 	sessionEvent := infra.EventLogEntity{
@@ -128,7 +149,8 @@ func (s *Server) handleShellSession(sess gssh.Session) {
 		EventType:    "session_start",
 		SessionID:    sessionID,
 		UserKey:      userKeyHash,
-		Details:      fmt.Sprintf(`{"remote_addr":"%s"}`, sess.RemoteAddr()),
+		BoxID:        boxName,
+		Details:      fmt.Sprintf(`{"remote_addr":"%s","box_name":"%s"}`, sess.RemoteAddr(), boxName),
 	}
 	if err := infra.WriteEventLog(context.Background(), s.clients, sessionEvent); err != nil {
 		s.logger.Warn("Failed to log session start event", "error", err)
@@ -269,6 +291,8 @@ func (s *Server) handleCommandSession(sess gssh.Session) {
 	switch result.Action {
 	case ActionSpinup:
 		s.handleSpinupCommand(ctx, result, sess)
+	case ActionBox:
+		s.handleBoxCommand(ctx, result, sess)
 	case ActionHelp:
 		s.handleHelpCommand(ctx, result, sess)
 	case ActionVersion:
@@ -295,12 +319,19 @@ func (s *Server) handleCommandSession(sess gssh.Session) {
 	}
 }
 
+// generateUserID creates a consistent 32-character user ID from a public key
+func generateUserID(publicKey ssh.PublicKey) string {
+	if publicKey == nil {
+		return ""
+	}
+	hash := sha256.Sum256(publicKey.Marshal())
+	hexHash := hex.EncodeToString(hash[:])
+	return hexHash[:infra.UserIDLength]
+}
+
 // createCommandContext extracts context information from the SSH session
 func (s *Server) createCommandContext(sess gssh.Session) CommandContext {
-	var userID string
-	if publicKey := sess.PublicKey(); publicKey != nil {
-		userID = string(publicKey.Marshal())
-	}
+	userID := generateUserID(sess.PublicKey())
 
 	return CommandContext{
 		UserID:     userID,
@@ -322,7 +353,7 @@ func (s *Server) handleSpinupCommand(ctx CommandContext, result CommandResult, s
 	}
 
 	boxName := result.Args[0]
-	s.logger.Info("Spinup command received", "user", ctx.UserID[:16], "box", boxName)
+	s.logger.Info("Spinup command received", "user", ctx.UserID, "box", boxName)
 
 	// TODO: Implement actual box creation/allocation logic here
 	// For now, just simulate successful box creation
@@ -337,18 +368,39 @@ func (s *Server) handleSpinupCommand(ctx CommandContext, result CommandResult, s
 	}
 }
 
+// handleBoxCommand handles the box command to connect to an existing box
+func (s *Server) handleBoxCommand(ctx CommandContext, result CommandResult, sess gssh.Session) {
+	if len(result.Args) == 0 {
+		if _, err := sess.Write([]byte("Error: box name required\n")); err != nil {
+			s.logger.Error("Error writing box error", "error", err)
+		}
+		if err := sess.Exit(1); err != nil {
+			s.logger.Error("Error during exit(1)", "error", err)
+		}
+		return
+	}
+
+	boxName := result.Args[0]
+	s.logger.Info("Box command received", "user", ctx.UserID[:16], "box", boxName)
+
+	// Call the shell session handler with box name
+	s.handleShellSession(sess, boxName)
+}
+
 // handleHelpCommand handles the help command
 func (s *Server) handleHelpCommand(_ CommandContext, _ CommandResult, sess gssh.Session) {
 	helpText := `Shellbox Development Environment Manager
 
 Available commands:
   spinup <box_name>    Create and start a development box
+  box <box_name>       Connect to an existing development box
   help                 Show this help information  
   version              Show version information
   whoami               Show current user information
 
 Examples:
   ssh shellbox.dev spinup dev1
+  ssh shellbox.dev box dev1
   ssh shellbox.dev help
   ssh shellbox.dev whoami
 

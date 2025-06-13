@@ -39,7 +39,7 @@ func (ra *ResourceAllocator) AllocateResourcesForUser(ctx context.Context, userI
 	}
 
 	// Perform allocation steps with rollback on failure
-	if err := ra.performAllocation(ctx, instance, volume); err != nil {
+	if err := ra.performAllocation(ctx, instance, volume, userID); err != nil {
 		return nil, err
 	}
 
@@ -83,14 +83,14 @@ func (ra *ResourceAllocator) findAvailableResources(ctx context.Context) (Resour
 }
 
 // performAllocation marks resources as allocated and attaches volume
-func (ra *ResourceAllocator) performAllocation(ctx context.Context, instance, volume ResourceInfo) error {
-	// Mark instance as connected
-	if err := UpdateInstanceStatus(ctx, ra.clients, instance.ResourceID, ResourceStatusConnected); err != nil {
+func (ra *ResourceAllocator) performAllocation(ctx context.Context, instance, volume ResourceInfo, userID string) error {
+	// Mark instance as connected and set userID
+	if err := UpdateInstanceStatusAndUser(ctx, ra.clients, instance.ResourceID, ResourceStatusConnected, userID); err != nil {
 		return fmt.Errorf("failed to mark instance as connected: %w", err)
 	}
 
-	// Mark volume as attached
-	if err := UpdateVolumeStatus(ctx, ra.clients, volume.ResourceID, ResourceStatusAttached); err != nil {
+	// Mark volume as attached and set userID
+	if err := UpdateVolumeStatusAndUser(ctx, ra.clients, volume.ResourceID, ResourceStatusAttached, userID); err != nil {
 		ra.rollbackInstanceStatus(ctx, instance.ResourceID)
 		return fmt.Errorf("failed to mark volume as attached: %w", err)
 	}
