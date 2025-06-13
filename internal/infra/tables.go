@@ -60,19 +60,6 @@ func ensureStorageAccountExists(ctx context.Context, storageClient *armstorage.A
 		return nil // Already exists
 	}
 
-	// Storage account doesn't exist, check name availability
-	checkAvailability, err := storageClient.CheckNameAvailability(ctx, armstorage.AccountCheckNameAvailabilityParameters{
-		Name: to.Ptr(accountName),
-		Type: to.Ptr("Microsoft.Storage/storageAccounts"),
-	}, nil)
-	if err != nil {
-		return fmt.Errorf("failed to check storage account name availability: %w", err)
-	}
-
-	if !*checkAvailability.NameAvailable {
-		return fmt.Errorf("storage account name '%s' is not available: %s", accountName, *checkAvailability.Message)
-	}
-
 	// Create the storage account
 	poller, err := storageClient.BeginCreate(ctx, resourceGroupName, accountName, armstorage.AccountCreateParameters{
 		SKU: &armstorage.SKU{

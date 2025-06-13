@@ -98,9 +98,14 @@ func (r *ResourceNamer) VolumePoolDiskName(volumeID string) string {
 	return fmt.Sprintf("shellbox-%s-volume-%s", r.suffix, volumeID)
 }
 
-// SharedStorageAccountName returns the shared storage account name for testing
+// SharedStorageAccountName returns the shared storage account name
+// Uses TestingStorageAccountBaseName for testing (when suffix is "testing")
+// Uses ProductionStorageAccountBaseName for production environments
 func (r *ResourceNamer) SharedStorageAccountName() string {
-	return TestingStorageAccountBaseName
+	if r.suffix == "testing" {
+		return TestingStorageAccountBaseName
+	}
+	return ProductionStorageAccountBaseName
 }
 
 // EventLogTableName returns the suffixed table name for EventLog

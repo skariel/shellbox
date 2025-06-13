@@ -36,6 +36,9 @@ const (
 	// Shared storage account for testing (no suffix)
 	TestingStorageAccountBaseName = "shellboxtest536567"
 
+	// Shared storage account for production (no suffix)
+	ProductionStorageAccountBaseName = "shellboxprod123456"
+
 	// Table name constants (used as base for suffixed table names)
 	tableEventLog         = "EventLog"
 	tableResourceRegistry = "ResourceRegistry"
