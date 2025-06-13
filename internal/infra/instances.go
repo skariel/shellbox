@@ -667,6 +667,55 @@ func AttachVolumeToInstance(ctx context.Context, clients *AzureClients, instance
 	return nil
 }
 
+// DetachVolumeFromInstance detaches a volume from an instance VM by removing it from data disks
+func DetachVolumeFromInstance(ctx context.Context, clients *AzureClients, instanceID, volumeID string) error {
+	namer := NewResourceNamer(clients.Suffix)
+	vmName := namer.BoxVMName(instanceID)
+	volumeName := namer.VolumePoolDiskName(volumeID)
+
+	// Get current VM
+	vm, err := clients.ComputeClient.Get(ctx, clients.ResourceGroupName, vmName, nil)
+	if err != nil {
+		return fmt.Errorf("failed to get VM for volume detachment: %w", err)
+	}
+
+	// Find and remove the volume from data disks
+	if vm.Properties.StorageProfile.DataDisks == nil {
+		return nil // No data disks to detach
+	}
+
+	// Filter out the volume to detach
+	updatedDataDisks := make([]*armcompute.DataDisk, 0, len(vm.Properties.StorageProfile.DataDisks))
+	volumeFound := false
+	for _, disk := range vm.Properties.StorageProfile.DataDisks {
+		if disk.Name != nil && *disk.Name == volumeName {
+			volumeFound = true
+			continue // Skip this disk (detach it)
+		}
+		updatedDataDisks = append(updatedDataDisks, disk)
+	}
+
+	if !volumeFound {
+		return nil // Volume was not attached, nothing to do
+	}
+
+	// Update the VM with the new data disk configuration
+	vm.Properties.StorageProfile.DataDisks = updatedDataDisks
+
+	// Update the VM
+	poller, err := clients.ComputeClient.BeginCreateOrUpdate(ctx, clients.ResourceGroupName, vmName, vm.VirtualMachine, nil)
+	if err != nil {
+		return fmt.Errorf("failed to start volume detachment: %w", err)
+	}
+
+	_, err = poller.PollUntilDone(ctx, &DefaultPollOptions)
+	if err != nil {
+		return fmt.Errorf("failed to detach volume: %w", err)
+	}
+
+	return nil
+}
+
 // waitForInstanceInResourceGraph waits for a newly created instance to be visible in Resource Graph with correct tags.
 // This is necessary because Resource Graph has eventual consistency and tags may not be immediately queryable.
 func waitForInstanceInResourceGraph(ctx context.Context, clients *AzureClients, instanceID string, expectedTags InstanceTags) error {

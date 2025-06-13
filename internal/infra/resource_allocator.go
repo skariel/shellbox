@@ -150,16 +150,19 @@ func (ra *ResourceAllocator) ReleaseResources(ctx context.Context, instanceID, v
 		}
 	}
 
-	// Mark resources as free
+	// Detach volume from instance before marking as free
+	if err := DetachVolumeFromInstance(ctx, ra.clients, instanceID, volumeID); err != nil {
+		slog.Warn("Failed to detach volume during cleanup", "instanceID", instanceID, "volumeID", volumeID, "error", err)
+	}
+
+	// Mark instance as free (volume remains attached to user)
 	var errs []error
 
 	if err := UpdateInstanceStatus(ctx, ra.clients, instanceID, ResourceStatusFree); err != nil {
 		errs = append(errs, fmt.Errorf("failed to free instance: %w", err))
 	}
 
-	if err := UpdateVolumeStatus(ctx, ra.clients, volumeID, ResourceStatusFree); err != nil {
-		errs = append(errs, fmt.Errorf("failed to free volume: %w", err))
-	}
+	// Note: Volume remains attached to user and keeps their data
 
 	if len(errs) > 0 {
 		return errors.Join(errs...)
