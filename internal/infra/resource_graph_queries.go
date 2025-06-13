@@ -80,6 +80,15 @@ const (
 | where tags['%s'] =~ '%s'
 | where resourceGroup =~ '%s'
 | project name, id, tags, location`
+
+	// Get volumes by user ID and box name
+	queryVolumesByUserAndBox = `Resources
+| where type =~ '%s'
+| where tags['%s'] =~ '%s'
+| where tags['%s'] =~ '%s'
+| where tags['%s'] =~ '%s'
+| where resourceGroup =~ '%s'
+| project name, id, tags, location`
 )
 
 // CountInstancesByStatus returns count of instances grouped by status
@@ -127,6 +136,21 @@ func (rq *ResourceGraphQueries) GetVolumesByStatus(ctx context.Context, status s
 		ResourceRoleVolume,
 		TagKeyStatus,
 		status,
+		rq.resourceGroup)
+
+	return rq.executeResourceQuery(ctx, query)
+}
+
+// GetVolumesByUserAndBox returns volumes for a specific user and box name
+func (rq *ResourceGraphQueries) GetVolumesByUserAndBox(ctx context.Context, userID, boxName string) ([]ResourceInfo, error) {
+	query := fmt.Sprintf(queryVolumesByUserAndBox,
+		AzureResourceTypeDisk,
+		TagKeyRole,
+		ResourceRoleVolume,
+		TagKeyUserID,
+		userID,
+		TagKeyBoxName,
+		boxName,
 		rq.resourceGroup)
 
 	return rq.executeResourceQuery(ctx, query)

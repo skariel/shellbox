@@ -14,6 +14,7 @@ func TestVolumeTagsToMap(t *testing.T) {
 		LastUsed:  "2024-01-01T01:00:00Z",
 		VolumeID:  "vol123",
 		UserID:    "abc123def456",
+		BoxName:   "mybox",
 	}
 
 	tagMap := infra.VolumeTagsToMap(tags)
@@ -22,26 +23,25 @@ func TestVolumeTagsToMap(t *testing.T) {
 		t.Errorf("tagMap should not be nil")
 		return
 	}
-	if len(tagMap) != 6 {
-		t.Errorf("tagMap should have 6 entries, got %d", len(tagMap))
+	if len(tagMap) != 7 {
+		t.Errorf("tagMap should have 7 entries, got %d", len(tagMap))
 	}
-	if tagMap[infra.TagKeyRole] == nil || *tagMap[infra.TagKeyRole] != "volume" {
-		t.Errorf("TagKeyRole should be 'volume'")
+
+	// Check all expected tag values
+	expected := map[string]string{
+		infra.TagKeyRole:     "volume",
+		infra.TagKeyStatus:   "free",
+		infra.TagKeyCreated:  "2024-01-01T00:00:00Z",
+		infra.TagKeyLastUsed: "2024-01-01T01:00:00Z",
+		infra.TagKeyVolumeID: "vol123",
+		infra.TagKeyUserID:   "abc123def456",
+		infra.TagKeyBoxName:  "mybox",
 	}
-	if tagMap[infra.TagKeyStatus] == nil || *tagMap[infra.TagKeyStatus] != "free" {
-		t.Errorf("TagKeyStatus should be 'free'")
-	}
-	if tagMap[infra.TagKeyCreated] == nil || *tagMap[infra.TagKeyCreated] != "2024-01-01T00:00:00Z" {
-		t.Errorf("TagKeyCreated should be '2024-01-01T00:00:00Z'")
-	}
-	if tagMap[infra.TagKeyLastUsed] == nil || *tagMap[infra.TagKeyLastUsed] != "2024-01-01T01:00:00Z" {
-		t.Errorf("TagKeyLastUsed should be '2024-01-01T01:00:00Z'")
-	}
-	if tagMap[infra.TagKeyVolumeID] == nil || *tagMap[infra.TagKeyVolumeID] != "vol123" {
-		t.Errorf("TagKeyVolumeID should be 'vol123'")
-	}
-	if tagMap[infra.TagKeyUserID] == nil || *tagMap[infra.TagKeyUserID] != "abc123def456" {
-		t.Errorf("TagKeyUserID should be 'abc123def456'")
+
+	for key, expectedValue := range expected {
+		if tagMap[key] == nil || *tagMap[key] != expectedValue {
+			t.Errorf("Tag %s should be '%s', got '%v'", key, expectedValue, tagMap[key])
+		}
 	}
 }
 
@@ -53,8 +53,8 @@ func TestVolumeTagsToMapEmptyValues(t *testing.T) {
 		t.Errorf("tagMap should not be nil")
 		return
 	}
-	if len(tagMap) != 6 {
-		t.Errorf("tagMap should have 6 entries, got %d", len(tagMap))
+	if len(tagMap) != 7 {
+		t.Errorf("tagMap should have 7 entries, got %d", len(tagMap))
 	}
 	for key, value := range tagMap {
 		if value == nil || *value != "" {

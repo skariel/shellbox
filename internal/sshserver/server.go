@@ -123,7 +123,7 @@ For more help:
 	}
 }
 
-func (s *Server) handleShellSession(sess gssh.Session, boxName string) {
+func (s *Server) handleShellSession(sess gssh.Session, resources *infra.AllocatedResources) {
 	if _, err := sess.Write([]byte("\n\nHI FROM SHELLBOX!\n\n")); err != nil {
 		s.logger.Error("Error writing to SSH session", "error", err)
 		return
@@ -137,8 +137,8 @@ func (s *Server) handleShellSession(sess gssh.Session, boxName string) {
 		userKeyHash = hex.EncodeToString(hash[:])[:16]
 	}
 
-	// Log the box name
-	s.logger.Info("starting shell session", "sessionID", sessionID, "userKeyHash", userKeyHash, "boxName", boxName)
+	// Log the allocated resources
+	s.logger.Info("starting shell session", "sessionID", sessionID, "userKeyHash", userKeyHash, "instanceID", resources.InstanceID, "volumeID", resources.VolumeID)
 
 	// Log session start event
 	now := time.Now()
@@ -149,22 +149,14 @@ func (s *Server) handleShellSession(sess gssh.Session, boxName string) {
 		EventType:    "session_start",
 		SessionID:    sessionID,
 		UserKey:      userKeyHash,
-		BoxID:        boxName,
-		Details:      fmt.Sprintf(`{"remote_addr":"%s","box_name":"%s"}`, sess.RemoteAddr(), boxName),
+		BoxID:        resources.InstanceID,
+		Details:      fmt.Sprintf(`{"remote_addr":"%s","instanceIP":"%s","volumeID":"%s"}`, sess.RemoteAddr(), resources.InstanceIP, resources.VolumeID),
 	}
 	if err := infra.WriteEventLog(context.Background(), s.clients, sessionEvent); err != nil {
 		s.logger.Warn("Failed to log session start event", "error", err)
 	}
 
-	// Allocate resources for this user session
-	s.logger.Info("allocating resources", "sessionID", sessionID)
 	ctx := context.Background()
-	resources, err := s.allocator.AllocateResourcesForUser(ctx, userKeyHash)
-	if err != nil {
-		s.logger.Error("Failed to allocate resources", "error", err, "sessionID", sessionID)
-		fmt.Fprintf(sess.Stderr(), "Error allocating resources: %v\n", err)
-		return
-	}
 
 	// Ensure cleanup on session end
 	defer func() {
@@ -355,8 +347,8 @@ func (s *Server) handleSpinupCommand(ctx CommandContext, result CommandResult, s
 	boxName := result.Args[0]
 	s.logger.Info("Spinup command received", "user", ctx.UserID, "box", boxName)
 
-	// Allocate resources with box name (creates volume from golden snapshot)
-	allocatedResources, err := s.allocator.AllocateResourcesForUserWithBox(context.Background(), ctx.UserID, boxName)
+	// Allocate resources with box name (uses free volume from pool)
+	allocatedResources, err := s.allocator.AllocateResourcesForUser(context.Background(), ctx.UserID, boxName)
 	if err != nil {
 		errorMsg := fmt.Sprintf("Failed to create box '%s': %v\n", boxName, err)
 		if _, writeErr := sess.Write([]byte(errorMsg)); writeErr != nil {
@@ -398,10 +390,25 @@ func (s *Server) handleBoxCommand(ctx CommandContext, result CommandResult, sess
 	}
 
 	boxName := result.Args[0]
-	s.logger.Info("Box command received", "user", ctx.UserID[:16], "box", boxName)
+	s.logger.Info("Box command received", "user", ctx.UserID, "box", boxName)
 
-	// Call the shell session handler with box name
-	s.handleShellSession(sess, boxName)
+	// Allocate existing resources for this user and box
+	allocatedResources, err := s.allocator.AllocateExistingResourcesForUser(context.Background(), ctx.UserID, boxName)
+	if err != nil {
+		errorMsg := fmt.Sprintf("Failed to connect to box '%s': %v\n", boxName, err)
+		if _, writeErr := sess.Write([]byte(errorMsg)); writeErr != nil {
+			s.logger.Error("Error writing box error message", "error", writeErr)
+		}
+		if exitErr := sess.Exit(1); exitErr != nil {
+			s.logger.Error("Error during exit(1)", "error", exitErr)
+		}
+		return
+	}
+
+	s.logger.Info("Box connection established", "user", ctx.UserID, "box", boxName, "instanceID", allocatedResources.InstanceID, "volumeID", allocatedResources.VolumeID)
+
+	// Call the shell session handler with allocated resources
+	s.handleShellSession(sess, allocatedResources)
 }
 
 // handleHelpCommand handles the help command

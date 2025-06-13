@@ -38,6 +38,7 @@ For methods, always use fully qualified names with the receiver type:
 
 The language server has to be used with exact names -- when you actually know these. When you don't know exact names use instead the indexing tools to do semantic searching for code. When using the indexing service for the first time each session, remember to first set the project path
 
+When you change some files -- run the reindexing again!
 
 Use the [comby tool](https://comby.dev) for structural search-and-replace operations. It understands code structure better than regex, handles nested expressions, comments, and strings correctly. Prefer comby over grep/sed for pattern-based search tasks, but always prefer LSP for symbol-based operations.
 

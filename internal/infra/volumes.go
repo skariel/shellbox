@@ -265,39 +265,6 @@ func UpdateVolumeStatus(ctx context.Context, clients *AzureClients, volumeID, st
 	return nil
 }
 
-// UpdateVolumeStatusAndUser updates the status and userID tags of a volume
-func UpdateVolumeStatusAndUser(ctx context.Context, clients *AzureClients, volumeID, status, userID string) error {
-	namer := NewResourceNamer(clients.Suffix)
-	volumeName := namer.VolumePoolDiskName(volumeID)
-
-	// Get current volume
-	volume, err := clients.DisksClient.Get(ctx, clients.ResourceGroupName, volumeName, nil)
-	if err != nil {
-		return fmt.Errorf("failed to get volume for status update: %w", err)
-	}
-
-	// Update status and userID tags
-	if volume.Tags == nil {
-		volume.Tags = make(map[string]*string)
-	}
-	volume.Tags[TagKeyStatus] = to.Ptr(status)
-	volume.Tags[TagKeyLastUsed] = to.Ptr(time.Now().UTC().Format(time.RFC3339))
-	volume.Tags[TagKeyUserID] = to.Ptr(userID)
-
-	// Update the volume
-	poller, err := clients.DisksClient.BeginCreateOrUpdate(ctx, clients.ResourceGroupName, volumeName, volume.Disk, nil)
-	if err != nil {
-		return fmt.Errorf("failed to start volume status update: %w", err)
-	}
-
-	_, err = poller.PollUntilDone(ctx, &DefaultPollOptions)
-	if err != nil {
-		return fmt.Errorf("failed to update volume status: %w", err)
-	}
-
-	return nil
-}
-
 // UpdateVolumeStatusUserAndBox updates the status, userID, and boxName tags of a volume
 func UpdateVolumeStatusUserAndBox(ctx context.Context, clients *AzureClients, volumeID, status, userID, boxName string) error {
 	namer := NewResourceNamer(clients.Suffix)
