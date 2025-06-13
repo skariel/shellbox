@@ -20,7 +20,7 @@ MOST IMPORTANT:
 - DO MINIMAL CODE CHANGES NEEDED TO ACOMPLISH TASKS
 - BE CONSISTENT WITH EXISTING CODE: resue existing functions, maintain naming style, code patterns.
 - IF YOU SEE ANY OPPORTUNITY TO REMOVE UNNECESSARY TESTS OR OTHER CODE THAT IS MAINLY MAINTENANCE BURDEN: THEN NOTIFY THE USER!
-- USE THE LSP MCP SERVER... FOR DISCOVERIUNG TYPES, SIGNATURES, RENAMING, SEARCHING ETC.ND MOST IMPORTANTLY FOR EDITING! THE EDITS WITH THE LSP ARE VERY ACCURATE
+- USE THE LSP MCP SERVER... FOR DISCOVERIUNG TYPES, SIGNATURES, REFERENCES. RENAMING, SEARCHING ETC.ND MOST IMPORTANTLY FOR EDITING! THE EDITS WITH THE LSP ARE VERY ACCURATE
 -----------------------------------------
 
 
@@ -31,11 +31,13 @@ run the above command after every session of code changes. Then fix any errors.
 You have permission to search the internet whenever needed.
 
 Always use LSP (Language Server Protocol) for code navigation and refactoring**. The Go LSP provides accurate, context-aware code intelligence that is far superior to text-based search tools.
-
 For methods, always use fully qualified names with the receiver type:
 - Use `Type.Method` format (e.g., `ResourceGraphQueries.CountInstancesByStatus`)
 - For standalone functions, just the function name is sufficient
 - For interface methods, use `InterfaceName.MethodName`
+
+The language server has to be used with exact names -- when you actually know these. When you don't know exact names use instead the indexing tools to do semantic searching for code. When using the indexing service for the first time each session, remember to first set the project path
+
 
 Use the [comby tool](https://comby.dev) for structural search-and-replace operations. It understands code structure better than regex, handles nested expressions, comments, and strings correctly. Prefer comby over grep/sed for pattern-based search tasks, but always prefer LSP for symbol-based operations.
 
@@ -54,6 +56,41 @@ Use the [comby tool](https://comby.dev) for structural search-and-replace operat
 - `internal/infra/`: Azure resource management (VMs, networking, storage)
 - `internal/sshserver/`: SSH proxy and command handling
 - `internal/sshutil/`: SSH key management and remote operations
+
+## Codebase Architecture
+
+### Core Infrastructure (`internal/infra/`)
+
+**Resource Management:**
+- `instances.go` (676 lines) - Azure VM lifecycle with networking setup
+- `volumes.go` (262 lines) - Managed disk operations and attachment
+- `pool.go` (369 lines) - Dynamic resource pool scaling and maintenance
+- `resource_allocator.go` (168 lines) - User resource allocation with rollback
+- `resource_graph_queries.go` (367 lines) - Azure Resource Graph discovery
+
+**Infrastructure Setup:**
+- `bastion.go` (308 lines) - Bastion host deployment with cloud-init
+- `network.go` (185 lines) - VNet, subnet, NSG management
+- `golden_snapshot.go` (556 lines) - QEMU base image creation
+- `qemu_manager.go` (104 lines) - Remote QEMU process management
+
+**Support Systems:**
+- `clients.go` (170 lines) - Azure SDK client initialization
+- `tables.go` (249 lines) - Azure Table Storage for events/registry
+- `retry.go` (37 lines) - Centralized retry logic (`RetryOperation`)
+- `resource_naming.go` (133 lines) - Consistent naming conventions
+- `constants.go` (202 lines) - Configuration constants
+
+### SSH Server (`internal/sshserver/`)
+- `server.go` (415 lines) - SSH proxy with session management
+- `commands.go` (155 lines) - Cobra CLI parsing (spinup/help/version/whoami)
+
+### Key Functions by Module
+- **Resource Discovery**: `ResourceGraphQueries.FindFreeInstances()`, `ResourceGraphQueries.CountInstancesByStatus()`
+- **Resource Allocation**: `ResourceAllocator.AllocateResourcesForUser()`, `ResourceAllocator.ReleaseResourcesForUser()`
+- **VM Operations**: `CreateInstance()`, `DestroyInstance()`, `QEMUManager.StartQEMUWithVolume()`
+- **Retry Logic**: `RetryOperation()` - used throughout for Azure operations
+- **SSH Operations**: `ExecuteSSHCommand()`, `LoadKeyPair()`
 
 ## Logging
 
@@ -75,6 +112,12 @@ Azure SDK: always use pointers and consistent polling
 Retry operations with centralized helper
 
 Resource naming with consistent patterns
+
+resourse graph is used instead of keeping any local copy that could go inconsistent.
+
+resources have tags for querying with the resource graph.
+
+for operations on Azure, we wait with the retry function until we see it in the resource graph
 
 ### Struct Conventions
 - **Metadata**: `*Tags` structs (e.g., `InstanceTags`, `VolumeTags`)

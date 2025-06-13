@@ -6,3 +6,6 @@ go.sum
 *.out
 *.html
 integration.test
+
+# Code Index MCP cache directory
+.code_indexer/
