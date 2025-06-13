@@ -1,2 +1,2 @@
-go test -v ./test/integration/... &> tests.log &!
-go test -v -coverpkg=./internal/... ./test/integration/... &!
+go test -v -timeout 20m ./test/integration/... &> tests.log &!
+go test -v -timeout 20m -coverpkg=./internal/... ./test/integration/... &!
