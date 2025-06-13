@@ -82,6 +82,8 @@ func (s *Server) handleSCP(_ gssh.Session) error {
 }
 
 func (s *Server) handleSession(sess gssh.Session) {
+	s.logger.Info("Session started", "remoteAddr", sess.RemoteAddr(), "command", sess.Command())
+
 	if len(sess.Command()) > 0 && sess.Command()[0] == "scp" {
 		if err := s.handleSCP(sess); err != nil {
 			s.logger.Error("SCP error", "error", err)
@@ -275,9 +277,11 @@ func (s *Server) handleCommandSession(sess gssh.Session) {
 
 	// Join command arguments into a single string
 	cmdLine := strings.Join(sess.Command(), " ")
+	s.logger.Info("Command session started", "command", cmdLine, "remoteAddr", sess.RemoteAddr())
 
 	// Parse the command using Cobra
 	result := parseCommand(cmdLine)
+	s.logger.Info("Command parsed", "action", result.Action, "args", result.Args)
 
 	// Handle the command based on its action
 	switch result.Action {
