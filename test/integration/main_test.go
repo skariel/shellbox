@@ -20,8 +20,9 @@ import (
 func TestMain(m *testing.M) {
 	// Run initial resource group verification
 	if err := verifyResourceGroupIsEmpty("Initial verification - before tests"); err != nil {
-		log.Printf("WARNING: %v", err)
-		// Don't fail here - just warn that resources exist before tests start
+		log.Printf("ERROR: %v", err)
+		log.Printf("Tests cannot run with existing resources. Please clean up first.")
+		os.Exit(1)
 	}
 
 	// Create shared storage account for all tests
