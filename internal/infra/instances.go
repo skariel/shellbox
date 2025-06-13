@@ -396,8 +396,8 @@ func extractInstanceResourceInfo(vm armcompute.VirtualMachinesClientGetResponse,
 // extractResourcesFromVM extracts resource information from VM properties
 func extractResourcesFromVM(info *instanceResourceInfo, vm armcompute.VirtualMachinesClientGetResponse) {
 	// Extract instance ID from tags
-	if vm.Tags != nil && vm.Tags["instanceID"] != nil {
-		info.instanceID = *vm.Tags["instanceID"]
+	if vm.Tags != nil && vm.Tags[TagKeyInstanceID] != nil {
+		info.instanceID = *vm.Tags[TagKeyInstanceID]
 	}
 
 	// Get NIC ID
@@ -685,7 +685,7 @@ func waitForInstanceInResourceGraph(ctx context.Context, clients *AzureClients, 
 
 		// Check if our instance is in the results
 		for _, instance := range instances {
-			if instance.Tags["instanceID"] == instanceID {
+			if instance.Tags[TagKeyInstanceID] == instanceID {
 				// Verify all expected tags are present
 				if instance.Tags[TagKeyRole] == expectedTags.Role &&
 					instance.Tags[TagKeyStatus] == expectedTags.Status &&

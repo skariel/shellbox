@@ -47,7 +47,7 @@ func TestResourceInfoStruct(t *testing.T) {
 		ID:         "/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/vm",
 		Name:       "test-vm",
 		Location:   "westus2",
-		Tags:       map[string]string{"role": "instance", "status": "free"},
+		Tags:       map[string]string{infra.TagKeyRole: "instance", infra.TagKeyStatus: "free"},
 		LastUsed:   &now,
 		CreatedAt:  &created,
 		Status:     "free",
@@ -64,11 +64,11 @@ func TestResourceInfoStruct(t *testing.T) {
 	if resource.Location != "westus2" {
 		t.Errorf("Location should be set correctly, expected westus2, got %s", resource.Location)
 	}
-	if resource.Tags["role"] != "instance" {
-		t.Errorf("Tags should contain role 'instance', got %s", resource.Tags["role"])
+	if resource.Tags[infra.TagKeyRole] != "instance" {
+		t.Errorf("Tags should contain role 'instance', got %s", resource.Tags[infra.TagKeyRole])
 	}
-	if resource.Tags["status"] != "free" {
-		t.Errorf("Tags should contain status 'free', got %s", resource.Tags["status"])
+	if resource.Tags[infra.TagKeyStatus] != "free" {
+		t.Errorf("Tags should contain status 'free', got %s", resource.Tags[infra.TagKeyStatus])
 	}
 	if resource.LastUsed == nil {
 		t.Error("LastUsed should be set")

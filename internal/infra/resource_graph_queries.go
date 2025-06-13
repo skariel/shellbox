@@ -370,10 +370,10 @@ func parseTimestamps(resource *ResourceInfo) {
 
 // extractResourceID extracts resource ID from tags (instanceID or volumeID)
 func extractResourceID(resource *ResourceInfo) {
-	if instanceID := resource.Tags["instanceID"]; instanceID != "" {
+	if instanceID := resource.Tags[TagKeyInstanceID]; instanceID != "" {
 		resource.ResourceID = instanceID
 	}
-	if volumeID := resource.Tags["volumeID"]; volumeID != "" {
+	if volumeID := resource.Tags[TagKeyVolumeID]; volumeID != "" {
 		resource.ResourceID = volumeID
 	}
 }
