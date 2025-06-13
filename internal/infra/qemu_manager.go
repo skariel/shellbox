@@ -41,7 +41,14 @@ fi
 # Change to working directory
 cd /mnt/userdata
 
+# Check if required QEMU files exist
+echo "Checking QEMU files:"
+ls -la ` + QEMUBaseDiskPath + ` || echo "Base disk missing"
+ls -la ` + QEMUCloudInitPath + ` || echo "Cloud-init missing" 
+ls -la ` + QEMUMemoryPath + ` || echo "Memory file missing"
+
 # Resume QEMU VM from saved state
+echo "Starting QEMU..."
 sudo qemu-system-x86_64 \
    -enable-kvm \
    -m 24G \
@@ -59,8 +66,13 @@ sudo qemu-system-x86_64 \
 # Wait for QEMU to be ready
 echo "Waiting for QEMU to resume..."
 sleep 10
+
+# Check if QEMU process is running
+echo "Checking QEMU process:"
+pgrep -f qemu-system-x86_64 || echo "No QEMU process found"
 `
 
+	slog.Info("Starting QEMU with volume", "instanceIP", instanceIP)
 	if err := sshutil.ExecuteCommand(ctx, resumeCmd, AdminUsername, instanceIP); err != nil {
 		return fmt.Errorf("failed to start QEMU: %w", err)
 	}
