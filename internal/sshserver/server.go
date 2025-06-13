@@ -106,10 +106,10 @@ func (s *Server) handleSession(sess gssh.Session) {
 	helpMsg := `Interactive shell sessions require specifying a box name.
 
 Usage:
-  ssh shellbox.dev box <box_name>
+  ssh shellbox.dev connect <box_name>
 
 Examples:
-  ssh shellbox.dev box dev1
+  ssh shellbox.dev connect dev1
   ssh shellbox.dev spinup myproject
 
 For more help:
@@ -283,8 +283,8 @@ func (s *Server) handleCommandSession(sess gssh.Session) {
 	switch result.Action {
 	case ActionSpinup:
 		s.handleSpinupCommand(ctx, result, sess)
-	case ActionBox:
-		s.handleBoxCommand(ctx, result, sess)
+	case ActionConnect:
+		s.handleConnectCommand(ctx, result, sess)
 	case ActionHelp:
 		s.handleHelpCommand(ctx, result, sess)
 	case ActionVersion:
@@ -362,7 +362,7 @@ func (s *Server) handleSpinupCommand(ctx CommandContext, result CommandResult, s
 
 	s.logger.Info("Box created successfully", "user", ctx.UserID, "box", boxName, "volumeID", volumeID)
 
-	successMsg := fmt.Sprintf("Box '%s' created successfully!\n\nVolume ID: %s\n\nTo connect to your box, use:\n  ssh shellbox.dev box %s\n",
+	successMsg := fmt.Sprintf("Box '%s' created successfully!\n\nVolume ID: %s\n\nTo connect to your box, use:\n  ssh ubuntu@shellbox.dev connect %s\n",
 		boxName,
 		volumeID,
 		boxName)
@@ -375,8 +375,8 @@ func (s *Server) handleSpinupCommand(ctx CommandContext, result CommandResult, s
 	}
 }
 
-// handleBoxCommand handles the box command to connect to an existing box
-func (s *Server) handleBoxCommand(ctx CommandContext, result CommandResult, sess gssh.Session) {
+// handleConnectCommand handles the connect command to connect to an existing box
+func (s *Server) handleConnectCommand(ctx CommandContext, result CommandResult, sess gssh.Session) {
 	if len(result.Args) == 0 {
 		if _, err := sess.Write([]byte("Error: box name required\n")); err != nil {
 			s.logger.Error("Error writing box error", "error", err)
@@ -388,7 +388,7 @@ func (s *Server) handleBoxCommand(ctx CommandContext, result CommandResult, sess
 	}
 
 	boxName := result.Args[0]
-	s.logger.Info("Box command received", "user", ctx.UserID, "box", boxName)
+	s.logger.Info("Connect command received", "user", ctx.UserID, "box", boxName)
 
 	// Allocate resources for this user and box
 	allocatedResources, err := s.allocator.AllocateResourcesForUser(context.Background(), ctx.UserID, boxName)
@@ -415,14 +415,14 @@ func (s *Server) handleHelpCommand(_ CommandContext, _ CommandResult, sess gssh.
 
 Available commands:
   spinup <box_name>    Create and start a development box
-  box <box_name>       Connect to an existing development box
+  connect <box_name>   Connect to an existing development box
   help                 Show this help information  
   version              Show version information
   whoami               Show current user information
 
 Examples:
   ssh shellbox.dev spinup dev1
-  ssh shellbox.dev box dev1
+  ssh shellbox.dev connect dev1
   ssh shellbox.dev help
   ssh shellbox.dev whoami
 

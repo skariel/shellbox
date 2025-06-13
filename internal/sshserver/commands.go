@@ -11,7 +11,7 @@ import (
 // Command action constants
 const (
 	ActionSpinup  = "spinup"
-	ActionBox     = "box"
+	ActionConnect = "connect"
 	ActionHelp    = "help"
 	ActionVersion = "version"
 	ActionWhoami  = "whoami"
@@ -103,13 +103,13 @@ func createCobraCommand(result *CommandResult) *cobra.Command {
 		},
 	}
 
-	// box command
-	boxCmd := &cobra.Command{
-		Use:   ActionBox + " <box_name>",
+	// connect command
+	connectCmd := &cobra.Command{
+		Use:   ActionConnect + " <box_name>",
 		Short: "Connect to an existing development box",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			result.Action = ActionBox
+			result.Action = ActionConnect
 			result.Args = args
 			result.ExitCode = 0
 			return nil
@@ -155,7 +155,7 @@ func createCobraCommand(result *CommandResult) *cobra.Command {
 		},
 	}
 
-	rootCmd.AddCommand(spinupCmd, boxCmd, helpCmd, versionCmd, whoamiCmd)
+	rootCmd.AddCommand(spinupCmd, connectCmd, helpCmd, versionCmd, whoamiCmd)
 
 	return rootCmd
 }
