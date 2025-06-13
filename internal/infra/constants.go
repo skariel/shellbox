@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/runtime"
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v7"
 )
 
@@ -112,32 +111,6 @@ const (
 // Default polling options for Azure operations
 var DefaultPollOptions = runtime.PollUntilDoneOptions{
 	Frequency: 2 * time.Second,
-}
-
-// createNSGRule helper function to reduce boilerplate
-func createNSGRule(name, protocol, srcAddr, dstAddr, dstPort string, access armnetwork.SecurityRuleAccess, priority int32, direction armnetwork.SecurityRuleDirection) *armnetwork.SecurityRule {
-	return &armnetwork.SecurityRule{
-		Name: to.Ptr(name),
-		Properties: &armnetwork.SecurityRulePropertiesFormat{
-			Protocol:                 to.Ptr(armnetwork.SecurityRuleProtocol(protocol)),
-			SourceAddressPrefix:      to.Ptr(srcAddr),
-			SourcePortRange:          to.Ptr("*"),
-			DestinationAddressPrefix: to.Ptr(dstAddr),
-			DestinationPortRange:     to.Ptr(dstPort),
-			Access:                   to.Ptr(access),
-			Priority:                 to.Ptr(priority),
-			Direction:                to.Ptr(direction),
-		},
-	}
-}
-
-// NSG Rules configuration
-var BastionNSGRules = []*armnetwork.SecurityRule{
-	createNSGRule("AllowSSHFromInternet", "Tcp", "Internet", "*", "22", armnetwork.SecurityRuleAccessAllow, 100, armnetwork.SecurityRuleDirectionInbound),
-	createNSGRule("AllowCustomSSHFromInternet", "Tcp", "Internet", "*", fmt.Sprintf("%d", BastionSSHPort), armnetwork.SecurityRuleAccessAllow, 110, armnetwork.SecurityRuleDirectionInbound),
-	createNSGRule("AllowHTTPSFromInternet", "Tcp", "Internet", "*", "443", armnetwork.SecurityRuleAccessAllow, 120, armnetwork.SecurityRuleDirectionInbound),
-	createNSGRule("AllowToBoxesSubnet", "*", "*", boxesSubnetCIDR, "*", armnetwork.SecurityRuleAccessAllow, 100, armnetwork.SecurityRuleDirectionOutbound),
-	createNSGRule("AllowToInternet", "*", "*", "Internet", "*", armnetwork.SecurityRuleAccessAllow, 110, armnetwork.SecurityRuleDirectionOutbound),
 }
 
 func FormatConfig(suffix string) string {
