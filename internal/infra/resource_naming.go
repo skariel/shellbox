@@ -101,14 +101,24 @@ func (r *ResourceNamer) VolumePoolDiskName(volumeID string) string {
 	return fmt.Sprintf("shellbox-%s-volume-%s", r.suffix, volumeID)
 }
 
-// SharedStorageAccountName returns the shared storage account name
-// Uses TestingStorageAccountBaseName for testing (when suffix is "testing")
-// Uses ProductionStorageAccountBaseName for production environments
+// SharedStorageAccountName returns the suffixed storage account name
+// Uses "test" prefix for testing environments, "prod" prefix for production
 func (r *ResourceNamer) SharedStorageAccountName() string {
+	// Storage account names must be 3-24 chars, lowercase letters and numbers only
+	cleanSuffix := r.cleanSuffixAlphanumeric(false) // lowercase only
+
+	// Choose prefix based on environment type
+	prefix := "shellboxprod"
 	if strings.Contains(r.suffix, "test") {
-		return TestingStorageAccountBaseName
+		prefix = "shellboxtest"
 	}
-	return ProductionStorageAccountBaseName
+
+	// Ensure total length is <= 24 chars
+	maxSuffixLen := 24 - len(prefix)
+	if len(cleanSuffix) > maxSuffixLen {
+		cleanSuffix = cleanSuffix[:maxSuffixLen]
+	}
+	return fmt.Sprintf("%s%s", prefix, cleanSuffix)
 }
 
 // EventLogTableName returns the suffixed table name for EventLog
