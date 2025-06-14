@@ -31,7 +31,7 @@ sudo qemu-system-x86_64 \
    -smp 8 \
    -cpu host \
    -drive file=/mnt/userdata/qemu-disks/ubuntu-base.qcow2,format=qcow2 \
-   -drive file=/mnt/userdata/qemu-disks/cloud-init.iso,format=raw \
+   -drive file=/mnt/userdata/qemu-disks/cloud-init.iso,format=raw,readonly=on \
    -nographic \
    -monitor unix:/tmp/qemu-monitor.sock,server,nowait \
    -nic user,model=virtio,hostfwd=tcp::2222-:22,dns=8.8.8.8 \
