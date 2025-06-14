@@ -70,7 +70,7 @@ mkdir -p %s/qemu-disks %s/qemu-memory
 # Download and prepare Ubuntu image
 cd %s/
 wget https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-amd64.img
-cp ubuntu-24.04-server-cloudimg-amd64.img qemu-disks/ubuntu-base.qcow2
+qemu-img convert -f qcow2 -O qcow2 ubuntu-24.04-server-cloudimg-amd64.img qemu-disks/ubuntu-base.qcow2
 qemu-img resize qemu-disks/ubuntu-base.qcow2 64G
 
 # Create cloud-init configuration for SSH access
@@ -379,7 +379,7 @@ func waitForQEMUSetup(ctx context.Context, _ *AzureClients, tempBox *tempBoxInfo
 
 		slog.Info("QEMU VM SSH-ready state prepared", "vmName", tempBox.VMName)
 		return nil
-	}, 15*time.Minute, 30*time.Second, "QEMU VM SSH connectivity")
+	}, GoldenVMSetupTimeout, 30*time.Second, "QEMU VM SSH connectivity")
 }
 
 func createSnapshotsFromVM(ctx context.Context, clients *AzureClients, resourceGroupName, dataSnapshotName, osSnapshotName string, tempBox *tempBoxInfo) (*GoldenSnapshotInfo, error) {

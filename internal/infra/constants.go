@@ -146,6 +146,11 @@ const (
 	GoldenSnapshotResourceGroup = "shellbox-golden-images"
 )
 
+// Timeout constants
+const (
+	GoldenVMSetupTimeout = 15 * time.Minute // Timeout for golden VM QEMU setup and SSH connectivity
+)
+
 // Default polling options for Azure operations
 var DefaultPollOptions = runtime.PollUntilDoneOptions{
 	Frequency: 2 * time.Second,
