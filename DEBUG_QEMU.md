@@ -36,6 +36,18 @@ sudo qemu-system-x86_64 \
    -monitor unix:/tmp/qemu-monitor.sock,server,nowait \
    -nic user,model=virtio,hostfwd=tcp::2222-:22,dns=8.8.8.8 \
    -loadvm ssh-ready
+sudo qemu-system-x86_64 \
+   -enable-kvm \
+   -m 24G \
+   -mem-prealloc \
+   -mem-path /mnt/userdata/qemu-memory/ubuntu-mem \
+   -smp 8 \
+   -cpu host \
+   -drive file=/mnt/userdata/qemu-disks/ubuntu-base.qcow2,format=qcow2 \
+   -nographic \
+   -monitor unix:/tmp/qemu-monitor.sock,server,nowait \
+   -nic user,model=virtio,hostfwd=tcp::2222-:22,dns=8.8.8.8 \
+   -loadvm ssh-ready
 ```
 
 ## Debug Connection

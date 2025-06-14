@@ -88,3 +88,16 @@ func ExecuteCommand(ctx context.Context, command, username, hostname string) err
 	}
 	return nil
 }
+
+func ExecuteCommandWithOutput(ctx context.Context, command, username, hostname string) (string, error) {
+	cmd := exec.CommandContext(ctx, "ssh",
+		"-o", "StrictHostKeyChecking=no",
+		"-o", "ConnectTimeout=4",
+		fmt.Sprintf("%s@%s", username, hostname),
+		command)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return string(output), fmt.Errorf("%w: %s", err, string(output))
+	}
+	return string(output), nil
+}

@@ -109,7 +109,7 @@ sudo qemu-system-x86_64 \
    -smp 8 \
    -cpu host \
    -drive file=%s/qemu-disks/ubuntu-base.qcow2,format=qcow2 \
-   -drive file=%s/qemu-disks/cloud-init.iso,format=raw,readonly=on \
+   -cdrom %s/qemu-disks/cloud-init.iso \
    -nographic \
    -monitor unix:/tmp/qemu-monitor.sock,server,nowait \
    -nic user,model=virtio,hostfwd=tcp::%d-:22,dns=8.8.8.8`,
@@ -341,8 +341,6 @@ func waitForQEMUSetup(ctx context.Context, _ *AzureClients, tempBox *tempBoxInfo
 	slog.Info("Testing SSH connectivity to QEMU VM", "port", BoxSSHPort)
 	return RetryOperation(ctx, func(ctx context.Context) error {
 		// Test SSH connection directly to the QEMU VM from bastion
-		// We need to execute this test from the bastion, not from within the instance
-		// Since sshutil.ExecuteCommand is for remote execution, let's execute locally
 		cmd := exec.CommandContext(ctx, "ssh",
 			"-o", "ConnectTimeout=5",
 			"-o", "StrictHostKeyChecking=no",
@@ -356,28 +354,42 @@ func waitForQEMUSetup(ctx context.Context, _ *AzureClients, tempBox *tempBoxInfo
 		// Save the QEMU VM state and cleanly shut down to preserve the SSH-ready state
 		slog.Info("QEMU VM SSH confirmed working, saving VM state")
 
-		// Save snapshot with better error handling and timing
-		saveCmd := `(echo "savevm ssh-ready"; sleep 5; echo "info snapshots"; sleep 1; echo "quit") | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock`
-		stopErr := sshutil.ExecuteCommand(ctx, saveCmd, AdminUsername, tempBox.PrivateIP)
-		if stopErr != nil {
-			slog.Warn("Failed to save QEMU VM state", "error", stopErr)
-			// Fallback to force quit if savevm fails
-			fallbackErr := sshutil.ExecuteCommand(ctx, "sudo pkill qemu-system-x86_64", AdminUsername, tempBox.PrivateIP)
-			if fallbackErr != nil {
-				slog.Warn("Fallback pkill also failed", "error", fallbackErr)
-			}
-		}
+		// First, let's check if any snapshots exist already
+		checkCmd := `echo "info snapshots" | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock`
+		checkOutput, _ := sshutil.ExecuteCommandWithOutput(ctx, checkCmd, AdminUsername, tempBox.PrivateIP)
+		slog.Info("Current snapshots before save", "output", checkOutput)
+
+		// Save snapshot and capture output to see any errors
+		saveCmd := `(echo "savevm ssh-ready" && sleep 10 && echo "info snapshots") | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock`
+		saveOutput, saveErr := sshutil.ExecuteCommandWithOutput(ctx, saveCmd, AdminUsername, tempBox.PrivateIP)
+		slog.Info("Savevm output", "output", saveOutput, "error", saveErr)
+
+		// Give more time for snapshot to complete
+		time.Sleep(5 * time.Second)
+
+		// Now quit
+		quitCmd := `echo "quit" | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock`
+		_ = sshutil.ExecuteCommand(ctx, quitCmd, AdminUsername, tempBox.PrivateIP)
+
+		// Wait for QEMU to fully shut down
+		time.Sleep(5 * time.Second)
 
 		// Verify snapshot was created
-		time.Sleep(2 * time.Second) // Give QEMU time to fully shut down
-		verifyCmd := `sudo qemu-img snapshot -l /mnt/userdata/qemu-disks/ubuntu-base.qcow2 || echo "No snapshots found"`
-		if verifyErr := sshutil.ExecuteCommand(ctx, verifyCmd, AdminUsername, tempBox.PrivateIP); verifyErr != nil {
-			slog.Warn("Failed to verify QEMU snapshot", "error", verifyErr)
-		} else {
-			slog.Info("QEMU snapshot verification completed")
+		verifyCmd := `sudo qemu-img snapshot -l /mnt/userdata/qemu-disks/ubuntu-base.qcow2`
+		verifyOutput, verifyErr := sshutil.ExecuteCommandWithOutput(ctx, verifyCmd, AdminUsername, tempBox.PrivateIP)
+
+		if verifyErr != nil {
+			slog.Error("Failed to verify QEMU snapshot", "error", verifyErr)
+			return fmt.Errorf("snapshot verification failed: %w", verifyErr)
 		}
 
-		slog.Info("QEMU VM SSH-ready state prepared", "vmName", tempBox.VMName)
+		// Check if output contains our snapshot
+		if !strings.Contains(verifyOutput, "ssh-ready") {
+			slog.Error("Snapshot 'ssh-ready' not found", "output", verifyOutput)
+			return fmt.Errorf("snapshot 'ssh-ready' was not created")
+		}
+
+		slog.Info("QEMU snapshot verified successfully", "snapshots", verifyOutput)
 		return nil
 	}, GoldenVMSetupTimeout, 30*time.Second, "QEMU VM SSH connectivity")
 }
