@@ -154,13 +154,14 @@ func (s *Server) handleShellSession(ctx CommandContext, sess gssh.Session, resou
 	}
 
 	bctx := context.Background()
+	// XXXXXXX
 	// Ensure resources are cleaned
-	defer func() {
-		s.logger.Info("releasing resources", "sessionID", sessionID)
-		if err := s.allocator.ReleaseResources(bctx, resources.InstanceID, resources.VolumeID); err != nil {
-			s.logger.Error("Failed to release resources", "error", err, "sessionID", sessionID)
-		}
-	}()
+	// defer func() {
+	// 	s.logger.Info("releasing resources", "sessionID", sessionID)
+	// 	if err := s.allocator.ReleaseResources(bctx, resources.InstanceID, resources.VolumeID); err != nil {
+	// 		s.logger.Error("Failed to release resources", "error", err, "sessionID", sessionID)
+	// 	}
+	// }()
 
 	// Connect to allocated instance
 	client, err := s.dialBoxAtIP(resources.InstanceIP)

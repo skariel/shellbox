@@ -169,7 +169,7 @@ func TestResourceNamerTestSuite(t *testing.T) {
 	})
 
 	t.Run("TestSharedStorageAccountName", func(t *testing.T) {
-		expected := "shellboxtest536567"
+		expected := "shellboxtesttest123"
 		actual := namer.SharedStorageAccountName()
 		if actual != expected {
 			t.Errorf("SharedStorageAccountName() = %q, want %q", actual, expected)

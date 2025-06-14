@@ -42,13 +42,13 @@ func (ra *ResourceAllocator) AllocateResourcesForUser(ctx context.Context, userI
 	}
 	volume := existingVolumes[0]
 
-	// Find available instance
-	freeInstances, err := ra.resourceQueries.GetInstancesByStatus(ctx, ResourceStatusFree)
+	// Find available running instance
+	freeInstances, err := ra.resourceQueries.GetRunningInstancesByStatus(ctx, ResourceStatusFree)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query free instances: %w", err)
+		return nil, fmt.Errorf("failed to query free running instances: %w", err)
 	}
 	if len(freeInstances) == 0 {
-		return nil, fmt.Errorf("no free instances available")
+		return nil, fmt.Errorf("no free running instances available")
 	}
 	instance := freeInstances[0]
 

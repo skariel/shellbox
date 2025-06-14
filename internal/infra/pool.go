@@ -227,10 +227,10 @@ func (p *BoxPool) scaleDownInstances(ctx context.Context, currentSize int) {
 	instancesToRemove := currentSize - p.poolConfig.MaxFreeInstances
 	slog.Info("removing excess instances from pool", "count", instancesToRemove)
 
-	// Get oldest free instances to remove
-	oldestInstances, err := p.resourceQueries.GetOldestFreeInstances(ctx, instancesToRemove)
+	// Get oldest free running instances to remove
+	oldestInstances, err := p.resourceQueries.GetOldestFreeRunningInstances(ctx, instancesToRemove)
 	if err != nil {
-		slog.Error("failed to get oldest free instances", "error", err)
+		slog.Error("failed to get oldest free running instances", "error", err)
 		return
 	}
 

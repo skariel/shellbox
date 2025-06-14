@@ -21,6 +21,7 @@ type ResourceInfo struct {
 	Status     string
 	Role       string
 	ResourceID string // For volumes, this is the volumeID; for instances, this is instanceID
+	PowerState string // For VMs, this is the power state (e.g., "PowerState/running")
 }
 
 // ResourceCounts represents counts of resources by status
@@ -89,6 +90,24 @@ const (
 | where tags['%s'] =~ '%s'
 | where resourceGroup =~ '%s'
 | project name, id, tags, location`
+
+	// Get running VMs by status with power state
+	queryRunningVMsByStatus = `VirtualMachineResources
+| where resourceGroup =~ '%s'
+| where tags['%s'] =~ '%s'
+| where tags['%s'] =~ '%s'
+| where properties.extended.instanceView.powerState.code =~ 'PowerState/running'
+| project name, id, tags, location, powerState = properties.extended.instanceView.powerState.code`
+
+	// Get oldest free running VMs for scale-down
+	queryOldestFreeRunningVMs = `VirtualMachineResources
+| where resourceGroup =~ '%s'
+| where tags['%s'] =~ '%s'
+| where tags['%s'] =~ 'free'
+| where properties.extended.instanceView.powerState.code =~ 'PowerState/running'
+| project name, id, tags, location, powerState = properties.extended.instanceView.powerState.code, lastused=todatetime(tags['%s'])
+| order by lastused asc
+| take %d`
 )
 
 // CountInstancesByStatus returns count of instances grouped by status
@@ -202,6 +221,31 @@ func (rq *ResourceGraphQueries) GetAllVolumes(ctx context.Context) ([]ResourceIn
 		TagKeyRole,
 		ResourceRoleVolume,
 		rq.resourceGroup)
+
+	return rq.executeResourceQuery(ctx, query)
+}
+
+// GetRunningInstancesByStatus returns running instances with specific status
+func (rq *ResourceGraphQueries) GetRunningInstancesByStatus(ctx context.Context, status string) ([]ResourceInfo, error) {
+	query := fmt.Sprintf(queryRunningVMsByStatus,
+		rq.resourceGroup,
+		TagKeyRole,
+		ResourceRoleInstance,
+		TagKeyStatus,
+		status)
+
+	return rq.executeResourceQuery(ctx, query)
+}
+
+// GetOldestFreeRunningInstances returns oldest free running instances for scale-down decisions
+func (rq *ResourceGraphQueries) GetOldestFreeRunningInstances(ctx context.Context, limit int) ([]ResourceInfo, error) {
+	query := fmt.Sprintf(queryOldestFreeRunningVMs,
+		rq.resourceGroup,
+		TagKeyRole,
+		ResourceRoleInstance,
+		TagKeyStatus,
+		TagKeyLastUsed,
+		limit)
 
 	return rq.executeResourceQuery(ctx, query)
 }
@@ -386,6 +430,13 @@ func ParseProjectedFields(resource *ResourceInfo, resourceMap map[string]interfa
 			if lastUsed, err := time.Parse(time.RFC3339, lastUsedStr); err == nil {
 				resource.LastUsed = &lastUsed
 			}
+		}
+	}
+
+	// Parse powerState from query projection (for VM queries with power state)
+	if powerStateInterface, ok := resourceMap["powerState"]; ok {
+		if powerStateStr, ok := powerStateInterface.(string); ok {
+			resource.PowerState = powerStateStr
 		}
 	}
 }
