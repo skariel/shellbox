@@ -286,21 +286,6 @@ func createInstanceVM(ctx context.Context, clients *AzureClients, vmName string,
 				VMSize: to.Ptr(armcompute.VirtualMachineSizeTypes(config.VMSize)),
 			},
 			StorageProfile: storageProfile,
-			OSProfile: &armcompute.OSProfile{
-				ComputerName:  to.Ptr(namer.BoxComputerName(tags.InstanceID)),
-				AdminUsername: to.Ptr(config.AdminUsername),
-				LinuxConfiguration: &armcompute.LinuxConfiguration{
-					DisablePasswordAuthentication: to.Ptr(true),
-					SSH: &armcompute.SSHConfiguration{
-						PublicKeys: []*armcompute.SSHPublicKey{
-							{
-								Path:    to.Ptr(fmt.Sprintf("/home/%s/.ssh/authorized_keys", config.AdminUsername)),
-								KeyData: to.Ptr(config.SSHPublicKey),
-							},
-						},
-					},
-				},
-			},
 			NetworkProfile: &armcompute.NetworkProfile{
 				NetworkInterfaces: []*armcompute.NetworkInterfaceReference{
 					{
@@ -309,6 +294,30 @@ func createInstanceVM(ctx context.Context, clients *AzureClients, vmName string,
 				},
 			},
 		},
+	}
+
+	// Only set OSProfile when NOT using custom images (generalized images should not have OSProfile)
+	if config.OSImageID == "" {
+		// Creating VM from standard Ubuntu image - set OSProfile
+		vmParams.Properties.OSProfile = &armcompute.OSProfile{
+			ComputerName:  to.Ptr(namer.BoxComputerName(tags.InstanceID)),
+			AdminUsername: to.Ptr(config.AdminUsername),
+			LinuxConfiguration: &armcompute.LinuxConfiguration{
+				DisablePasswordAuthentication: to.Ptr(true),
+				SSH: &armcompute.SSHConfiguration{
+					PublicKeys: []*armcompute.SSHPublicKey{
+						{
+							Path:    to.Ptr(fmt.Sprintf("/home/%s/.ssh/authorized_keys", config.AdminUsername)),
+							KeyData: to.Ptr(config.SSHPublicKey),
+						},
+					},
+				},
+			},
+		}
+		slog.Info("Creating VM with standard Ubuntu image", "computerName", namer.BoxComputerName(tags.InstanceID))
+	} else {
+		// Creating VM from generalized custom image - do NOT set OSProfile
+		slog.Info("Creating VM from generalized golden image (no OSProfile)", "imageID", config.OSImageID)
 	}
 
 	pollOptions := &DefaultPollOptions
