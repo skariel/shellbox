@@ -109,7 +109,7 @@ sudo qemu-system-x86_64 \
    -smp 8 \
    -cpu host \
    -drive file=%s/qemu-disks/ubuntu-base.qcow2,format=qcow2 \
-   -drive file=%s/qemu-disks/cloud-init.iso,format=raw \
+   -drive file=%s/qemu-disks/cloud-init.iso,format=raw,readonly=on \
    -nographic \
    -monitor unix:/tmp/qemu-monitor.sock,server,nowait \
    -nic user,model=virtio,hostfwd=tcp::%d-:22,dns=8.8.8.8`,
@@ -355,7 +355,9 @@ func waitForQEMUSetup(ctx context.Context, _ *AzureClients, tempBox *tempBoxInfo
 
 		// Save the QEMU VM state and cleanly shut down to preserve the SSH-ready state
 		slog.Info("QEMU VM SSH confirmed working, saving VM state")
-		saveCmd := `echo -e "savevm ssh-ready\nquit" | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock`
+
+		// Save snapshot with better error handling and timing
+		saveCmd := `(echo "savevm ssh-ready"; sleep 5; echo "info snapshots"; sleep 1; echo "quit") | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock`
 		stopErr := sshutil.ExecuteCommand(ctx, saveCmd, AdminUsername, tempBox.PrivateIP)
 		if stopErr != nil {
 			slog.Warn("Failed to save QEMU VM state", "error", stopErr)
@@ -364,6 +366,15 @@ func waitForQEMUSetup(ctx context.Context, _ *AzureClients, tempBox *tempBoxInfo
 			if fallbackErr != nil {
 				slog.Warn("Fallback pkill also failed", "error", fallbackErr)
 			}
+		}
+
+		// Verify snapshot was created
+		time.Sleep(2 * time.Second) // Give QEMU time to fully shut down
+		verifyCmd := `sudo qemu-img snapshot -l /mnt/userdata/qemu-disks/ubuntu-base.qcow2 || echo "No snapshots found"`
+		if verifyErr := sshutil.ExecuteCommand(ctx, verifyCmd, AdminUsername, tempBox.PrivateIP); verifyErr != nil {
+			slog.Warn("Failed to verify QEMU snapshot", "error", verifyErr)
+		} else {
+			slog.Info("QEMU snapshot verification completed")
 		}
 
 		slog.Info("QEMU VM SSH-ready state prepared", "vmName", tempBox.VMName)

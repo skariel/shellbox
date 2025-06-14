@@ -92,20 +92,24 @@ const (
 | project name, id, tags, location`
 
 	// Get running VMs by status with power state
-	queryRunningVMsByStatus = `VirtualMachineResources
+	queryRunningVMsByStatus = `Resources
+| where type =~ 'microsoft.compute/virtualmachines'
 | where resourceGroup =~ '%s'
 | where tags['%s'] =~ '%s'
 | where tags['%s'] =~ '%s'
-| where properties.extended.instanceView.powerState.code =~ 'PowerState/running'
-| project name, id, tags, location, powerState = properties.extended.instanceView.powerState.code`
+| extend powerState = properties.extended.instanceView.powerState.code
+| where powerState =~ 'PowerState/running'
+| project name, id, tags, location, powerState`
 
 	// Get oldest free running VMs for scale-down
-	queryOldestFreeRunningVMs = `VirtualMachineResources
+	queryOldestFreeRunningVMs = `Resources
+| where type =~ 'microsoft.compute/virtualmachines'
 | where resourceGroup =~ '%s'
 | where tags['%s'] =~ '%s'
 | where tags['%s'] =~ 'free'
-| where properties.extended.instanceView.powerState.code =~ 'PowerState/running'
-| project name, id, tags, location, powerState = properties.extended.instanceView.powerState.code, lastused=todatetime(tags['%s'])
+| extend powerState = properties.extended.instanceView.powerState.code
+| where powerState =~ 'PowerState/running'
+| project name, id, tags, location, powerState, lastused=todatetime(tags['%s'])
 | order by lastused asc
 | take %d`
 )
