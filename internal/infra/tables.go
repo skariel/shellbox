@@ -72,6 +72,15 @@ func ensureStorageAccountExists(ctx context.Context, storageClient *armstorage.A
 		},
 	}, nil)
 	if err != nil {
+		// Check if this is a "storage account already exists" error (idempotent operation)
+		var respErr *azcore.ResponseError
+		if errors.As(err, &respErr) && respErr.StatusCode == 409 {
+			// Storage account already exists, verify it's accessible
+			_, getErr := storageClient.GetProperties(ctx, resourceGroupName, accountName, nil)
+			if getErr == nil {
+				return nil // Already exists and accessible
+			}
+		}
 		return fmt.Errorf("failed to create storage account: %w", err)
 	}
 
