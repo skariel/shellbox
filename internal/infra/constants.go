@@ -116,6 +116,7 @@ const (
 	GoldenRoleTempDataDisk = "temp-data-disk"
 	GoldenRoleTempVM       = "temp-vm"
 	GoldenRoleSnapshot     = "golden-snapshot"
+	GoldenRoleImage        = "golden-image"
 )
 
 // System user constants

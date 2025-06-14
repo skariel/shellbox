@@ -24,8 +24,14 @@ type InstanceTags struct {
 	UserID     string
 }
 
-// CreateInstance creates a new instance VM with proper networking setup.
-// This creates only the compute instance without any volumes or QEMU setup.
+// VMConfig contains configuration for creating a VM
+type VMConfig struct {
+	VMSize        string
+	AdminUsername string
+	SSHPublicKey  string
+	OSImageID     string // Optional: If provided, creates VM from this custom OS image instead of standard image
+}
+
 // Volumes will be attached separately when users connect.
 // It returns the instance ID and any error encountered.
 func CreateInstance(ctx context.Context, clients *AzureClients, config *VMConfig) (string, error) {
@@ -56,7 +62,6 @@ func CreateInstance(ctx context.Context, clients *AzureClients, config *VMConfig
 		LastUsed:   now.Format(time.RFC3339),
 		InstanceID: instanceID,
 	}
-
 	_, err = createInstanceVM(ctx, clients, vmName, *nic.ID, config, tags)
 	if err != nil {
 		return "", fmt.Errorf("creating instance VM: %w", err)
@@ -222,6 +227,38 @@ func createInstanceNIC(ctx context.Context, clients *AzureClients, nicName strin
 	return &result.Interface, nil
 }
 
+// buildStorageProfile creates the storage profile based on whether we're using a golden OS snapshot or standard image
+func buildStorageProfile(config *VMConfig, instanceID string, namer *ResourceNamer) (*armcompute.StorageProfile, error) {
+	profile := &armcompute.StorageProfile{
+		OSDisk: &armcompute.OSDisk{
+			Name:         to.Ptr(namer.BoxOSDiskName(instanceID)),
+			CreateOption: to.Ptr(armcompute.DiskCreateOptionTypesFromImage),
+			ManagedDisk: &armcompute.ManagedDiskParameters{
+				StorageAccountType: to.Ptr(armcompute.StorageAccountTypesPremiumLRS),
+			},
+		},
+	}
+
+	if config.OSImageID != "" {
+		// Use custom image for VM creation (Azure will create the OS disk automatically)
+		profile.OSDisk.CreateOption = to.Ptr(armcompute.DiskCreateOptionTypesFromImage)
+		profile.ImageReference = &armcompute.ImageReference{
+			ID: to.Ptr(config.OSImageID),
+		}
+		slog.Info("Creating VM with OS disk from golden image", "imageID", config.OSImageID)
+	} else {
+		// Use standard Ubuntu image
+		profile.ImageReference = &armcompute.ImageReference{
+			Publisher: to.Ptr(VMPublisher),
+			Offer:     to.Ptr(VMOffer),
+			SKU:       to.Ptr(VMSku),
+			Version:   to.Ptr(VMVersion),
+		}
+	}
+
+	return profile, nil
+}
+
 func createInstanceVM(ctx context.Context, clients *AzureClients, vmName string, nicID string, config *VMConfig, tags InstanceTags) (*armcompute.VirtualMachine, error) {
 	namer := NewResourceNamer(clients.Suffix)
 	tagsMap := map[string]*string{
@@ -233,6 +270,12 @@ func createInstanceVM(ctx context.Context, clients *AzureClients, vmName string,
 		TagKeyUserID:     to.Ptr(tags.UserID),
 	}
 
+	// Build storage profile (may create disk from snapshot if needed)
+	storageProfile, err := buildStorageProfile(config, tags.InstanceID, namer)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build storage profile: %w", err)
+	}
+
 	vmParams := armcompute.VirtualMachine{
 		Location: to.Ptr(Location),
 		Tags:     tagsMap,
@@ -240,21 +283,7 @@ func createInstanceVM(ctx context.Context, clients *AzureClients, vmName string,
 			HardwareProfile: &armcompute.HardwareProfile{
 				VMSize: to.Ptr(armcompute.VirtualMachineSizeTypes(config.VMSize)),
 			},
-			StorageProfile: &armcompute.StorageProfile{
-				ImageReference: &armcompute.ImageReference{
-					Publisher: to.Ptr(VMPublisher),
-					Offer:     to.Ptr(VMOffer),
-					SKU:       to.Ptr(VMSku),
-					Version:   to.Ptr(VMVersion),
-				},
-				OSDisk: &armcompute.OSDisk{
-					Name:         to.Ptr(namer.BoxOSDiskName(tags.InstanceID)),
-					CreateOption: to.Ptr(armcompute.DiskCreateOptionTypesFromImage),
-					ManagedDisk: &armcompute.ManagedDiskParameters{
-						StorageAccountType: to.Ptr(armcompute.StorageAccountTypesPremiumLRS),
-					},
-				},
-			},
+			StorageProfile: storageProfile,
 			OSProfile: &armcompute.OSProfile{
 				ComputerName:  to.Ptr(namer.BoxComputerName(tags.InstanceID)),
 				AdminUsername: to.Ptr(config.AdminUsername),

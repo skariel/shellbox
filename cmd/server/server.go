@@ -47,7 +47,7 @@ func main() {
 		logger.Error("failed to create golden snapshot", "error", err)
 		os.Exit(1)
 	}
-	logger.Info("golden snapshot ready", "name", goldenSnapshot.Name, "size_gb", goldenSnapshot.SizeGB)
+	logger.Info("golden snapshots ready", "dataSnapshot", goldenSnapshot.DataSnapshotName, "osImage", goldenSnapshot.OSImageName, "dataSizeGB", goldenSnapshot.DataSizeGB, "osSizeGB", goldenSnapshot.OSSizeGB)
 
 	// Log server start event
 	now := time.Now()

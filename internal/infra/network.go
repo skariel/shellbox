@@ -44,13 +44,6 @@ var BastionNSGRules = []*armnetwork.SecurityRule{
 	createNSGRule("AllowToInternet", "*", "*", "Internet", "*", armnetwork.SecurityRuleAccessAllow, 110, armnetwork.SecurityRuleDirectionOutbound),
 }
 
-// VMConfig holds common VM configuration fields
-type VMConfig struct {
-	AdminUsername string
-	SSHPublicKey  string
-	VMSize        string
-}
-
 // AzureClients holds all the Azure SDK clients needed for the application
 type AzureClients struct {
 	Cred                         azcore.TokenCredential
@@ -73,6 +66,7 @@ type AzureClients struct {
 	TableClient                  *aztables.ServiceClient
 	DisksClient                  *armcompute.DisksClient
 	SnapshotsClient              *armcompute.SnapshotsClient
+	ImagesClient                 *armcompute.ImagesClient
 	ResourceGraphClient          *armresourcegraph.Client
 }
 

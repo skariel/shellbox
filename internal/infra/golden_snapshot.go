@@ -125,48 +125,59 @@ sudo qemu-system-x86_64 \
 	return base64.StdEncoding.EncodeToString([]byte(script)), nil
 }
 
-// GoldenSnapshotInfo contains information about the created golden snapshot
+// GoldenSnapshotInfo contains information about the created golden snapshots and image
 type GoldenSnapshotInfo struct {
-	Name         string
-	ResourceID   string
-	Location     string
-	CreatedTime  time.Time
-	SizeGB       int32
-	SourceDiskID string
+	// Data volume snapshot information
+	DataSnapshotName       string
+	DataSnapshotResourceID string
+	// OS image information (created directly from OS disk)
+	OSImageName       string
+	OSImageResourceID string
+	// Common fields
+	Location    string
+	CreatedTime time.Time
+	DataSizeGB  int32
+	OSSizeGB    int32
 }
 
-// CreateGoldenSnapshotIfNotExists creates a golden snapshot containing a pre-configured QEMU environment.
-// This snapshot serves as the base for all user volumes, ensuring consistent and fast provisioning.
-// The function is idempotent - it will find and return existing snapshots rather than creating duplicates.
-// Golden snapshots are stored in a persistent resource group to avoid recreation between deployments.
+// CreateGoldenSnapshotIfNotExists creates golden resources containing a pre-configured QEMU environment.
+// This creates a data volume snapshot (for user volumes) and a custom VM image (for fast instance creation).
+// The function is idempotent - it will find and return existing resources rather than creating duplicates.
+// Golden resources are stored in a persistent resource group to avoid recreation between deployments.
 func CreateGoldenSnapshotIfNotExists(ctx context.Context, clients *AzureClients, _, _ string) (*GoldenSnapshotInfo, error) {
 	// Ensure the persistent resource group exists
 	if err := ensureGoldenSnapshotResourceGroup(ctx, clients); err != nil {
 		return nil, fmt.Errorf("failed to ensure golden snapshot resource group: %w", err)
 	}
 
-	// Generate content-based snapshot name for this QEMU configuration
-	snapshotName, err := generateGoldenSnapshotName()
+	// Generate content-based snapshot names for this QEMU configuration
+	dataSnapshotName, osSnapshotName, err := generateGoldenSnapshotNames()
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate snapshot name: %w", err)
+		return nil, fmt.Errorf("failed to generate snapshot names: %w", err)
 	}
 
-	// Check if golden snapshot already exists in the persistent resource group
-	slog.Info("Checking for existing golden snapshot", "snapshotName", snapshotName, "resourceGroup", GoldenSnapshotResourceGroup)
-	existing, err := clients.SnapshotsClient.Get(ctx, GoldenSnapshotResourceGroup, snapshotName, nil)
-	if err == nil {
-		slog.Info("Found existing golden snapshot", "snapshotName", snapshotName)
+	// Check if golden data snapshot and OS image already exist in the persistent resource group
+	osImageName := fmt.Sprintf("%s-image", osSnapshotName)
+	slog.Info("Checking for existing golden data snapshot and OS image", "dataSnapshot", dataSnapshotName, "osImage", osImageName, "resourceGroup", GoldenSnapshotResourceGroup)
+
+	dataSnapshot, dataErr := clients.SnapshotsClient.Get(ctx, GoldenSnapshotResourceGroup, dataSnapshotName, nil)
+	osImage, imageErr := clients.ImagesClient.Get(ctx, GoldenSnapshotResourceGroup, osImageName, nil)
+
+	if dataErr == nil && imageErr == nil {
+		slog.Info("Found existing golden data snapshot and OS image", "dataSnapshot", dataSnapshotName, "osImage", osImageName)
 		return &GoldenSnapshotInfo{
-			Name:        *existing.Name,
-			ResourceID:  *existing.ID,
-			Location:    *existing.Location,
-			CreatedTime: *existing.Properties.TimeCreated,
-			SizeGB:      *existing.Properties.DiskSizeGB,
+			DataSnapshotName:       *dataSnapshot.Name,
+			DataSnapshotResourceID: *dataSnapshot.ID,
+			OSImageName:            *osImage.Name,
+			OSImageResourceID:      *osImage.ID,
+			Location:               *dataSnapshot.Location,
+			CreatedTime:            *dataSnapshot.Properties.TimeCreated,
+			DataSizeGB:             *dataSnapshot.Properties.DiskSizeGB,
+			OSSizeGB:               *osImage.Properties.StorageProfile.OSDisk.DiskSizeGB,
 		}, nil
 	}
 
-	slog.Info("Golden snapshot not found, creating new one", "snapshotName", snapshotName)
-
+	slog.Info("Golden resources not found, creating new ones", "dataSnapshot", dataSnapshotName, "osImage", osImageName)
 	// Create temporary box VM with data volume for QEMU setup
 	tempBoxName := fmt.Sprintf("temp-golden-%d", time.Now().Unix())
 	slog.Info("Creating temporary box VM", "tempBoxName", tempBoxName)
@@ -186,25 +197,25 @@ func CreateGoldenSnapshotIfNotExists(ctx context.Context, clients *AzureClients,
 		return nil, fmt.Errorf("failed waiting for QEMU setup: %w", err)
 	}
 
-	// Create snapshot from the data volume in the persistent resource group
-	slog.Info("Creating snapshot from data volume")
-	snapshotInfo, err := createSnapshotFromDataVolume(ctx, clients, GoldenSnapshotResourceGroup, snapshotName, tempBox.DataDiskID)
+	// Create data snapshot and OS image from the VM in the persistent resource group
+	slog.Info("Creating data snapshot and OS image from VM")
+	snapshotInfo, err := createSnapshotsFromVM(ctx, clients, GoldenSnapshotResourceGroup, dataSnapshotName, osSnapshotName, tempBox)
 	if err != nil {
 		// Cleanup temp resources on failure
 		if cleanupErr := DeleteInstance(ctx, clients, clients.ResourceGroupName, tempBoxName); cleanupErr != nil {
 			slog.Warn("Failed to cleanup temporary box during error recovery", "error", cleanupErr)
 		}
-		return nil, fmt.Errorf("failed to create snapshot: %w", err)
+		return nil, fmt.Errorf("failed to create snapshots: %w", err)
 	}
 
 	// Cleanup temporary resources
 	slog.Info("Cleaning up temporary resources")
 	if err := DeleteInstance(ctx, clients, clients.ResourceGroupName, tempBoxName); err != nil {
 		slog.Warn("Failed to cleanup temporary box", "tempBoxName", tempBoxName, "error", err)
-		// Don't fail the operation - snapshot was created successfully
+		// Don't fail the operation - snapshots were created successfully
 	}
 
-	slog.Info("Golden snapshot created successfully", "snapshotName", snapshotName)
+	slog.Info("Golden resources created successfully", "dataSnapshot", dataSnapshotName, "osImage", osImageName)
 	return snapshotInfo, nil
 }
 
@@ -212,6 +223,7 @@ func CreateGoldenSnapshotIfNotExists(ctx context.Context, clients *AzureClients,
 type tempBoxInfo struct {
 	VMName     string
 	DataDiskID string
+	OSDiskID   string
 	PrivateIP  string
 	PublicIP   string
 	NICName    string
@@ -286,14 +298,24 @@ func createBoxWithDataVolume(ctx context.Context, clients *AzureClients, resourc
 	}
 
 	// Create VM with data disk attached using modified function
-	_, err = createBoxVMWithDataDisk(ctx, clients, resourceGroupName, vmName, *nicResult.ID, volumeInfo.ResourceID, sshPublicKey)
+	vmResult, err := createBoxVMWithDataDisk(ctx, clients, resourceGroupName, vmName, *nicResult.ID, volumeInfo.ResourceID, sshPublicKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create VM: %w", err)
+	}
+
+	// Extract OS disk ID from VM properties
+	osDiskID := ""
+	if vmResult.Properties != nil && vmResult.Properties.StorageProfile != nil &&
+		vmResult.Properties.StorageProfile.OSDisk != nil &&
+		vmResult.Properties.StorageProfile.OSDisk.ManagedDisk != nil &&
+		vmResult.Properties.StorageProfile.OSDisk.ManagedDisk.ID != nil {
+		osDiskID = *vmResult.Properties.StorageProfile.OSDisk.ManagedDisk.ID
 	}
 
 	return &tempBoxInfo{
 		VMName:     vmName,
 		DataDiskID: volumeInfo.ResourceID,
+		OSDiskID:   osDiskID,
 		PrivateIP:  *nicResult.Properties.IPConfigurations[0].Properties.PrivateIPAddress,
 		NICName:    nicName,
 		NSGName:    nsgName,
@@ -339,47 +361,83 @@ func waitForQEMUSetup(ctx context.Context, _ *AzureClients, tempBox *tempBoxInfo
 	}, 15*time.Minute, 30*time.Second, "QEMU VM SSH connectivity")
 }
 
-// createSnapshotFromDataVolume creates a snapshot from the specified data volume
-func createSnapshotFromDataVolume(ctx context.Context, clients *AzureClients, resourceGroupName, snapshotName, dataDiskID string) (*GoldenSnapshotInfo, error) {
-	slog.Info("Creating snapshot", "snapshotName", snapshotName, "dataDiskID", dataDiskID)
+func createSnapshotsFromVM(ctx context.Context, clients *AzureClients, resourceGroupName, dataSnapshotName, osSnapshotName string, tempBox *tempBoxInfo) (*GoldenSnapshotInfo, error) {
+	osImageName := fmt.Sprintf("%s-image", osSnapshotName)
+	slog.Info("Creating data snapshot and OS image", "dataSnapshot", dataSnapshotName, "osImage", osImageName, "dataDiskID", tempBox.DataDiskID, "osDiskID", tempBox.OSDiskID)
 
-	snapshot, err := clients.SnapshotsClient.BeginCreateOrUpdate(ctx, resourceGroupName, snapshotName, armcompute.Snapshot{
+	// Create data disk snapshot
+	dataSnapshot, err := clients.SnapshotsClient.BeginCreateOrUpdate(ctx, resourceGroupName, dataSnapshotName, armcompute.Snapshot{
 		Location: to.Ptr(Location),
 		Properties: &armcompute.SnapshotProperties{
 			CreationData: &armcompute.CreationData{
 				CreateOption:     to.Ptr(armcompute.DiskCreateOptionCopy),
-				SourceResourceID: to.Ptr(dataDiskID),
+				SourceResourceID: to.Ptr(tempBox.DataDiskID),
 			},
 		},
 		Tags: map[string]*string{
 			GoldenTagKeyRole:    to.Ptr(GoldenRoleSnapshot),
-			GoldenTagKeyPurpose: to.Ptr("qemu-base-image"),
+			GoldenTagKeyPurpose: to.Ptr("qemu-data-volume"),
 			GoldenTagKeyCreated: to.Ptr(time.Now().Format(time.RFC3339)),
 			GoldenTagKeyStage:   to.Ptr("ready"),
 		},
 	}, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create snapshot: %w", err)
+		return nil, fmt.Errorf("failed to create data snapshot: %w", err)
 	}
 
-	result, err := snapshot.PollUntilDone(ctx, &DefaultPollOptions)
+	// Wait for data snapshot to complete
+	dataResult, err := dataSnapshot.PollUntilDone(ctx, &DefaultPollOptions)
 	if err != nil {
-		return nil, fmt.Errorf("failed waiting for snapshot creation: %w", err)
+		return nil, fmt.Errorf("failed waiting for data snapshot creation: %w", err)
+	}
+
+	// Create a custom VM image directly from the OS disk (no intermediate snapshot needed)
+	slog.Info("Creating custom VM image from OS disk", "imageName", osImageName, "osDiskID", tempBox.OSDiskID)
+
+	imageParams := armcompute.Image{
+		Location: to.Ptr(Location),
+		Properties: &armcompute.ImageProperties{
+			StorageProfile: &armcompute.ImageStorageProfile{
+				OSDisk: &armcompute.ImageOSDisk{
+					OSType:  to.Ptr(armcompute.OperatingSystemTypesLinux),
+					OSState: to.Ptr(armcompute.OperatingSystemStateTypesSpecialized),
+					ManagedDisk: &armcompute.SubResource{
+						ID: to.Ptr(tempBox.OSDiskID),
+					},
+				},
+			},
+		},
+		Tags: map[string]*string{
+			GoldenTagKeyRole:    to.Ptr(GoldenRoleImage),
+			GoldenTagKeyPurpose: to.Ptr("qemu-os-image"),
+			GoldenTagKeyCreated: to.Ptr(time.Now().Format(time.RFC3339)),
+			GoldenTagKeyStage:   to.Ptr("ready"),
+		},
+	}
+
+	imagePoller, err := clients.ImagesClient.BeginCreateOrUpdate(ctx, resourceGroupName, osImageName, imageParams, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create custom image: %w", err)
+	}
+
+	imageResult, err := imagePoller.PollUntilDone(ctx, &DefaultPollOptions)
+	if err != nil {
+		return nil, fmt.Errorf("failed waiting for custom image creation: %w", err)
 	}
 
 	return &GoldenSnapshotInfo{
-		Name:         *result.Name,
-		ResourceID:   *result.ID,
-		Location:     *result.Location,
-		CreatedTime:  *result.Properties.TimeCreated,
-		SizeGB:       *result.Properties.DiskSizeGB,
-		SourceDiskID: dataDiskID,
+		DataSnapshotName:       *dataResult.Name,
+		DataSnapshotResourceID: *dataResult.ID,
+		OSImageName:            *imageResult.Name,
+		OSImageResourceID:      *imageResult.ID,
+		Location:               *dataResult.Location,
+		CreatedTime:            *dataResult.Properties.TimeCreated,
+		DataSizeGB:             *dataResult.Properties.DiskSizeGB,
+		OSSizeGB:               *imageResult.Properties.StorageProfile.OSDisk.DiskSizeGB,
 	}, nil
 }
 
-// createBoxVMWithDataDisk creates a VM with both OS and data disks attached
 func createBoxVMWithDataDisk(ctx context.Context, clients *AzureClients, resourceGroupName, vmName, nicID, dataDiskID, sshPublicKey string) (*armcompute.VirtualMachine, error) {
-	// Generate initialization script for data volume setup
 	initScript, err := generateDataVolumeInitScript()
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate data volume init script: %w", err)
@@ -531,9 +589,9 @@ func ensureGoldenSnapshotResourceGroup(ctx context.Context, clients *AzureClient
 	return nil
 }
 
-// generateGoldenSnapshotName creates a content-based name for the golden snapshot
-// This allows us to detect when the QEMU configuration changes and a new snapshot is needed
-func generateGoldenSnapshotName() (string, error) {
+// generateGoldenSnapshotNames creates content-based names for the golden snapshots
+// This allows us to detect when the QEMU configuration changes and new snapshots are needed
+func generateGoldenSnapshotNames() (string, string, error) {
 	// Generate a sample QEMU script to hash its content
 	config := QEMUScriptConfig{
 		SSHPublicKey:  "sample-key-for-hashing",
@@ -544,7 +602,7 @@ func generateGoldenSnapshotName() (string, error) {
 
 	scriptContent, err := GenerateQEMUInitScript(config)
 	if err != nil {
-		return "", fmt.Errorf("failed to generate script for hashing: %w", err)
+		return "", "", fmt.Errorf("failed to generate script for hashing: %w", err)
 	}
 
 	// Hash the script content to create a unique identifier
@@ -552,5 +610,8 @@ func generateGoldenSnapshotName() (string, error) {
 	hasher.Write([]byte(scriptContent))
 	hash := hex.EncodeToString(hasher.Sum(nil))[:12] // Use first 12 chars
 
-	return fmt.Sprintf("golden-qemu-%s", hash), nil
+	dataSnapshotName := fmt.Sprintf("golden-qemu-data-%s", hash)
+	osSnapshotName := fmt.Sprintf("golden-qemu-os-%s", hash)
+
+	return dataSnapshotName, osSnapshotName, nil
 }

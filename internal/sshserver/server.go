@@ -125,22 +125,17 @@ For more help:
 	}
 }
 
-func (s *Server) handleShellSession(sess gssh.Session, resources *infra.AllocatedResources) {
+func (s *Server) handleShellSession(ctx CommandContext, sess gssh.Session, resources *infra.AllocatedResources) {
 	if _, err := sess.Write([]byte("\n\nHI FROM SHELLBOX!\n\n")); err != nil {
 		s.logger.Error("Error writing to SSH session", "error", err)
 		return
 	}
 
-	// Generate session ID and user key hash for logging
+	// Generate session ID for logging
 	sessionID := fmt.Sprintf("sess_%d", time.Now().UnixNano())
-	var userKeyHash string
-	if publicKey := sess.PublicKey(); publicKey != nil {
-		hash := sha256.Sum256(publicKey.Marshal())
-		userKeyHash = hex.EncodeToString(hash[:])[:16]
-	}
 
 	// Log the allocated resources
-	s.logger.Info("starting shell session", "sessionID", sessionID, "userKeyHash", userKeyHash, "instanceID", resources.InstanceID, "volumeID", resources.VolumeID)
+	s.logger.Info("starting shell session", "sessionID", sessionID, "userKeyHash", ctx.UserID, "instanceID", resources.InstanceID, "volumeID", resources.VolumeID)
 
 	// Log session start event
 	now := time.Now()
@@ -150,7 +145,7 @@ func (s *Server) handleShellSession(sess gssh.Session, resources *infra.Allocate
 		Timestamp:    now,
 		EventType:    infra.EventTypeSessionStart,
 		SessionID:    sessionID,
-		UserKey:      userKeyHash,
+		UserKey:      ctx.UserID,
 		BoxID:        resources.InstanceID,
 		Details:      fmt.Sprintf(`{"remote_addr":"%s","instanceIP":"%s","volumeID":"%s"}`, sess.RemoteAddr(), resources.InstanceIP, resources.VolumeID),
 	}
@@ -158,12 +153,11 @@ func (s *Server) handleShellSession(sess gssh.Session, resources *infra.Allocate
 		s.logger.Warn("Failed to log session start event", "error", err)
 	}
 
-	ctx := context.Background()
-
-	// Ensure cleanup on session end
+	bctx := context.Background()
+	// Ensure resources are cleaned
 	defer func() {
 		s.logger.Info("releasing resources", "sessionID", sessionID)
-		if err := s.allocator.ReleaseResources(ctx, resources.InstanceID, resources.VolumeID); err != nil {
+		if err := s.allocator.ReleaseResources(bctx, resources.InstanceID, resources.VolumeID); err != nil {
 			s.logger.Error("Failed to release resources", "error", err, "sessionID", sessionID)
 		}
 	}()
@@ -184,11 +178,11 @@ func (s *Server) handleShellSession(sess gssh.Session, resources *infra.Allocate
 		Timestamp:    time.Now(),
 		EventType:    infra.EventTypeResourceConnect,
 		SessionID:    sessionID,
-		UserKey:      userKeyHash,
+		UserKey:      ctx.UserID,
 		BoxID:        resources.InstanceID,
 		Details:      fmt.Sprintf(`{"instanceIP":"%s","volumeID":"%s"}`, resources.InstanceIP, resources.VolumeID),
 	}
-	if err := infra.WriteEventLog(ctx, s.clients, connectEvent); err != nil {
+	if err := infra.WriteEventLog(bctx, s.clients, connectEvent); err != nil {
 		s.logger.Warn("Failed to log resource connection", "error", err)
 	}
 
@@ -410,7 +404,7 @@ func (s *Server) handleConnectCommand(ctx CommandContext, result CommandResult, 
 	s.logger.Info("Box connection established", "user", ctx.UserID, "box", boxName, "instanceID", allocatedResources.InstanceID, "volumeID", allocatedResources.VolumeID)
 
 	// Call the shell session handler with allocated resources
-	s.handleShellSession(sess, allocatedResources)
+	s.handleShellSession(ctx, sess, allocatedResources)
 }
 
 // handleHelpCommand handles the help command

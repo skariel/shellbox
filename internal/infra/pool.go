@@ -168,7 +168,12 @@ func (p *BoxPool) scaleUpInstances(ctx context.Context, currentSize int) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			instanceID, err := CreateInstance(ctx, p.clients, p.vmConfig)
+			// Create VM config with golden OS image
+			vmConfig := *p.vmConfig // Copy the base config
+			if p.goldenSnapshot != nil && p.goldenSnapshot.OSImageResourceID != "" {
+				vmConfig.OSImageID = p.goldenSnapshot.OSImageResourceID
+			}
+			instanceID, err := CreateInstance(ctx, p.clients, &vmConfig)
 			if err != nil {
 				slog.Error("failed to create instance", "error", err)
 				return
@@ -294,7 +299,7 @@ func (p *BoxPool) scaleUpVolumes(ctx context.Context, currentSize int) {
 			}
 
 			_, err := CreateVolumeFromSnapshot(ctx, p.clients, p.clients.ResourceGroupName,
-				volumeName, p.goldenSnapshot.ResourceID, tags)
+				volumeName, p.goldenSnapshot.DataSnapshotResourceID, tags)
 			if err != nil {
 				slog.Error("failed to create volume from golden snapshot", "error", err)
 				return

@@ -63,6 +63,9 @@ func createAzureClients(clients *AzureClients) {
 	clients.SnapshotsClient, err = armcompute.NewSnapshotsClient(clients.SubscriptionID, clients.Cred, nil)
 	FatalOnError(err, "failed to create snapshots client")
 
+	clients.ImagesClient, err = armcompute.NewImagesClient(clients.SubscriptionID, clients.Cred, nil)
+	FatalOnError(err, "failed to create images client")
+
 	clients.ResourceGraphClient, err = armresourcegraph.NewClient(clients.Cred, nil)
 	FatalOnError(err, "failed to create resource graph client")
 }
