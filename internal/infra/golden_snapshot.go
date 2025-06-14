@@ -197,6 +197,16 @@ func CreateGoldenSnapshotIfNotExists(ctx context.Context, clients *AzureClients,
 		return nil, fmt.Errorf("failed waiting for QEMU setup: %w", err)
 	}
 
+	// Generalize the VM before image creation
+	slog.Info("Generalizing VM before image creation", "vmName", tempBoxName)
+	if err := GeneralizeVM(ctx, clients, clients.ResourceGroupName, tempBoxName); err != nil {
+		// Cleanup temp resources on failure
+		if cleanupErr := DeleteInstance(ctx, clients, clients.ResourceGroupName, tempBoxName); cleanupErr != nil {
+			slog.Warn("Failed to cleanup temporary box during error recovery", "error", cleanupErr)
+		}
+		return nil, fmt.Errorf("failed to generalize VM before image creation: %w", err)
+	}
+
 	// Create data snapshot and OS image from the VM in the persistent resource group
 	slog.Info("Creating data snapshot and OS image from VM")
 	snapshotInfo, err := createSnapshotsFromVM(ctx, clients, GoldenSnapshotResourceGroup, dataSnapshotName, osSnapshotName, tempBox)
@@ -400,7 +410,7 @@ func createSnapshotsFromVM(ctx context.Context, clients *AzureClients, resourceG
 			StorageProfile: &armcompute.ImageStorageProfile{
 				OSDisk: &armcompute.ImageOSDisk{
 					OSType:  to.Ptr(armcompute.OperatingSystemTypesLinux),
-					OSState: to.Ptr(armcompute.OperatingSystemStateTypesSpecialized),
+					OSState: to.Ptr(armcompute.OperatingSystemStateTypesGeneralized),
 					ManagedDisk: &armcompute.SubResource{
 						ID: to.Ptr(tempBox.OSDiskID),
 					},

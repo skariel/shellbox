@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"shellbox/internal/sshutil"
+
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v7"
@@ -338,6 +340,66 @@ func DeallocateBox(ctx context.Context, clients *AzureClients, vmID string) erro
 	if err != nil {
 		return fmt.Errorf("deallocating VM: %w", err)
 	}
+	return nil
+}
+
+// GeneralizeVM generalizes a VM by running waagent -deprovision+user and then marking it as generalized in Azure
+func GeneralizeVM(ctx context.Context, clients *AzureClients, resourceGroupName, vmName string) error {
+	// Step 1: Run waagent -deprovision+user on the VM
+	slog.Info("Running waagent deprovision on VM", "vmName", vmName)
+
+	// Get VM to find its private IP for SSH connection
+	vm, err := clients.ComputeClient.Get(ctx, resourceGroupName, vmName, nil)
+	if err != nil {
+		return fmt.Errorf("failed to get VM details: %w", err)
+	}
+
+	// Extract private IP from NIC
+	var privateIP string
+	if vm.Properties != nil && vm.Properties.NetworkProfile != nil && len(vm.Properties.NetworkProfile.NetworkInterfaces) > 0 {
+		nicID := *vm.Properties.NetworkProfile.NetworkInterfaces[0].ID
+		nicParts := strings.Split(nicID, "/")
+		nicName := nicParts[len(nicParts)-1]
+		nic, err := clients.NICClient.Get(ctx, resourceGroupName, nicName, nil)
+		if err != nil {
+			return fmt.Errorf("failed to get NIC details: %w", err)
+		}
+
+		if len(nic.Properties.IPConfigurations) > 0 {
+			privateIP = *nic.Properties.IPConfigurations[0].Properties.PrivateIPAddress
+		}
+	}
+
+	if privateIP == "" {
+		return fmt.Errorf("could not determine private IP for VM %s", vmName)
+	}
+
+	// Run waagent -deprovision+user via SSH
+	deprovisionCmd := "sudo waagent -deprovision+user -force"
+	if err := sshutil.ExecuteCommand(ctx, deprovisionCmd, AdminUsername, privateIP); err != nil {
+		return fmt.Errorf("failed to deprovision VM: %w", err)
+	}
+
+	// Step 2: Deallocate the VM
+	slog.Info("Deallocating VM after deprovision", "vmName", vmName)
+	poller, err := clients.ComputeClient.BeginDeallocate(ctx, resourceGroupName, vmName, nil)
+	if err != nil {
+		return fmt.Errorf("starting VM deallocation: %w", err)
+	}
+
+	_, err = poller.PollUntilDone(ctx, &DefaultPollOptions)
+	if err != nil {
+		return fmt.Errorf("deallocating VM: %w", err)
+	}
+
+	// Step 3: Mark the VM as generalized in Azure
+	slog.Info("Marking VM as generalized", "vmName", vmName)
+	_, err = clients.ComputeClient.Generalize(ctx, resourceGroupName, vmName, nil)
+	if err != nil {
+		return fmt.Errorf("marking VM as generalized: %w", err)
+	}
+
+	slog.Info("VM successfully generalized", "vmName", vmName)
 	return nil
 }
 
