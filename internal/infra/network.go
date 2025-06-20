@@ -10,10 +10,8 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/data/aztables"
-	"github.com/Azure/azure-sdk-for-go/sdk/keyvault/azsecrets"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/keyvault/armkeyvault"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v7"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resourcegraph/armresourcegraph"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
@@ -70,8 +68,6 @@ type AzureClients struct {
 	SnapshotsClient              *armcompute.SnapshotsClient
 	ImagesClient                 *armcompute.ImagesClient
 	ResourceGraphClient          *armresourcegraph.Client
-	KeyVaultClient               *armkeyvault.VaultsClient
-	SecretsClient                *azsecrets.Client
 }
 
 func createResourceGroup(ctx context.Context, clients *AzureClients) {
@@ -163,10 +159,7 @@ func setSubnetIDsFromVNet(clients *AzureClients, vnetResult armnetwork.VirtualNe
 // InitializeTableStorage sets up Table Storage resources or reads configuration
 func InitializeTableStorage(clients *AzureClients, useAzureCli bool) {
 	if useAzureCli {
-		// Ensure golden resource group exists for shared storage
-		if err := ensureGoldenSnapshotResourceGroup(context.Background(), clients); err != nil {
-			FatalOnError(err, "Failed to ensure golden resource group for table storage")
-		}
+		// Golden resource group is already ensured in CreateNetworkInfrastructure
 
 		namer := NewResourceNamer(clients.Suffix)
 		storageAccount := namer.GlobalSharedStorageAccountName()
@@ -198,10 +191,6 @@ func CreateNetworkInfrastructure(ctx context.Context, clients *AzureClients, use
 	// 2. Ensure golden resource group and Key Vault exist
 	if err := ensureGoldenSnapshotResourceGroup(ctx, clients); err != nil {
 		slog.Error("Failed to ensure golden snapshot resource group", "error", err)
-		os.Exit(1)
-	}
-	if err := ensureKeyVaultExists(ctx, clients); err != nil {
-		slog.Error("Failed to ensure Key Vault exists", "error", err)
 		os.Exit(1)
 	}
 

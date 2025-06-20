@@ -30,14 +30,10 @@ type Server struct {
 
 // New creates a new SSH server instance
 func New(port int, clients *infra.AzureClients) (*Server, error) {
-	// Try to get SSH key from Key Vault first, fallback to file
-	privateKey, _, err := infra.GetBastionSSHKeyFromVault(context.Background(), clients)
+	// Load SSH key from local filesystem (copied during deployment)
+	privateKey, _, err := sshutil.LoadKeyPair(infra.BastionSSHKeyPath)
 	if err != nil {
-		// Fallback to loading from file system if Key Vault fails
-		privateKey, _, err = sshutil.LoadKeyPair(infra.BastionSSHKeyPath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to load SSH key from Key Vault or file: %w", err)
-		}
+		return nil, fmt.Errorf("failed to load SSH key from file: %w", err)
 	}
 
 	signer, err := ssh.ParsePrivateKey([]byte(privateKey))

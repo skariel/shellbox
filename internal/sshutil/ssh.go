@@ -23,6 +23,13 @@ func LoadKeyPair(keyPath string) (privateKey, publicKey string, err error) {
 	privKeyData, err := os.ReadFile(expandedPath)
 	if os.IsNotExist(err) {
 		// Generate new RSA key pair
+		// Ensure directory exists
+		dir := filepath.Dir(expandedPath)
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			return "", "", fmt.Errorf("creating directory %s: %w", dir, err)
+		}
+
+		// Generate new RSA key pair
 		key, err := rsa.GenerateKey(rand.Reader, 4096)
 		if err != nil {
 			return "", "", fmt.Errorf("generating key pair: %w", err)

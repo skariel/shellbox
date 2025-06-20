@@ -144,14 +144,14 @@ type GoldenSnapshotInfo struct {
 // This creates a data volume snapshot (for user volumes) and a custom VM image (for fast instance creation).
 // The function is idempotent - it will find and return existing resources rather than creating duplicates.
 // Golden resources are stored in a persistent resource group to avoid recreation between deployments.
-func CreateGoldenSnapshotIfNotExists(ctx context.Context, clients *AzureClients, _, _ string) (*GoldenSnapshotInfo, error) {
+func CreateGoldenSnapshotIfNotExists(ctx context.Context, clients *AzureClients, _, _ string, sshPublicKey string) (*GoldenSnapshotInfo, error) {
 	// Ensure the persistent resource group exists
 	if err := ensureGoldenSnapshotResourceGroup(ctx, clients); err != nil {
 		return nil, fmt.Errorf("failed to ensure golden snapshot resource group: %w", err)
 	}
 
 	// Generate content-based snapshot names for this QEMU configuration
-	dataSnapshotName, osSnapshotName, err := generateGoldenSnapshotNames()
+	dataSnapshotName, osSnapshotName, err := generateGoldenSnapshotNames(sshPublicKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate snapshot names: %w", err)
 	}
@@ -182,7 +182,7 @@ func CreateGoldenSnapshotIfNotExists(ctx context.Context, clients *AzureClients,
 	tempBoxName := fmt.Sprintf("temp-golden-%d", time.Now().Unix())
 	slog.Info("Creating temporary box VM", "tempBoxName", tempBoxName)
 
-	tempBox, err := createBoxWithDataVolume(ctx, clients, clients.ResourceGroupName, tempBoxName)
+	tempBox, err := createBoxWithDataVolume(ctx, clients, clients.ResourceGroupName, tempBoxName, sshPublicKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create temporary box for golden snapshot: %w", err)
 	}
@@ -242,7 +242,7 @@ type tempBoxInfo struct {
 }
 
 // createBoxWithDataVolume creates a temporary box VM with a data volume for QEMU setup
-func createBoxWithDataVolume(ctx context.Context, clients *AzureClients, resourceGroupName, vmName string) (*tempBoxInfo, error) {
+func createBoxWithDataVolume(ctx context.Context, clients *AzureClients, resourceGroupName, vmName string, sshPublicKey string) (*tempBoxInfo, error) {
 	namer := NewResourceNamer(ExtractSuffix(resourceGroupName))
 
 	// Create data volume using golden-specific tagging
@@ -299,12 +299,6 @@ func createBoxWithDataVolume(ctx context.Context, clients *AzureClients, resourc
 	nicResult, err := createInstanceNIC(ctx, clients, nicName, nsgResult.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create NIC: %w", err)
-	}
-
-	// Load SSH key for the temporary VM from Key Vault
-	_, sshPublicKey, err := GetBastionSSHKeyFromVault(ctx, clients)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get SSH key from Key Vault: %w", err)
 	}
 
 	// Create VM with data disk attached using modified function
@@ -489,7 +483,7 @@ func createSnapshotsFromVM(ctx context.Context, clients *AzureClients, resourceG
 }
 
 func createBoxVMWithDataDisk(ctx context.Context, clients *AzureClients, resourceGroupName, vmName, nicID, dataDiskID, sshPublicKey string) (*armcompute.VirtualMachine, error) {
-	initScript, err := generateDataVolumeInitScript(ctx, clients)
+	initScript, err := generateDataVolumeInitScript(ctx, clients, sshPublicKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate data volume init script: %w", err)
 	}
@@ -571,13 +565,7 @@ func createBoxVMWithDataDisk(ctx context.Context, clients *AzureClients, resourc
 }
 
 // generateDataVolumeInitScript creates an init script that sets up and starts QEMU VM on the data volume
-func generateDataVolumeInitScript(ctx context.Context, clients *AzureClients) (string, error) {
-	// Load SSH key for the golden snapshot QEMU VM from Key Vault
-	_, sshPublicKey, err := GetBastionSSHKeyFromVault(ctx, clients)
-	if err != nil {
-		return "", fmt.Errorf("failed to get SSH key from Key Vault: %w", err)
-	}
-
+func generateDataVolumeInitScript(_ context.Context, _ *AzureClients, sshPublicKey string) (string, error) {
 	// Use unified QEMU script generation with data volume configuration
 	config := QEMUScriptConfig{
 		SSHPublicKey:  sshPublicKey,
@@ -642,10 +630,10 @@ func ensureGoldenSnapshotResourceGroup(ctx context.Context, clients *AzureClient
 
 // generateGoldenSnapshotNames creates content-based names for the golden snapshots
 // This allows us to detect when the QEMU configuration changes and new snapshots are needed
-func generateGoldenSnapshotNames() (string, string, error) {
+func generateGoldenSnapshotNames(sshPublicKey string) (string, string, error) {
 	// Generate a sample QEMU script to hash its content
 	config := QEMUScriptConfig{
-		SSHPublicKey:  "sample-key-for-hashing",
+		SSHPublicKey:  sshPublicKey,
 		WorkingDir:    "/mnt/userdata",
 		SSHPort:       BoxSSHPort,
 		MountDataDisk: true,

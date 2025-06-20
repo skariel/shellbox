@@ -213,25 +213,11 @@ func copyTableStorageConfig(ctx context.Context, clients *AzureClients, config *
 }
 
 // copySSHKeyToBastion copies the SSH key to the bastion host
-func copySSHKeyToBastion(ctx context.Context, config *VMConfig, bastionIP, privateKey string) error {
+func copySSHKeyToBastion(ctx context.Context, config *VMConfig, bastionIP, keyPath string) error {
 	slog.Info("Copying SSH key to bastion", "ip", bastionIP)
 
-	// Create a temporary file for the private key
-	tmpFile, err := os.CreateTemp("", "bastion_ssh_key")
-	if err != nil {
-		return fmt.Errorf("failed to create temp file: %w", err)
-	}
-	defer os.Remove(tmpFile.Name())
-
-	if _, err := tmpFile.WriteString(privateKey); err != nil {
-		return fmt.Errorf("failed to write SSH key to temp file: %w", err)
-	}
-	tmpFile.Close()
-
-	// Set correct permissions on temp file
-	if err := os.Chmod(tmpFile.Name(), 0o600); err != nil {
-		return fmt.Errorf("failed to set permissions on temp file: %w", err)
-	}
+	// Expand the key path to handle environment variables
+	expandedKeyPath := os.ExpandEnv(keyPath)
 
 	// Create the .ssh directory on bastion
 	createDirCmd := exec.CommandContext(ctx, "ssh",
@@ -248,7 +234,7 @@ func copySSHKeyToBastion(ctx context.Context, config *VMConfig, bastionIP, priva
 	scpCmd := exec.CommandContext(ctx, "scp",
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "ConnectTimeout=10",
-		tmpFile.Name(),
+		expandedKeyPath,
 		fmt.Sprintf("%s@%s:/home/shellbox/.ssh/id_rsa", config.AdminUsername, bastionIP))
 
 	if output, err := scpCmd.CombinedOutput(); err != nil {
@@ -359,14 +345,14 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *VMConfig)
 		os.Exit(1)
 	}
 
-	// Ensure SSH key exists in Key Vault and copy to bastion
-	privateKey, _, err := ensureBastionSSHKey(ctx, clients)
+	// Generate or load bastion SSH key locally
+	_, _, err = sshutil.LoadKeyPair(BastionSSHKeyPath)
 	if err != nil {
-		logger.Error("failed to ensure SSH key in Key Vault", "error", err)
+		logger.Error("failed to generate/load bastion SSH key", "error", err)
 		os.Exit(1)
 	}
 
-	if err := copySSHKeyToBastion(ctx, config, *publicIP.Properties.IPAddress, privateKey); err != nil {
+	if err := copySSHKeyToBastion(ctx, config, *publicIP.Properties.IPAddress, BastionSSHKeyPath); err != nil {
 		logger.Error("failed to copy SSH key to bastion", "error", err)
 		os.Exit(1)
 	}

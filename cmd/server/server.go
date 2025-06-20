@@ -8,6 +8,7 @@ import (
 
 	"shellbox/internal/infra"
 	"shellbox/internal/sshserver"
+	"shellbox/internal/sshutil"
 )
 
 func main() {
@@ -29,25 +30,19 @@ func main() {
 	// Create network infrastructure first
 	infra.CreateNetworkInfrastructure(context.Background(), clients, false)
 
-	// Ensure SSH key pair exists in Key Vault and locally
-	privateKey, publicKey, err := infra.GetBastionSSHKeyFromVault(context.Background(), clients)
+	// Load SSH key from local filesystem (copied during deployment)
+	_, publicKey, err := sshutil.LoadKeyPair(infra.BastionSSHKeyPath)
 	if err != nil {
-		logger.Error("failed to get SSH key from Key Vault", "error", err)
+		logger.Error("failed to load SSH key from file", "error", err)
 		os.Exit(1)
 	}
 
-	// Write the SSH key to local filesystem for bastion operations
-	if err := infra.WriteBastionSSHKeyToFile(privateKey); err != nil {
-		logger.Error("failed to write SSH key to file", "error", err)
-		os.Exit(1)
-	}
-
-	logger.Info("using SSH key from Key Vault", "path", infra.BastionSSHKeyPath)
+	logger.Info("using SSH key from file", "path", infra.BastionSSHKeyPath)
 	logger.Info("loaded public key", "key", publicKey)
 
 	// Create golden snapshot if it doesn't exist
 	logger.Info("ensuring golden snapshot exists")
-	goldenSnapshot, err := infra.CreateGoldenSnapshotIfNotExists(context.Background(), clients, clients.ResourceGroupName, infra.Location)
+	goldenSnapshot, err := infra.CreateGoldenSnapshotIfNotExists(context.Background(), clients, clients.ResourceGroupName, infra.Location, publicKey)
 	if err != nil {
 		logger.Error("failed to create golden snapshot", "error", err)
 		os.Exit(1)
