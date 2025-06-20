@@ -8,7 +8,7 @@ import (
 )
 
 // RetryOperation executes an operation with retries until success or timeout
-func RetryOperation(ctx context.Context, operation func(context.Context) error, timeout time.Duration, interval time.Duration, operationName string) error {
+func RetryOperation(ctx context.Context, operation func(context.Context) error, timeout, interval time.Duration, operationName string) error {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 

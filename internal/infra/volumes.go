@@ -56,7 +56,7 @@ func CreateVolume(ctx context.Context, clients *AzureClients, config *VolumeConf
 		VolumeID:  volumeID,
 	}
 
-	_, err := CreateVolumeWithTags(ctx, clients, clients.ResourceGroupName, volumeName, config.DiskSize, tags)
+	_, err := CreateVolumeWithTags(ctx, clients, clients.ResourceGroupName, volumeName, config.DiskSize, &tags)
 	if err != nil {
 		return "", err
 	}
@@ -67,7 +67,7 @@ func CreateVolume(ctx context.Context, clients *AzureClients, config *VolumeConf
 // CreateVolumeWithTags creates a new empty managed disk volume with proper tagging.
 // This creates a standard empty volume that can be used for temporary purposes
 // or as a base for QEMU setup. It returns volume information and any error encountered.
-func CreateVolumeWithTags(ctx context.Context, clients *AzureClients, resourceGroupName, volumeName string, sizeGB int32, tags VolumeTags) (*VolumeInfo, error) {
+func CreateVolumeWithTags(ctx context.Context, clients *AzureClients, resourceGroupName, volumeName string, sizeGB int32, tags *VolumeTags) (*VolumeInfo, error) {
 	now := time.Now().UTC()
 	if tags.VolumeID == "" {
 		tags.VolumeID = uuid.New().String()
@@ -110,7 +110,7 @@ func CreateVolumeWithTags(ctx context.Context, clients *AzureClients, resourceGr
 		Location:   *result.Location,
 		SizeGB:     *result.Properties.DiskSizeGB,
 		VolumeID:   tags.VolumeID,
-		Tags:       tags,
+		Tags:       *tags,
 	}
 
 	// Wait for the volume to be visible in Resource Graph before returning
@@ -125,7 +125,7 @@ func CreateVolumeWithTags(ctx context.Context, clients *AzureClients, resourceGr
 // CreateVolumeFromSnapshot creates a new managed disk volume from an existing snapshot.
 // This is used to create user volumes from golden snapshots or restore from backups.
 // It returns volume information and any error encountered.
-func CreateVolumeFromSnapshot(ctx context.Context, clients *AzureClients, resourceGroupName, volumeName, snapshotID string, tags VolumeTags) (*VolumeInfo, error) {
+func CreateVolumeFromSnapshot(ctx context.Context, clients *AzureClients, resourceGroupName, volumeName, snapshotID string, tags *VolumeTags) (*VolumeInfo, error) {
 	now := time.Now().UTC()
 	if tags.VolumeID == "" {
 		tags.VolumeID = uuid.New().String()
@@ -168,7 +168,7 @@ func CreateVolumeFromSnapshot(ctx context.Context, clients *AzureClients, resour
 		Location:   *result.Location,
 		SizeGB:     *result.Properties.DiskSizeGB,
 		VolumeID:   tags.VolumeID,
-		Tags:       tags,
+		Tags:       *tags,
 	}
 
 	// Wait for the volume to be visible in Resource Graph before returning
@@ -237,7 +237,7 @@ func FindVolumesByRole(ctx context.Context, clients *AzureClients, resourceGroup
 }
 
 // VolumeTagsToMap converts VolumeTags struct to Azure tags map format
-func VolumeTagsToMap(tags VolumeTags) map[string]*string {
+func VolumeTagsToMap(tags *VolumeTags) map[string]*string {
 	return map[string]*string{
 		TagKeyRole:     to.Ptr(tags.Role),
 		TagKeyStatus:   to.Ptr(tags.Status),

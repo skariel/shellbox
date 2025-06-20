@@ -55,9 +55,9 @@ func main() {
 		RowKey:       fmt.Sprintf("%s_server_start", now.Format("20060102T150405")),
 		Timestamp:    now,
 		EventType:    "server_start",
-		Details:      fmt.Sprintf(`{"suffix":"%s"}`, suffix),
+		Details:      fmt.Sprintf(`{"suffix":%q}`, suffix),
 	}
-	if err := infra.WriteEventLog(context.Background(), clients, startEvent); err != nil {
+	if err := infra.WriteEventLog(context.Background(), clients, &startEvent); err != nil {
 		logger.Warn("Failed to log server start event", "error", err)
 	}
 
@@ -71,7 +71,6 @@ func main() {
 	poolConfig := infra.NewDevPoolConfig()
 
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	logger.Info("starting pool management")
 	pool := infra.NewBoxPool(clients, vmConfig, poolConfig, goldenSnapshot)
@@ -81,6 +80,7 @@ func main() {
 	sshServer, err := sshserver.New(infra.BastionSSHPort, clients)
 	if err != nil {
 		logger.Error("Failed to create SSH server", "error", err)
+		cancel()
 		os.Exit(1)
 	}
 	go func() {

@@ -108,7 +108,7 @@ func CreateBastionNIC(ctx context.Context, clients *AzureClients, publicIPID *st
 	return &res.Interface, nil
 }
 
-func CreateBastionVM(ctx context.Context, clients *AzureClients, config *VMConfig, nicID string, customData string) (*armcompute.VirtualMachine, error) {
+func CreateBastionVM(ctx context.Context, clients *AzureClients, config *VMConfig, nicID, customData string) (*armcompute.VirtualMachine, error) {
 	namer := NewResourceNamer(clients.Suffix)
 	vmPoller, err := clients.ComputeClient.BeginCreateOrUpdate(ctx, clients.ResourceGroupName, namer.BastionVMName(), armcompute.VirtualMachine{
 		Location: to.Ptr(Location),
@@ -193,7 +193,7 @@ func copyServerBinary(ctx context.Context, config *VMConfig, publicIPAddress str
 // because we don't need to retry - if copyServerBinary succeeded, the bastion
 // is already initialized and accepting connections.
 func copyTableStorageConfig(ctx context.Context, clients *AzureClients, config *VMConfig, publicIPAddress string) error {
-	tableStorageConfigContent := fmt.Sprintf(`{"connectionString": "%s"}`, clients.TableStorageConnectionString)
+	tableStorageConfigContent := fmt.Sprintf(`{"connectionString": %q}`, clients.TableStorageConnectionString)
 
 	// Create temporary local file
 	tempFile := TempConfigPath
@@ -267,7 +267,7 @@ func copySSHKeyToBastion(ctx context.Context, config *VMConfig, bastionIP string
 	return nil
 }
 
-func startServerOnBastion(ctx context.Context, config *VMConfig, publicIPAddress string, resourceGroupSuffix string) error {
+func startServerOnBastion(ctx context.Context, config *VMConfig, publicIPAddress, resourceGroupSuffix string) error {
 	command := fmt.Sprintf("nohup /home/%s/server %s > /home/%s/server.log 2>&1 &", config.AdminUsername, resourceGroupSuffix, config.AdminUsername)
 	return RetryOperation(ctx, func(ctx context.Context) error {
 		return sshutil.ExecuteCommand(ctx, command, config.AdminUsername, publicIPAddress)

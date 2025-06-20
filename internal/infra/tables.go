@@ -210,21 +210,21 @@ func upsertTableEntity(ctx context.Context, clients *AzureClients, tableName str
 }
 
 // WriteEventLog writes an entry to the EventLog table
-func WriteEventLog(ctx context.Context, clients *AzureClients, event EventLogEntity) error {
+func WriteEventLog(ctx context.Context, clients *AzureClients, event *EventLogEntity) error {
 	namer := NewResourceNamer(clients.Suffix)
 	tableName := namer.EventLogTableName()
 	return writeTableEntity(ctx, clients, tableName, event)
 }
 
 // WriteResourceRegistry writes an entry to the ResourceRegistry table
-func WriteResourceRegistry(ctx context.Context, clients *AzureClients, resource ResourceRegistryEntity) error {
+func WriteResourceRegistry(ctx context.Context, clients *AzureClients, resource *ResourceRegistryEntity) error {
 	namer := NewResourceNamer(clients.Suffix)
 	tableName := namer.ResourceRegistryTableName()
 	return writeTableEntity(ctx, clients, tableName, resource)
 }
 
 // UpdateResourceRegistry updates an existing entry in the ResourceRegistry table
-func UpdateResourceRegistry(ctx context.Context, clients *AzureClients, resource ResourceRegistryEntity) error {
+func UpdateResourceRegistry(ctx context.Context, clients *AzureClients, resource *ResourceRegistryEntity) error {
 	namer := NewResourceNamer(clients.Suffix)
 	tableName := namer.ResourceRegistryTableName()
 	return upsertTableEntity(ctx, clients, tableName, resource)

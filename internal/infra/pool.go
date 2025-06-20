@@ -189,9 +189,9 @@ func (p *BoxPool) scaleUpInstances(ctx context.Context, currentSize int) {
 				Timestamp:    now,
 				EventType:    EventTypeInstanceCreate,
 				BoxID:        instanceID,
-				Details:      fmt.Sprintf(`{"status":"%s"}`, ResourceStatusFree),
+				Details:      fmt.Sprintf(`{"status":%q}`, ResourceStatusFree),
 			}
-			if err := WriteEventLog(ctx, p.clients, createEvent); err != nil {
+			if err := WriteEventLog(ctx, p.clients, &createEvent); err != nil {
 				slog.Warn("Failed to log instance create event", "error", err)
 			}
 
@@ -203,9 +203,9 @@ func (p *BoxPool) scaleUpInstances(ctx context.Context, currentSize int) {
 				Status:       ResourceStatusFree,
 				CreatedAt:    now,
 				LastActivity: now,
-				Metadata:     fmt.Sprintf(`{"vm_size":"%s"}`, p.vmConfig.VMSize),
+				Metadata:     fmt.Sprintf(`{"vm_size":%q}`, p.vmConfig.VMSize),
 			}
-			if err := WriteResourceRegistry(ctx, p.clients, resourceEntry); err != nil {
+			if err := WriteResourceRegistry(ctx, p.clients, &resourceEntry); err != nil {
 				slog.Warn("Failed to log resource registry entry", "error", err)
 			}
 		}()
@@ -236,9 +236,10 @@ func (p *BoxPool) scaleDownInstances(ctx context.Context, currentSize int) {
 
 	// Delete instances
 	var wg sync.WaitGroup
-	for _, instance := range oldestInstances {
+	for i := range oldestInstances {
 		wg.Add(1)
-		go func(inst ResourceInfo) {
+		go func(idx int) {
+			inst := oldestInstances[idx]
 			defer wg.Done()
 			namer := NewResourceNamer(p.clients.Suffix)
 			vmName := namer.BoxVMName(inst.ResourceID)
@@ -262,10 +263,10 @@ func (p *BoxPool) scaleDownInstances(ctx context.Context, currentSize int) {
 				BoxID:        inst.ResourceID,
 				Details:      `{"reason":"pool_shrink"}`,
 			}
-			if err := WriteEventLog(ctx, p.clients, deleteEvent); err != nil {
+			if err := WriteEventLog(ctx, p.clients, &deleteEvent); err != nil {
 				slog.Warn("Failed to log instance delete event", "error", err)
 			}
-		}(instance)
+		}(i)
 	}
 	wg.Wait()
 
@@ -299,7 +300,7 @@ func (p *BoxPool) scaleUpVolumes(ctx context.Context, currentSize int) {
 			}
 
 			_, err := CreateVolumeFromSnapshot(ctx, p.clients, p.clients.ResourceGroupName,
-				volumeName, p.goldenSnapshot.DataSnapshotResourceID, tags)
+				volumeName, p.goldenSnapshot.DataSnapshotResourceID, &tags)
 			if err != nil {
 				slog.Error("failed to create volume from golden snapshot", "error", err)
 				return
@@ -314,9 +315,9 @@ func (p *BoxPool) scaleUpVolumes(ctx context.Context, currentSize int) {
 				Timestamp:    now,
 				EventType:    EventTypeVolumeCreate,
 				BoxID:        volumeID,
-				Details:      fmt.Sprintf(`{"status":"%s","size_gb":%d}`, ResourceStatusFree, DefaultVolumeSizeGB),
+				Details:      fmt.Sprintf(`{"status":%q,"size_gb":%d}`, ResourceStatusFree, DefaultVolumeSizeGB),
 			}
-			if err := WriteEventLog(ctx, p.clients, createEvent); err != nil {
+			if err := WriteEventLog(ctx, p.clients, &createEvent); err != nil {
 				slog.Warn("Failed to log volume create event", "error", err)
 			}
 
@@ -330,7 +331,7 @@ func (p *BoxPool) scaleUpVolumes(ctx context.Context, currentSize int) {
 				LastActivity: now,
 				Metadata:     fmt.Sprintf(`{"size_gb":%d}`, DefaultVolumeSizeGB),
 			}
-			if err := WriteResourceRegistry(ctx, p.clients, resourceEntry); err != nil {
+			if err := WriteResourceRegistry(ctx, p.clients, &resourceEntry); err != nil {
 				slog.Warn("Failed to log resource registry entry", "error", err)
 			}
 		}()
@@ -361,9 +362,10 @@ func (p *BoxPool) scaleDownVolumes(ctx context.Context, currentSize int) {
 
 	// Delete volumes
 	var wg sync.WaitGroup
-	for _, volume := range oldestVolumes {
+	for i := range oldestVolumes {
 		wg.Add(1)
-		go func(vol ResourceInfo) {
+		go func(idx int) {
+			vol := oldestVolumes[idx]
 			defer wg.Done()
 
 			err := DeleteVolume(ctx, p.clients, p.clients.ResourceGroupName, vol.Name)
@@ -384,10 +386,10 @@ func (p *BoxPool) scaleDownVolumes(ctx context.Context, currentSize int) {
 				BoxID:        vol.ResourceID,
 				Details:      `{"reason":"pool_shrink"}`,
 			}
-			if err := WriteEventLog(ctx, p.clients, deleteEvent); err != nil {
+			if err := WriteEventLog(ctx, p.clients, &deleteEvent); err != nil {
 				slog.Warn("Failed to log volume delete event", "error", err)
 			}
-		}(volume)
+		}(i)
 	}
 	wg.Wait()
 

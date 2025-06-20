@@ -273,34 +273,36 @@ func (rq *ResourceGraphQueries) executeCountQuery(ctx context.Context, query str
 	if dataArray, ok := result.Data.([]interface{}); ok {
 		for _, item := range dataArray {
 			// Handle object format from Resource Graph aggregation
-			if rowMap, ok := item.(map[string]interface{}); ok {
-				// Extract status from the column named after the tag
-				var status string
-				var count int
+			rowMap, ok := item.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			// Extract status from the column named after the tag
+			var status string
+			var count int
 
-				// Look for status in the tags column
-				if statusVal, exists := rowMap["tags_shellbox:status"]; exists && statusVal != nil {
-					status = fmt.Sprintf("%v", statusVal)
-				}
+			// Look for status in the tags column
+			if statusVal, exists := rowMap["tags_shellbox:status"]; exists && statusVal != nil {
+				status = fmt.Sprintf("%v", statusVal)
+			}
 
-				// Look for count in the count_ column
-				if countVal, exists := rowMap["count_"]; exists && countVal != nil {
-					if countFloat, ok := countVal.(float64); ok {
-						count = int(countFloat)
-					}
+			// Look for count in the count_ column
+			if countVal, exists := rowMap["count_"]; exists && countVal != nil {
+				if countFloat, ok := countVal.(float64); ok {
+					count = int(countFloat)
 				}
+			}
 
-				if status != "" && count > 0 {
-					switch status {
-					case ResourceStatusFree:
-						counts.Free = count
-					case ResourceStatusConnected:
-						counts.Connected = count
-					case ResourceStatusAttached:
-						counts.Attached = count
-					}
-					counts.Total += count
+			if status != "" && count > 0 {
+				switch status {
+				case ResourceStatusFree:
+					counts.Free = count
+				case ResourceStatusConnected:
+					counts.Connected = count
+				case ResourceStatusAttached:
+					counts.Attached = count
 				}
+				counts.Total += count
 			}
 		}
 	}

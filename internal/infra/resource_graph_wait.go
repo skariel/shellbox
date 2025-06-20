@@ -8,7 +8,7 @@ import (
 )
 
 // waitForVolumeInResourceGraph waits for a volume to be visible in Resource Graph with expected tags
-func waitForVolumeInResourceGraph(ctx context.Context, clients *AzureClients, volumeID string, expectedTags VolumeTags) error {
+func waitForVolumeInResourceGraph(ctx context.Context, clients *AzureClients, volumeID string, expectedTags *VolumeTags) error {
 	// Create resource graph queries client
 	rq := NewResourceGraphQueries(clients.ResourceGraphClient, clients.SubscriptionID, clients.ResourceGroupName)
 
@@ -23,7 +23,8 @@ func waitForVolumeInResourceGraph(ctx context.Context, clients *AzureClients, vo
 		}
 
 		// Check if our volume is in the results
-		for _, volume := range volumes {
+		for i := range volumes {
+			volume := &volumes[i]
 			if volume.Tags[TagKeyVolumeID] == volumeID {
 				// Verify all expected tags are present
 				if volume.Tags[TagKeyRole] == expectedTags.Role &&
@@ -65,7 +66,8 @@ func waitForVolumeTagsInResourceGraph(ctx context.Context, clients *AzureClients
 		}
 
 		// Check if our volume is in the results with expected tags
-		for _, volume := range volumes {
+		for i := range volumes {
+			volume := &volumes[i]
 			if volume.Tags[TagKeyVolumeID] == volumeID {
 				// Verify all expected tags are present
 				allTagsMatch := true
@@ -112,7 +114,8 @@ func waitForInstanceTagsInResourceGraph(ctx context.Context, clients *AzureClien
 		}
 
 		// Check if our instance is in the results with expected tags
-		for _, instance := range instances {
+		for i := range instances {
+			instance := &instances[i]
 			if instance.Tags[TagKeyInstanceID] == instanceID {
 				// Verify all expected tags are present
 				allTagsMatch := true

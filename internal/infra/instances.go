@@ -63,13 +63,13 @@ func CreateInstance(ctx context.Context, clients *AzureClients, config *VMConfig
 		LastUsed:   now.Format(time.RFC3339),
 		InstanceID: instanceID,
 	}
-	_, err = createInstanceVM(ctx, clients, vmName, *nic.ID, config, tags)
+	_, err = createInstanceVM(ctx, clients, vmName, *nic.ID, config, &tags)
 	if err != nil {
 		return "", fmt.Errorf("creating instance VM: %w", err)
 	}
 
 	// Wait for the instance to be visible in Resource Graph before returning
-	err = waitForInstanceInResourceGraph(ctx, clients, instanceID, tags)
+	err = waitForInstanceInResourceGraph(ctx, clients, instanceID, &tags)
 	if err != nil {
 		return "", fmt.Errorf("waiting for instance in resource graph: %w", err)
 	}
@@ -260,7 +260,7 @@ func buildStorageProfile(config *VMConfig, instanceID string, namer *ResourceNam
 	return profile, nil
 }
 
-func createInstanceVM(ctx context.Context, clients *AzureClients, vmName string, nicID string, config *VMConfig, tags InstanceTags) (*armcompute.VirtualMachine, error) {
+func createInstanceVM(ctx context.Context, clients *AzureClients, vmName, nicID string, config *VMConfig, tags *InstanceTags) (*armcompute.VirtualMachine, error) {
 	namer := NewResourceNamer(clients.Suffix)
 	tagsMap := map[string]*string{
 		TagKeyRole:       to.Ptr(tags.Role),
@@ -457,7 +457,7 @@ func DeleteInstance(ctx context.Context, clients *AzureClients, resourceGroupNam
 	}
 
 	// Extract resource information from VM or generate from naming patterns
-	resourceInfo := extractInstanceResourceInfo(vm, vmName, resourceGroupName, err == nil)
+	resourceInfo := extractInstanceResourceInfo(&vm, vmName, resourceGroupName, err == nil)
 
 	slog.Info("Deleting box with resources", "vmName", vmName, "nicName", resourceInfo.nicName, "nsgName", resourceInfo.nsgName, "osDiskName", resourceInfo.osDiskName, "dataDiskName", resourceInfo.dataDiskName)
 
@@ -473,7 +473,7 @@ func DeleteInstance(ctx context.Context, clients *AzureClients, resourceGroupNam
 }
 
 // extractInstanceResourceInfo extracts resource information from VM or generates from naming patterns
-func extractInstanceResourceInfo(vm armcompute.VirtualMachinesClientGetResponse, vmName, resourceGroupName string, vmExists bool) instanceResourceInfo {
+func extractInstanceResourceInfo(vm *armcompute.VirtualMachinesClientGetResponse, vmName, resourceGroupName string, vmExists bool) instanceResourceInfo {
 	info := instanceResourceInfo{}
 
 	if vmExists && vm.Properties != nil {
@@ -492,7 +492,7 @@ func extractInstanceResourceInfo(vm armcompute.VirtualMachinesClientGetResponse,
 }
 
 // extractResourcesFromVM extracts resource information from VM properties
-func extractResourcesFromVM(info *instanceResourceInfo, vm armcompute.VirtualMachinesClientGetResponse) {
+func extractResourcesFromVM(info *instanceResourceInfo, vm *armcompute.VirtualMachinesClientGetResponse) {
 	// Extract instance ID from tags
 	if vm.Tags != nil && vm.Tags[TagKeyInstanceID] != nil {
 		info.instanceID = *vm.Tags[TagKeyInstanceID]
@@ -839,7 +839,7 @@ func DetachVolumeFromInstance(ctx context.Context, clients *AzureClients, instan
 
 // waitForInstanceInResourceGraph waits for a newly created instance to be visible in Resource Graph with correct tags.
 // This is necessary because Resource Graph has eventual consistency and tags may not be immediately queryable.
-func waitForInstanceInResourceGraph(ctx context.Context, clients *AzureClients, instanceID string, expectedTags InstanceTags) error {
+func waitForInstanceInResourceGraph(ctx context.Context, clients *AzureClients, instanceID string, expectedTags *InstanceTags) error {
 	// Create resource graph queries client
 	rq := NewResourceGraphQueries(clients.ResourceGraphClient, clients.SubscriptionID, clients.ResourceGroupName)
 
@@ -854,7 +854,8 @@ func waitForInstanceInResourceGraph(ctx context.Context, clients *AzureClients, 
 		}
 
 		// Check if our instance is in the results
-		for _, instance := range instances {
+		for i := range instances {
+			instance := &instances[i]
 			if instance.Tags[TagKeyInstanceID] == instanceID {
 				// Verify all expected tags are present
 				if instance.Tags[TagKeyRole] == expectedTags.Role &&

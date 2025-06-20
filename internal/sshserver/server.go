@@ -147,9 +147,9 @@ func (s *Server) handleShellSession(ctx CommandContext, sess gssh.Session, resou
 		SessionID:    sessionID,
 		UserKey:      ctx.UserID,
 		BoxID:        resources.InstanceID,
-		Details:      fmt.Sprintf(`{"remote_addr":"%s","instanceIP":"%s","volumeID":"%s"}`, sess.RemoteAddr(), resources.InstanceIP, resources.VolumeID),
+		Details:      fmt.Sprintf(`{"remote_addr":%q,"instanceIP":%q,"volumeID":%q}`, sess.RemoteAddr(), resources.InstanceIP, resources.VolumeID),
 	}
-	if err := infra.WriteEventLog(context.Background(), s.clients, sessionEvent); err != nil {
+	if err := infra.WriteEventLog(context.Background(), s.clients, &sessionEvent); err != nil {
 		s.logger.Warn("Failed to log session start event", "error", err)
 	}
 
@@ -181,9 +181,9 @@ func (s *Server) handleShellSession(ctx CommandContext, sess gssh.Session, resou
 		SessionID:    sessionID,
 		UserKey:      ctx.UserID,
 		BoxID:        resources.InstanceID,
-		Details:      fmt.Sprintf(`{"instanceIP":"%s","volumeID":"%s"}`, resources.InstanceIP, resources.VolumeID),
+		Details:      fmt.Sprintf(`{"instanceIP":%q,"volumeID":%q}`, resources.InstanceIP, resources.VolumeID),
 	}
-	if err := infra.WriteEventLog(bctx, s.clients, connectEvent); err != nil {
+	if err := infra.WriteEventLog(bctx, s.clients, &connectEvent); err != nil {
 		s.logger.Warn("Failed to log resource connection", "error", err)
 	}
 
