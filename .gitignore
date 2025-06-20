@@ -7,3 +7,4 @@ integration.test
 
 # Code Index MCP cache directory
 .code_indexer/
+.serena/
