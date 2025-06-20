@@ -144,7 +144,7 @@ type GoldenSnapshotInfo struct {
 // This creates a data volume snapshot (for user volumes) and a custom VM image (for fast instance creation).
 // The function is idempotent - it will find and return existing resources rather than creating duplicates.
 // Golden resources are stored in a persistent resource group to avoid recreation between deployments.
-func CreateGoldenSnapshotIfNotExists(ctx context.Context, clients *AzureClients, _, _ string, sshPublicKey string) (*GoldenSnapshotInfo, error) {
+func CreateGoldenSnapshotIfNotExists(ctx context.Context, clients *AzureClients, _, _, sshPublicKey string) (*GoldenSnapshotInfo, error) {
 	// Ensure the persistent resource group exists
 	if err := ensureGoldenSnapshotResourceGroup(ctx, clients); err != nil {
 		return nil, fmt.Errorf("failed to ensure golden snapshot resource group: %w", err)
@@ -242,7 +242,7 @@ type tempBoxInfo struct {
 }
 
 // createBoxWithDataVolume creates a temporary box VM with a data volume for QEMU setup
-func createBoxWithDataVolume(ctx context.Context, clients *AzureClients, resourceGroupName, vmName string, sshPublicKey string) (*tempBoxInfo, error) {
+func createBoxWithDataVolume(ctx context.Context, clients *AzureClients, resourceGroupName, vmName, sshPublicKey string) (*tempBoxInfo, error) {
 	namer := NewResourceNamer(ExtractSuffix(resourceGroupName))
 
 	// Create data volume using golden-specific tagging
@@ -630,7 +630,7 @@ func ensureGoldenSnapshotResourceGroup(ctx context.Context, clients *AzureClient
 
 // generateGoldenSnapshotNames creates content-based names for the golden snapshots
 // This allows us to detect when the QEMU configuration changes and new snapshots are needed
-func generateGoldenSnapshotNames(sshPublicKey string) (string, string, error) {
+func generateGoldenSnapshotNames(sshPublicKey string) (dataSnapshotName, imageName string, err error) {
 	// Generate a sample QEMU script to hash its content
 	config := QEMUScriptConfig{
 		SSHPublicKey:  sshPublicKey,
@@ -649,8 +649,8 @@ func generateGoldenSnapshotNames(sshPublicKey string) (string, string, error) {
 	hasher.Write([]byte(scriptContent))
 	hash := hex.EncodeToString(hasher.Sum(nil))[:12] // Use first 12 chars
 
-	dataSnapshotName := fmt.Sprintf("golden-qemu-data-%s", hash)
-	osSnapshotName := fmt.Sprintf("golden-qemu-os-%s", hash)
+	dataSnapshotName = fmt.Sprintf("golden-qemu-data-%s", hash)
+	imageName = fmt.Sprintf("golden-qemu-os-%s", hash)
 
-	return dataSnapshotName, osSnapshotName, nil
+	return dataSnapshotName, imageName, nil
 }
