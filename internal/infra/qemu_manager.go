@@ -49,7 +49,7 @@ ls -la ` + QEMUMemoryPath + ` || echo "Memory file missing"
 
 # Resume QEMU VM from saved state
 echo "Starting QEMU..."
-sudo qemu-system-x86_64 \
+sudo sh -c 'nohup qemu-system-x86_64 \
    -enable-kvm \
    -m 24G \
    -mem-prealloc \
@@ -60,22 +60,41 @@ sudo qemu-system-x86_64 \
    -nographic \
    -monitor unix:` + QEMUMonitorSocket + `,server,nowait \
    -nic user,model=virtio,hostfwd=tcp::2222-:22,dns=8.8.8.8 \
-   -loadvm ssh-ready &
+   -loadvm ssh-ready > /mnt/userdata/qemu.log 2>&1 < /dev/null &'
 
-# Wait for QEMU to be ready
-echo "Waiting for QEMU to resume..."
-sleep 10
+# Brief sleep to ensure process starts
+sleep 2
 
-# Check if QEMU process is running
-echo "Checking QEMU process:"
-pgrep -f qemu-system-x86_64 || echo "No QEMU process found"
+# Check if QEMU started and capture status
+if pgrep -f qemu-system-x86_64 > /dev/null; then
+    QEMU_PID=$(pgrep -f qemu-system-x86_64)
+    echo "SUCCESS: QEMU started with PID: $QEMU_PID"
+    # Check if log file was created
+    if [ -f /mnt/userdata/qemu.log ]; then
+        echo "Log file created at /mnt/userdata/qemu.log"
+        echo "First few lines of QEMU output:"
+        head -n 5 /mnt/userdata/qemu.log || true
+    fi
+else
+    echo "ERROR: Failed to start QEMU"
+    # Check if log file exists and show any errors
+    if [ -f /mnt/userdata/qemu.log ]; then
+        echo "QEMU log contents:"
+        cat /mnt/userdata/qemu.log
+    else
+        echo "No QEMU log file found - process may have failed to start"
+    fi
+    exit 1
+fi
 `
 
 	slog.Info("Starting QEMU with volume", "instanceIP", instanceIP)
-	if err := sshutil.ExecuteCommand(ctx, resumeCmd, AdminUsername, instanceIP); err != nil {
+	output, err := sshutil.ExecuteCommandWithOutput(ctx, resumeCmd, AdminUsername, instanceIP)
+	if err != nil {
+		slog.Error("Failed to start QEMU", "error", err, "output", output)
 		return fmt.Errorf("failed to start QEMU: %w", err)
 	}
-	slog.Info("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+	slog.Info("QEMU start command completed", "output", output)
 	// Wait for QEMU SSH to be ready
 	if err := qm.waitForQEMUSSH(ctx, instanceIP); err != nil {
 		return fmt.Errorf("QEMU SSH not ready: %w", err)

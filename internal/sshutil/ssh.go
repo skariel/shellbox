@@ -88,6 +88,7 @@ func ExecuteCommand(ctx context.Context, command, username, hostname string) err
 	cmd := exec.CommandContext(ctx, "ssh",
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "ConnectTimeout=4",
+		"-i", "/home/shellbox/.ssh/id_rsa",
 		fmt.Sprintf("%s@%s", username, hostname),
 		command)
 	if output, err := cmd.CombinedOutput(); err != nil {
@@ -100,6 +101,7 @@ func ExecuteCommandWithOutput(ctx context.Context, command, username, hostname s
 	cmd := exec.CommandContext(ctx, "ssh",
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "ConnectTimeout=4",
+		"-i", "/home/shellbox/.ssh/id_rsa",
 		fmt.Sprintf("%s@%s", username, hostname),
 		command)
 	output, err := cmd.CombinedOutput()
