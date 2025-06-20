@@ -8,11 +8,10 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"strings"
-	"time"
-
 	"shellbox/internal/infra"
 	"shellbox/internal/sshutil"
+	"strings"
+	"time"
 
 	gssh "github.com/gliderlabs/ssh" // alias to avoid confusion with crypto/ssh
 	"golang.org/x/crypto/ssh"
@@ -31,7 +30,7 @@ type Server struct {
 // New creates a new SSH server instance
 func New(port int, clients *infra.AzureClients) (*Server, error) {
 	// Load SSH key from local filesystem (copied during deployment)
-	privateKey, _, err := sshutil.LoadKeyPair(infra.BastionSSHKeyPath)
+	privateKey, _, err := sshutil.LoadKeyPair()
 	if err != nil {
 		return nil, fmt.Errorf("failed to load SSH key from file: %w", err)
 	}

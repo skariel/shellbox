@@ -5,9 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 	"os/exec"
-	"time"
-
 	"shellbox/internal/sshutil"
+	"time"
 )
 
 // QEMUManager handles QEMU VM operations on instances
@@ -130,6 +129,7 @@ func (qm *QEMUManager) waitForQEMUSSH(ctx context.Context, instanceIP string) er
 		cmd := exec.CommandContext(ctx, "ssh",
 			"-o", "ConnectTimeout=5",
 			"-o", "StrictHostKeyChecking=no",
+			"-i", sshutil.SSHKeyPath,
 			"-p", fmt.Sprintf("%d", BoxSSHPort),
 			fmt.Sprintf("%s@%s", SystemUserUbuntu, instanceIP),
 			"echo 'QEMU SSH ready'")

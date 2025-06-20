@@ -7,10 +7,9 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"shellbox/internal/sshutil"
 	"strings"
 	"time"
-
-	"shellbox/internal/sshutil"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization"
@@ -213,16 +212,14 @@ func copyTableStorageConfig(ctx context.Context, clients *AzureClients, config *
 }
 
 // copySSHKeyToBastion copies the SSH key to the bastion host
-func copySSHKeyToBastion(ctx context.Context, config *VMConfig, bastionIP, keyPath string) error {
+func copySSHKeyToBastion(ctx context.Context, config *VMConfig, bastionIP string) error {
 	slog.Info("Copying SSH key to bastion", "ip", bastionIP)
-
-	// Expand the key path to handle environment variables
-	expandedKeyPath := os.ExpandEnv(keyPath)
 
 	// Create the .ssh directory on bastion
 	createDirCmd := exec.CommandContext(ctx, "ssh",
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "ConnectTimeout=10",
+		"-i", sshutil.SSHKeyPath,
 		fmt.Sprintf("%s@%s", config.AdminUsername, bastionIP),
 		"mkdir", "-p", "/home/shellbox/.ssh")
 
@@ -234,7 +231,8 @@ func copySSHKeyToBastion(ctx context.Context, config *VMConfig, bastionIP, keyPa
 	scpCmd := exec.CommandContext(ctx, "scp",
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "ConnectTimeout=10",
-		expandedKeyPath,
+		"-i", sshutil.SSHKeyPath,
+		sshutil.SSHKeyPath,
 		fmt.Sprintf("%s@%s:/home/shellbox/.ssh/id_rsa", config.AdminUsername, bastionIP))
 
 	if output, err := scpCmd.CombinedOutput(); err != nil {
@@ -245,6 +243,7 @@ func copySSHKeyToBastion(ctx context.Context, config *VMConfig, bastionIP, keyPa
 	chmodCmd := exec.CommandContext(ctx, "ssh",
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "ConnectTimeout=10",
+		"-i", sshutil.SSHKeyPath,
 		fmt.Sprintf("%s@%s", config.AdminUsername, bastionIP),
 		"chmod", "600", "/home/shellbox/.ssh/id_rsa")
 
@@ -256,6 +255,7 @@ func copySSHKeyToBastion(ctx context.Context, config *VMConfig, bastionIP, keyPa
 	chownCmd := exec.CommandContext(ctx, "ssh",
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "ConnectTimeout=10",
+		"-i", sshutil.SSHKeyPath,
 		fmt.Sprintf("%s@%s", config.AdminUsername, bastionIP),
 		"sudo", "chown", "shellbox:shellbox", "/home/shellbox/.ssh/id_rsa")
 
@@ -346,13 +346,13 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *VMConfig)
 	}
 
 	// Generate or load bastion SSH key locally
-	_, _, err = sshutil.LoadKeyPair(BastionSSHKeyPath)
+	_, _, err = sshutil.LoadKeyPair()
 	if err != nil {
 		logger.Error("failed to generate/load bastion SSH key", "error", err)
 		os.Exit(1)
 	}
 
-	if err := copySSHKeyToBastion(ctx, config, *publicIP.Properties.IPAddress, BastionSSHKeyPath); err != nil {
+	if err := copySSHKeyToBastion(ctx, config, *publicIP.Properties.IPAddress); err != nil {
 		logger.Error("failed to copy SSH key to bastion", "error", err)
 		os.Exit(1)
 	}

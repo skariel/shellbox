@@ -8,10 +8,9 @@ import (
 	"fmt"
 	"log/slog"
 	"os/exec"
+	"shellbox/internal/sshutil"
 	"strings"
 	"time"
-
-	"shellbox/internal/sshutil"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
@@ -144,7 +143,13 @@ type GoldenSnapshotInfo struct {
 // This creates a data volume snapshot (for user volumes) and a custom VM image (for fast instance creation).
 // The function is idempotent - it will find and return existing resources rather than creating duplicates.
 // Golden resources are stored in a persistent resource group to avoid recreation between deployments.
-func CreateGoldenSnapshotIfNotExists(ctx context.Context, clients *AzureClients, _, _, sshPublicKey string) (*GoldenSnapshotInfo, error) {
+func CreateGoldenSnapshotIfNotExists(ctx context.Context, clients *AzureClients) (*GoldenSnapshotInfo, error) {
+	// Load SSH key
+	_, sshPublicKey, err := sshutil.LoadKeyPair()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load SSH key: %w", err)
+	}
+
 	// Ensure the persistent resource group exists
 	if err := ensureGoldenSnapshotResourceGroup(ctx, clients); err != nil {
 		return nil, fmt.Errorf("failed to ensure golden snapshot resource group: %w", err)
@@ -338,6 +343,7 @@ func waitForQEMUSetup(ctx context.Context, _ *AzureClients, tempBox *tempBoxInfo
 		cmd := exec.CommandContext(ctx, "ssh",
 			"-o", "ConnectTimeout=5",
 			"-o", "StrictHostKeyChecking=no",
+			"-i", sshutil.SSHKeyPath,
 			"-p", fmt.Sprintf("%d", BoxSSHPort),
 			fmt.Sprintf("%s@%s", SystemUserUbuntu, tempBox.PrivateIP),
 			"echo 'SSH test successful'")

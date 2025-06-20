@@ -15,9 +15,12 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
+// SSHKeyPath is the standard SSH key path used throughout the system
+const SSHKeyPath = "/home/shellbox/.ssh/id_rsa"
+
 // LoadKeyPair loads or creates an SSH key pair, using the private key as the source of truth.
-func LoadKeyPair(keyPath string) (privateKey, publicKey string, err error) {
-	expandedPath := filepath.Clean(os.ExpandEnv(keyPath))
+func LoadKeyPair() (privateKey, publicKey string, err error) {
+	expandedPath := filepath.Clean(SSHKeyPath)
 
 	// Try to read private key
 	privKeyData, err := os.ReadFile(expandedPath)
@@ -76,7 +79,7 @@ func LoadKeyPair(keyPath string) (privateKey, publicKey string, err error) {
 // CopyFile copies a file to a remote host using scp
 func CopyFile(ctx context.Context, localPath, remotePath, username, hostname string) error {
 	scpDest := fmt.Sprintf("%s@%s:%s", username, hostname, remotePath)
-	cmd := exec.CommandContext(ctx, "scp", "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=4", localPath, scpDest)
+	cmd := exec.CommandContext(ctx, "scp", "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=4", "-i", SSHKeyPath, localPath, scpDest)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("%w: %s", err, string(output))
 	}
@@ -88,7 +91,7 @@ func ExecuteCommand(ctx context.Context, command, username, hostname string) err
 	cmd := exec.CommandContext(ctx, "ssh",
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "ConnectTimeout=4",
-		"-i", "/home/shellbox/.ssh/id_rsa",
+		"-i", SSHKeyPath,
 		fmt.Sprintf("%s@%s", username, hostname),
 		command)
 	if output, err := cmd.CombinedOutput(); err != nil {
@@ -101,7 +104,7 @@ func ExecuteCommandWithOutput(ctx context.Context, command, username, hostname s
 	cmd := exec.CommandContext(ctx, "ssh",
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "ConnectTimeout=4",
-		"-i", "/home/shellbox/.ssh/id_rsa",
+		"-i", SSHKeyPath,
 		fmt.Sprintf("%s@%s", username, hostname),
 		command)
 	output, err := cmd.CombinedOutput()

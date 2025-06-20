@@ -4,7 +4,6 @@ import (
 	"context"
 	"log/slog"
 	"os"
-
 	"shellbox/internal/infra"
 	"shellbox/internal/sshutil"
 )
@@ -31,7 +30,7 @@ func main() {
 	infra.CreateNetworkInfrastructure(ctx, clients, true)
 
 	slog.Info("done upserting")
-	_, pubKey, err := sshutil.LoadKeyPair(infra.DeploymentSSHKeyPath)
+	_, pubKey, err := sshutil.LoadKeyPair()
 	if err != nil {
 		slog.Error("could not load ssh pub key", "error", err)
 		os.Exit(1)

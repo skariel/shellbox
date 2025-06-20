@@ -52,10 +52,6 @@ const (
 	// Box SSH configuration
 	BoxSSHPort = 2222
 
-	// SSH key paths
-	DeploymentSSHKeyPath = "$HOME/.ssh/id_ed25519"      // For deployment from dev machine
-	BastionSSHKeyPath    = "/home/shellbox/.ssh/id_rsa" // For bastion host operations
-
 	// VM default configuration
 	VMSize        = "Standard_D8s_v3" // 8 vCPUs, 32GB RAM for good nested VM performance
 	AdminUsername = "shellbox"

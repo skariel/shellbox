@@ -17,11 +17,7 @@ golangci-lint cache clean
 
 # Static analysis and linting (only check files changed since last commit)
 echo "🔍 Running static analysis..."
-if git rev-parse HEAD~1 >/dev/null 2>&1; then
-    golangci-lint run --timeout 10m --new-from-rev=HEAD~1 --fix
-else
-    golangci-lint run --timeout 10m --fix
-fi
+golangci-lint run --timeout 10m --fix
 
 # Security vulnerability check
 echo "🛡️  Checking for security vulnerabilities..."

@@ -30,18 +30,18 @@ func main() {
 	infra.CreateNetworkInfrastructure(context.Background(), clients, false)
 
 	// Load SSH key from local filesystem (copied during deployment)
-	_, publicKey, err := sshutil.LoadKeyPair(infra.BastionSSHKeyPath)
+	_, publicKey, err := sshutil.LoadKeyPair()
 	if err != nil {
 		logger.Error("failed to load SSH key from file", "error", err)
 		os.Exit(1)
 	}
 
-	logger.Info("using SSH key from file", "path", infra.BastionSSHKeyPath)
+	logger.Info("using SSH key from file", "path", sshutil.SSHKeyPath)
 	logger.Info("loaded public key", "key", publicKey)
 
 	// Create golden snapshot if it doesn't exist
 	logger.Info("ensuring golden snapshot exists")
-	goldenSnapshot, err := infra.CreateGoldenSnapshotIfNotExists(context.Background(), clients, clients.ResourceGroupName, infra.Location, publicKey)
+	goldenSnapshot, err := infra.CreateGoldenSnapshotIfNotExists(context.Background(), clients)
 	if err != nil {
 		logger.Error("failed to create golden snapshot", "error", err)
 		os.Exit(1)
