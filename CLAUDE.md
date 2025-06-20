@@ -32,7 +32,7 @@ MOST IMPORTANT:
 - DO MINIMAL CODE CHANGES NEEDED TO ACOMPLISH TASKS
 - BE CONSISTENT WITH EXISTING CODE: resue existing functions, maintain naming style, code patterns.
 - NOTIFY ME OF ANY OPPORTUNITIES TO REMOVE UNNECESSARY TESTS OR OTHER CODE THAT IS MAINLY MAINTENANCE BURDEN: THEN NOTIFY THE USER!
-- USE THE LSP MCP SERVER... FOR DISCOVERIUNG TYPES, SIGNATURES, REFERENCES, HOVER INFORMATION ETC.
+- USE THE SERENA MCP: initially, always read the instructions
 ---------------------------------------
 
 format, lint and tast that everything builds:
@@ -40,8 +40,6 @@ format, lint and tast that everything builds:
 run the above command after every session of code changes. Then fix any errors.
 
 You have permission to search the internet whenever needed.
-
-Use the [comby tool](https://comby.dev) for structural search-and-replace operations. It understands code structure better than regex, handles nested expressions, comments, and strings correctly. Prefer comby over grep/sed for pattern-based search tasks, but always prefer LSP for symbol-based operations.
 
 don't hard-code values and string, use instead constants from the constants.go file. Define new constants as needed.
 

@@ -21,6 +21,12 @@ type TableStorageResult struct {
 
 // CreateTableStorageResources creates a storage account and tables
 func CreateTableStorageResources(ctx context.Context, clients *AzureClients, accountName string, tableNames []string) TableStorageResult {
+	// Use the default resource group for backward compatibility
+	return CreateTableStorageResourcesInResourceGroup(ctx, clients, clients.ResourceGroupName, accountName, tableNames)
+}
+
+// CreateTableStorageResourcesInResourceGroup creates a storage account and tables in the specified resource group
+func CreateTableStorageResourcesInResourceGroup(ctx context.Context, clients *AzureClients, resourceGroupName, accountName string, tableNames []string) TableStorageResult {
 	result := TableStorageResult{}
 
 	storageClient, err := armstorage.NewAccountsClient(clients.SubscriptionID, clients.Cred, nil)
@@ -29,22 +35,22 @@ func CreateTableStorageResources(ctx context.Context, clients *AzureClients, acc
 		return result
 	}
 
-	// Ensure storage account exists
-	if err := ensureStorageAccountExists(ctx, storageClient, clients.ResourceGroupName, accountName); err != nil {
+	if err := ensureStorageAccountExists(ctx, storageClient, resourceGroupName, accountName); err != nil {
 		result.Error = err
 		return result
 	}
 
 	// Get connection string
-	connectionString, err := getStorageConnectionString(ctx, storageClient, clients.ResourceGroupName, accountName)
+	connString, err := getStorageConnectionString(ctx, storageClient, resourceGroupName, accountName)
 	if err != nil {
 		result.Error = err
 		return result
 	}
-	result.ConnectionString = connectionString
+
+	result.ConnectionString = connString
 
 	// Create tables
-	if err := createTables(ctx, connectionString, tableNames); err != nil {
+	if err := createTables(ctx, connString, tableNames); err != nil {
 		result.Error = err
 		return result
 	}

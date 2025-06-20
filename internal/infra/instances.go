@@ -648,7 +648,8 @@ func UpdateInstanceStatus(ctx context.Context, clients *AzureClients, instanceID
 		vm.Tags = make(map[string]*string)
 	}
 	vm.Tags[TagKeyStatus] = to.Ptr(status)
-	vm.Tags[TagKeyLastUsed] = to.Ptr(time.Now().UTC().Format(time.RFC3339))
+	lastUsedTime := time.Now().UTC().Format(time.RFC3339)
+	vm.Tags[TagKeyLastUsed] = to.Ptr(lastUsedTime)
 
 	// Update the VM
 	poller, err := clients.ComputeClient.BeginCreateOrUpdate(ctx, clients.ResourceGroupName, vmName, vm.VirtualMachine, nil)
@@ -659,6 +660,16 @@ func UpdateInstanceStatus(ctx context.Context, clients *AzureClients, instanceID
 	_, err = poller.PollUntilDone(ctx, &DefaultPollOptions)
 	if err != nil {
 		return fmt.Errorf("failed to update VM status: %w", err)
+	}
+
+	// Wait for the instance tags to be visible in Resource Graph before returning
+	expectedTags := map[string]string{
+		TagKeyStatus:   status,
+		TagKeyLastUsed: lastUsedTime,
+	}
+	err = waitForInstanceTagsInResourceGraph(ctx, clients, instanceID, expectedTags)
+	if err != nil {
+		return fmt.Errorf("waiting for instance tags in resource graph: %w", err)
 	}
 
 	return nil
@@ -680,7 +691,8 @@ func UpdateInstanceStatusAndUser(ctx context.Context, clients *AzureClients, ins
 		vm.Tags = make(map[string]*string)
 	}
 	vm.Tags[TagKeyStatus] = to.Ptr(status)
-	vm.Tags[TagKeyLastUsed] = to.Ptr(time.Now().UTC().Format(time.RFC3339))
+	lastUsedTime := time.Now().UTC().Format(time.RFC3339)
+	vm.Tags[TagKeyLastUsed] = to.Ptr(lastUsedTime)
 	vm.Tags[TagKeyUserID] = to.Ptr(userID)
 
 	// Update the VM
@@ -692,6 +704,17 @@ func UpdateInstanceStatusAndUser(ctx context.Context, clients *AzureClients, ins
 	_, err = poller.PollUntilDone(ctx, &DefaultPollOptions)
 	if err != nil {
 		return fmt.Errorf("failed to update VM status: %w", err)
+	}
+
+	// Wait for the instance tags to be visible in Resource Graph before returning
+	expectedTags := map[string]string{
+		TagKeyStatus:   status,
+		TagKeyLastUsed: lastUsedTime,
+		TagKeyUserID:   userID,
+	}
+	err = waitForInstanceTagsInResourceGraph(ctx, clients, instanceID, expectedTags)
+	if err != nil {
+		return fmt.Errorf("waiting for instance tags in resource graph: %w", err)
 	}
 
 	return nil

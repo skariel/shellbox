@@ -104,14 +104,22 @@ func CreateVolumeWithTags(ctx context.Context, clients *AzureClients, resourceGr
 		return nil, fmt.Errorf("creating volume: %w", err)
 	}
 
-	return &VolumeInfo{
+	volumeInfo := &VolumeInfo{
 		Name:       *result.Name,
 		ResourceID: *result.ID,
 		Location:   *result.Location,
 		SizeGB:     *result.Properties.DiskSizeGB,
 		VolumeID:   tags.VolumeID,
 		Tags:       tags,
-	}, nil
+	}
+
+	// Wait for the volume to be visible in Resource Graph before returning
+	err = waitForVolumeInResourceGraph(ctx, clients, tags.VolumeID, tags)
+	if err != nil {
+		return nil, fmt.Errorf("waiting for volume in resource graph: %w", err)
+	}
+
+	return volumeInfo, nil
 }
 
 // CreateVolumeFromSnapshot creates a new managed disk volume from an existing snapshot.
@@ -154,14 +162,22 @@ func CreateVolumeFromSnapshot(ctx context.Context, clients *AzureClients, resour
 		return nil, fmt.Errorf("creating volume from snapshot: %w", err)
 	}
 
-	return &VolumeInfo{
+	volumeInfo := &VolumeInfo{
 		Name:       *result.Name,
 		ResourceID: *result.ID,
 		Location:   *result.Location,
 		SizeGB:     *result.Properties.DiskSizeGB,
 		VolumeID:   tags.VolumeID,
 		Tags:       tags,
-	}, nil
+	}
+
+	// Wait for the volume to be visible in Resource Graph before returning
+	err = waitForVolumeInResourceGraph(ctx, clients, tags.VolumeID, tags)
+	if err != nil {
+		return nil, fmt.Errorf("waiting for volume in resource graph: %w", err)
+	}
+
+	return volumeInfo, nil
 }
 
 // DeleteVolume completely removes a managed disk volume.
@@ -249,7 +265,8 @@ func UpdateVolumeStatus(ctx context.Context, clients *AzureClients, volumeID, st
 		volume.Tags = make(map[string]*string)
 	}
 	volume.Tags[TagKeyStatus] = to.Ptr(status)
-	volume.Tags[TagKeyLastUsed] = to.Ptr(time.Now().UTC().Format(time.RFC3339))
+	lastUsedTime := time.Now().UTC().Format(time.RFC3339)
+	volume.Tags[TagKeyLastUsed] = to.Ptr(lastUsedTime)
 
 	// Update the volume
 	poller, err := clients.DisksClient.BeginCreateOrUpdate(ctx, clients.ResourceGroupName, volumeName, volume.Disk, nil)
@@ -260,6 +277,16 @@ func UpdateVolumeStatus(ctx context.Context, clients *AzureClients, volumeID, st
 	_, err = poller.PollUntilDone(ctx, &DefaultPollOptions)
 	if err != nil {
 		return fmt.Errorf("failed to update volume status: %w", err)
+	}
+
+	// Wait for the volume tags to be visible in Resource Graph before returning
+	expectedTags := map[string]string{
+		TagKeyStatus:   status,
+		TagKeyLastUsed: lastUsedTime,
+	}
+	err = waitForVolumeTagsInResourceGraph(ctx, clients, volumeID, expectedTags)
+	if err != nil {
+		return fmt.Errorf("waiting for volume tags in resource graph: %w", err)
 	}
 
 	return nil
@@ -281,7 +308,8 @@ func UpdateVolumeStatusUserAndBox(ctx context.Context, clients *AzureClients, vo
 		volume.Tags = make(map[string]*string)
 	}
 	volume.Tags[TagKeyStatus] = to.Ptr(status)
-	volume.Tags[TagKeyLastUsed] = to.Ptr(time.Now().UTC().Format(time.RFC3339))
+	lastUsedTime := time.Now().UTC().Format(time.RFC3339)
+	volume.Tags[TagKeyLastUsed] = to.Ptr(lastUsedTime)
 	volume.Tags[TagKeyUserID] = to.Ptr(userID)
 	volume.Tags[TagKeyBoxName] = to.Ptr(boxName)
 
@@ -294,6 +322,18 @@ func UpdateVolumeStatusUserAndBox(ctx context.Context, clients *AzureClients, vo
 	_, err = poller.PollUntilDone(ctx, &DefaultPollOptions)
 	if err != nil {
 		return fmt.Errorf("failed to update volume status: %w", err)
+	}
+
+	// Wait for the volume tags to be visible in Resource Graph before returning
+	expectedTags := map[string]string{
+		TagKeyStatus:   status,
+		TagKeyLastUsed: lastUsedTime,
+		TagKeyUserID:   userID,
+		TagKeyBoxName:  boxName,
+	}
+	err = waitForVolumeTagsInResourceGraph(ctx, clients, volumeID, expectedTags)
+	if err != nil {
+		return fmt.Errorf("waiting for volume tags in resource graph: %w", err)
 	}
 
 	return nil

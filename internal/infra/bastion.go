@@ -212,6 +212,75 @@ func copyTableStorageConfig(ctx context.Context, clients *AzureClients, config *
 	return nil
 }
 
+// copySSHKeyToBastion copies the SSH key to the bastion host
+func copySSHKeyToBastion(ctx context.Context, config *VMConfig, bastionIP, privateKey string) error {
+	slog.Info("Copying SSH key to bastion", "ip", bastionIP)
+
+	// Create a temporary file for the private key
+	tmpFile, err := os.CreateTemp("", "bastion_ssh_key")
+	if err != nil {
+		return fmt.Errorf("failed to create temp file: %w", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	if _, err := tmpFile.WriteString(privateKey); err != nil {
+		return fmt.Errorf("failed to write SSH key to temp file: %w", err)
+	}
+	tmpFile.Close()
+
+	// Set correct permissions on temp file
+	if err := os.Chmod(tmpFile.Name(), 0o600); err != nil {
+		return fmt.Errorf("failed to set permissions on temp file: %w", err)
+	}
+
+	// Create the .ssh directory on bastion
+	createDirCmd := exec.CommandContext(ctx, "ssh",
+		"-o", "StrictHostKeyChecking=no",
+		"-o", "ConnectTimeout=10",
+		fmt.Sprintf("%s@%s", config.AdminUsername, bastionIP),
+		"mkdir", "-p", "/home/shellbox/.ssh")
+
+	if output, err := createDirCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to create .ssh directory: %w: %s", err, string(output))
+	}
+
+	// Copy the SSH key to bastion
+	scpCmd := exec.CommandContext(ctx, "scp",
+		"-o", "StrictHostKeyChecking=no",
+		"-o", "ConnectTimeout=10",
+		tmpFile.Name(),
+		fmt.Sprintf("%s@%s:/home/shellbox/.ssh/id_rsa", config.AdminUsername, bastionIP))
+
+	if output, err := scpCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to copy SSH key: %w: %s", err, string(output))
+	}
+
+	// Set correct permissions on the key file
+	chmodCmd := exec.CommandContext(ctx, "ssh",
+		"-o", "StrictHostKeyChecking=no",
+		"-o", "ConnectTimeout=10",
+		fmt.Sprintf("%s@%s", config.AdminUsername, bastionIP),
+		"chmod", "600", "/home/shellbox/.ssh/id_rsa")
+
+	if output, err := chmodCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to set SSH key permissions: %w: %s", err, string(output))
+	}
+
+	// Set ownership to shellbox user
+	chownCmd := exec.CommandContext(ctx, "ssh",
+		"-o", "StrictHostKeyChecking=no",
+		"-o", "ConnectTimeout=10",
+		fmt.Sprintf("%s@%s", config.AdminUsername, bastionIP),
+		"sudo", "chown", "shellbox:shellbox", "/home/shellbox/.ssh/id_rsa")
+
+	if output, err := chownCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to set SSH key ownership: %w: %s", err, string(output))
+	}
+
+	slog.Info("SSH key copied to bastion successfully")
+	return nil
+}
+
 func startServerOnBastion(ctx context.Context, config *VMConfig, publicIPAddress string, resourceGroupSuffix string) error {
 	command := fmt.Sprintf("nohup /home/%s/server %s > /home/%s/server.log 2>&1 &", config.AdminUsername, resourceGroupSuffix, config.AdminUsername)
 	return RetryOperation(ctx, func(ctx context.Context) error {
@@ -289,6 +358,19 @@ func DeployBastion(ctx context.Context, clients *AzureClients, config *VMConfig)
 		logger.Error("failed to assign role to VM", "error", err)
 		os.Exit(1)
 	}
+
+	// Ensure SSH key exists in Key Vault and copy to bastion
+	privateKey, _, err := ensureBastionSSHKey(ctx, clients)
+	if err != nil {
+		logger.Error("failed to ensure SSH key in Key Vault", "error", err)
+		os.Exit(1)
+	}
+
+	if err := copySSHKeyToBastion(ctx, config, *publicIP.Properties.IPAddress, privateKey); err != nil {
+		logger.Error("failed to copy SSH key to bastion", "error", err)
+		os.Exit(1)
+	}
+
 	if err := copyServerBinary(ctx, config, *publicIP.Properties.IPAddress); err != nil {
 		logger.Error("failed to copy server binary", "error", err)
 		os.Exit(1)

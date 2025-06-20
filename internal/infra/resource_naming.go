@@ -121,6 +121,14 @@ func (r *ResourceNamer) SharedStorageAccountName() string {
 	return fmt.Sprintf("%s%s", prefix, cleanSuffix)
 }
 
+// GlobalSharedStorageAccountName returns the global storage account name for shared resources
+// This is used for storage that lives in the golden resource group and is shared across all deployments
+func (r *ResourceNamer) GlobalSharedStorageAccountName() string {
+	// Storage account names must be 3-24 chars, lowercase letters and numbers only
+	// Use a fixed name for the global shared storage account
+	return "shellboxshared"
+}
+
 // EventLogTableName returns the suffixed table name for EventLog
 func (r *ResourceNamer) EventLogTableName() string {
 	cleanSuffix := r.cleanSuffixForTable()

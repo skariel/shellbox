@@ -10,8 +10,10 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/data/aztables"
+	"github.com/Azure/azure-sdk-for-go/sdk/keyvault/azsecrets"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/keyvault/armkeyvault"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v7"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resourcegraph/armresourcegraph"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
@@ -68,6 +70,8 @@ type AzureClients struct {
 	SnapshotsClient              *armcompute.SnapshotsClient
 	ImagesClient                 *armcompute.ImagesClient
 	ResourceGraphClient          *armresourcegraph.Client
+	KeyVaultClient               *armkeyvault.VaultsClient
+	SecretsClient                *azsecrets.Client
 }
 
 func createResourceGroup(ctx context.Context, clients *AzureClients) {
@@ -159,13 +163,19 @@ func setSubnetIDsFromVNet(clients *AzureClients, vnetResult armnetwork.VirtualNe
 // InitializeTableStorage sets up Table Storage resources or reads configuration
 func InitializeTableStorage(clients *AzureClients, useAzureCli bool) {
 	if useAzureCli {
+		// Ensure golden resource group exists for shared storage
+		if err := ensureGoldenSnapshotResourceGroup(context.Background(), clients); err != nil {
+			FatalOnError(err, "Failed to ensure golden resource group for table storage")
+		}
+
 		namer := NewResourceNamer(clients.Suffix)
-		storageAccount := namer.SharedStorageAccountName()
+		storageAccount := namer.GlobalSharedStorageAccountName()
 		tableNames := []string{namer.EventLogTableName(), namer.ResourceRegistryTableName()}
 
-		result := CreateTableStorageResources(
+		result := CreateTableStorageResourcesInResourceGroup(
 			context.Background(),
 			clients,
+			GoldenSnapshotResourceGroup, // Use shared resource group
 			storageAccount,
 			tableNames,
 		)
@@ -185,6 +195,16 @@ func CreateNetworkInfrastructure(ctx context.Context, clients *AzureClients, use
 	// 1. Create resource group first and wait for it to be ready
 	createResourceGroup(ctx, clients)
 
+	// 2. Ensure golden resource group and Key Vault exist
+	if err := ensureGoldenSnapshotResourceGroup(ctx, clients); err != nil {
+		slog.Error("Failed to ensure golden snapshot resource group", "error", err)
+		os.Exit(1)
+	}
+	if err := ensureKeyVaultExists(ctx, clients); err != nil {
+		slog.Error("Failed to ensure Key Vault exists", "error", err)
+		os.Exit(1)
+	}
+
 	// Start Table Storage initialization in parallel with NSG and VNet creation
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -194,10 +214,10 @@ func CreateNetworkInfrastructure(ctx context.Context, clients *AzureClients, use
 		InitializeTableStorage(clients, useAzureCli)
 	}()
 
-	// 2. Create NSG first since VNet depends on it
+	// 3. Create NSG first since VNet depends on it
 	createBastionNSG(ctx, clients)
 
-	// 3. Create VNet after NSG is ready
+	// 4. Create VNet after NSG is ready
 	createVirtualNetwork(ctx, clients)
 
 	// Wait for Table Storage initialization to complete

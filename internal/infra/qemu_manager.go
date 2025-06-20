@@ -75,7 +75,7 @@ pgrep -f qemu-system-x86_64 || echo "No QEMU process found"
 	if err := sshutil.ExecuteCommand(ctx, resumeCmd, AdminUsername, instanceIP); err != nil {
 		return fmt.Errorf("failed to start QEMU: %w", err)
 	}
-
+	slog.Info("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
 	// Wait for QEMU SSH to be ready
 	if err := qm.waitForQEMUSSH(ctx, instanceIP); err != nil {
 		return fmt.Errorf("QEMU SSH not ready: %w", err)

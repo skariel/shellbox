@@ -301,10 +301,10 @@ func createBoxWithDataVolume(ctx context.Context, clients *AzureClients, resourc
 		return nil, fmt.Errorf("failed to create NIC: %w", err)
 	}
 
-	// Load SSH key for the temporary VM
-	_, sshPublicKey, err := sshutil.LoadKeyPair(BastionSSHKeyPath)
+	// Load SSH key for the temporary VM from Key Vault
+	_, sshPublicKey, err := GetBastionSSHKeyFromVault(ctx, clients)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load SSH key: %w", err)
+		return nil, fmt.Errorf("failed to get SSH key from Key Vault: %w", err)
 	}
 
 	// Create VM with data disk attached using modified function
@@ -489,7 +489,7 @@ func createSnapshotsFromVM(ctx context.Context, clients *AzureClients, resourceG
 }
 
 func createBoxVMWithDataDisk(ctx context.Context, clients *AzureClients, resourceGroupName, vmName, nicID, dataDiskID, sshPublicKey string) (*armcompute.VirtualMachine, error) {
-	initScript, err := generateDataVolumeInitScript()
+	initScript, err := generateDataVolumeInitScript(ctx, clients)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate data volume init script: %w", err)
 	}
@@ -571,11 +571,11 @@ func createBoxVMWithDataDisk(ctx context.Context, clients *AzureClients, resourc
 }
 
 // generateDataVolumeInitScript creates an init script that sets up and starts QEMU VM on the data volume
-func generateDataVolumeInitScript() (string, error) {
-	// Load SSH key for the golden snapshot QEMU VM
-	_, sshPublicKey, err := sshutil.LoadKeyPair(BastionSSHKeyPath)
+func generateDataVolumeInitScript(ctx context.Context, clients *AzureClients) (string, error) {
+	// Load SSH key for the golden snapshot QEMU VM from Key Vault
+	_, sshPublicKey, err := GetBastionSSHKeyFromVault(ctx, clients)
 	if err != nil {
-		return "", fmt.Errorf("failed to load SSH key: %w", err)
+		return "", fmt.Errorf("failed to get SSH key from Key Vault: %w", err)
 	}
 
 	// Use unified QEMU script generation with data volume configuration

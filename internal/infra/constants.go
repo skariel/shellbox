@@ -146,6 +146,13 @@ const (
 	GoldenSnapshotResourceGroup = "shellbox-golden-images"
 )
 
+// Key Vault configuration
+const (
+	KeyVaultName                  = "shellbox-keys"
+	BastionSSHKeySecretName       = "bastion-ssh-private-key" // #nosec G101 - this is a secret name, not the secret itself
+	BastionSSHPublicKeySecretName = "bastion-ssh-public-key"  // #nosec G101 - this is a secret name, not the secret itself
+)
+
 // Timeout constants
 const (
 	GoldenVMSetupTimeout = 15 * time.Minute // Timeout for golden VM QEMU setup and SSH connectivity

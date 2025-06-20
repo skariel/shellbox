@@ -8,7 +8,6 @@ import (
 
 	"shellbox/internal/infra"
 	"shellbox/internal/sshserver"
-	"shellbox/internal/sshutil"
 )
 
 func main() {
@@ -30,14 +29,20 @@ func main() {
 	// Create network infrastructure first
 	infra.CreateNetworkInfrastructure(context.Background(), clients, false)
 
-	// Ensure SSH key pair exists
-	keyPath := infra.BastionSSHKeyPath
-	_, publicKey, err := sshutil.LoadKeyPair(keyPath)
+	// Ensure SSH key pair exists in Key Vault and locally
+	privateKey, publicKey, err := infra.GetBastionSSHKeyFromVault(context.Background(), clients)
 	if err != nil {
-		logger.Error("failed to load SSH key pair", "error", err)
+		logger.Error("failed to get SSH key from Key Vault", "error", err)
 		os.Exit(1)
 	}
-	logger.Info("using SSH key pair", "path", keyPath)
+
+	// Write the SSH key to local filesystem for bastion operations
+	if err := infra.WriteBastionSSHKeyToFile(privateKey); err != nil {
+		logger.Error("failed to write SSH key to file", "error", err)
+		os.Exit(1)
+	}
+
+	logger.Info("using SSH key from Key Vault", "path", infra.BastionSSHKeyPath)
 	logger.Info("loaded public key", "key", publicKey)
 
 	// Create golden snapshot if it doesn't exist

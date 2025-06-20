@@ -13,6 +13,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/data/aztables"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/keyvault/armkeyvault"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/network/armnetwork/v7"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resourcegraph/armresourcegraph"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
@@ -68,6 +69,9 @@ func createAzureClients(clients *AzureClients) {
 
 	clients.ResourceGraphClient, err = armresourcegraph.NewClient(clients.Cred, nil)
 	FatalOnError(err, "failed to create resource graph client")
+
+	clients.KeyVaultClient, err = armkeyvault.NewVaultsClient(clients.SubscriptionID, clients.Cred, nil)
+	FatalOnError(err, "failed to create key vault client")
 }
 
 func createTableClient(clients *AzureClients) {
