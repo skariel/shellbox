@@ -10,7 +10,7 @@ There is a pool of "free" volumes, and when a user "spins up" a box, one is chos
 
 "free" volumes are duplicated from a "golden" snapshot that has a "stopped" vm with ssh access etc. 
 
-user ca run:
+a user of this servie can use it by runing:
 ssh shellbox.dev spinup dev1
 ssh ubuntu@shellbox.dev connect dev1
 

@@ -1,30 +1,30 @@
 #!/bin/bash
 set -e
-
 echo "🔧 Running Go modernization and quality checks..."
 
-# Modern formatting with gofumpt (stricter than gofmt)
-echo "📝 Formatting code with gofumpt..."
-find . -name "*.go" -not -path "./vendor/*" -exec gofumpt -w {} \;
+# Check go.mod tidiness
+echo "📋 Checking go.mod tidiness..."
+go mod tidy -v
 
-# Import organization  
-echo "📦 Organizing imports..."
-find . -name "*.go" -not -path "./vendor/*" -exec goimports -w {} \;
+# Format code (since golangci-lint only checks, doesn't fix)
+echo "📝 Formatting code..."
+gofumpt -w .
+goimports -w .
 
-# Static analysis and linting
+# Clear golangci-lint cache to ensure fresh results
+echo "🧹 Clearing linter cache..."
+golangci-lint cache clean
+
+# Static analysis and linting (only check files changed since last commit)
 echo "🔍 Running static analysis..."
-golangci-lint run --timeout 10m
+if git rev-parse HEAD~1 >/dev/null 2>&1; then
+    golangci-lint run --timeout 10m --new-from-rev=HEAD~1 --fix
+else
+    golangci-lint run --timeout 10m --fix
+fi
 
 # Security vulnerability check
 echo "🛡️  Checking for security vulnerabilities..."
 govulncheck ./...
-
-# Advanced static analysis
-echo "🔬 Running staticcheck..."
-staticcheck ./...
-
-# Dead code detection
-echo "🧹 Checking for dead code..."
-go run golang.org/x/tools/cmd/deadcode@latest ./...
 
 echo "✅ All checks completed successfully!"

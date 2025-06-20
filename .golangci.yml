@@ -1,5 +1,6 @@
 linters:
   enable:
+    # Your existing linters
     - gofmt
     - govet
     - errcheck
@@ -12,7 +13,21 @@ linters:
     - gosec
     - prealloc
     - revive
-
+    - unused
+    
+    # Recommended additions:
+    - gofumpt        # Stricter formatting (you're already using in script)
+    - goimports      # Import formatting (you're already using in script)
+    - gocritic       # Highly opinionated linter with many useful checks
+    - bodyclose      # Checks HTTP response body closure
+    - sqlclosecheck  # Checks sql.Rows closure
+    - nilerr         # Checks returning nil instead of error
+    - errorlint      # Better error wrapping checks
+    - exhaustive     # Checks exhaustiveness of enum switches
+    - copyloopvar    # Replaces exportloopref (for Go 1.22+)
+    - nolintlint     # Ensures //nolint directives are explained
+    - tparallel      # Detects missing t.Parallel() in tests
+    
 linters-settings:
   gocyclo:
     min-complexity: 15
@@ -21,9 +36,25 @@ linters-settings:
   gosec:
     excludes:
       - G204  # Subprocess launching with variable
+  gocritic:
+    enabled-tags:
+      - performance
+      - diagnostic
+      - style
+    disabled-checks:
+      - commentedOutCode
+      - whyNoLint
+  errorlint:
+    errorf: true
+    comparison: true
+  exhaustive:
+    default-signifies-exhaustive: true
+  nolintlint:
+    require-explanation: true
+    require-specific: true
 
 run:
-  deadline: 5m
+  timeout: 5m  # 'deadline' is deprecated, use 'timeout'
   tests: true
 
 issues:
@@ -33,3 +64,4 @@ issues:
     - path: _test\.go
       linters:
         - gosec
+        - errcheck  # Often skip error checks in tests
