@@ -103,7 +103,6 @@ genisoimage -output qemu-disks/cloud-init.iso -volid cidata -joliet -rock user-d
 sudo qemu-system-x86_64 \
    -enable-kvm \
    -m 24G \
-   -mem-prealloc \
    -mem-path %s/qemu-memory/ubuntu-mem \
    -smp 8 \
    -cpu host \

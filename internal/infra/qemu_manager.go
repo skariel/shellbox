@@ -51,7 +51,6 @@ echo "Starting QEMU..."
 sudo sh -c 'nohup qemu-system-x86_64 \
    -enable-kvm \
    -m 24G \
-   -mem-prealloc \
    -mem-path ` + QEMUMemoryPath + ` \
    -smp 8 \
    -cpu host \
@@ -137,5 +136,5 @@ func (qm *QEMUManager) waitForQEMUSSH(ctx context.Context, instanceIP string) er
 			return fmt.Errorf("QEMU VM SSH not yet ready: %w: %s", err, string(output))
 		}
 		return nil
-	}, 2*time.Minute, 10*time.Second, "QEMU SSH connectivity")
+	}, 5*time.Minute, 10*time.Second, "QEMU SSH connectivity")
 }
