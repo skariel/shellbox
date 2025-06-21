@@ -58,9 +58,8 @@ echo "\$nrconf{restart} = 'a';" | sudo tee /etc/needrestart/conf.d/50-autorestar
 %s
 # Install QEMU and dependencies
 sudo apt update
-sudo apt install haveged rng-tools qemu-utils qemu-system-x86 qemu-kvm qemu-system libvirt-daemon-system libvirt-clients bridge-utils genisoimage whois libguestfs-tools socat -y
+sudo apt install qemu-utils qemu-system-x86 qemu-kvm qemu-system libvirt-daemon-system libvirt-clients bridge-utils genisoimage whois libguestfs-tools socat -y
 
-sudo systemctl enable haveged
 sudo usermod -aG kvm,libvirt $USER
 sudo systemctl enable --now libvirtd
 
@@ -86,16 +85,11 @@ users:
 package_update: true
 packages:
   - openssh-server
-  - haveged
-  - rng-tools
 ssh_pwauth: false
 ssh:
   install-server: yes
   permit_root_login: false
   password_authentication: false
-runcmd:
-  - systemctl enable haveged
-  - systemctl start haveged
 EOFMARKER
 
 cat > meta-data << 'EOFMARKER'
@@ -339,12 +333,47 @@ func createBoxWithDataVolume(ctx context.Context, clients *AzureClients, resourc
 }
 
 // waitForQEMUSetup waits for the QEMU VM to be accessible via SSH on port 2222
+// TODO: this function waits, but also creates the snapshots. It should just wai? lets refactor the snapshot part out of it
 func waitForQEMUSetup(ctx context.Context, _ *AzureClients, tempBox *tempBoxInfo) error {
-	slog.Info("Waiting for QEMU VM to be SSH-ready", "vmName", tempBox.VMName, "privateIP", tempBox.PrivateIP)
+	slog.Info("Waiting for host VM setup and QEMU to be ready", "vmName", tempBox.VMName, "privateIP", tempBox.PrivateIP)
 
-	// First, wait for SSH connectivity to the QEMU VM
-	slog.Info("Testing SSH connectivity to QEMU VM", "port", BoxSSHPort)
+	// First, check cloud-init completion on the host VM
+	slog.Info("Checking cloud-init completion on host VM")
 	err := RetryOperation(ctx, func(ctx context.Context) error {
+		// Check cloud-init logs on the host VM (not the QEMU VM)
+		cmd := exec.CommandContext(ctx, "ssh",
+			"-o", "ConnectTimeout=5",
+			"-o", "StrictHostKeyChecking=no",
+			"-i", sshutil.SSHKeyPath,
+			fmt.Sprintf("%s@%s", AdminUsername, tempBox.PrivateIP),
+			"tail -n 50 /var/log/cloud-init-output.log 2>/dev/null || echo 'Log not yet available'")
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("failed to check cloud-init logs: %w: %s", err, string(output))
+		}
+
+		outputStr := string(output)
+
+		// Check for failed cloud-init
+		if strings.Contains(outputStr, "[FAILED] Failed to start cloud-final.service") {
+			return fmt.Errorf("cloud-init failed to complete successfully")
+		}
+
+		// Check for successful completion
+		if strings.Contains(outputStr, "Cloud-init v.") && strings.Contains(outputStr, "finished at") {
+			slog.Info("Cloud-init completed successfully")
+			return nil
+		}
+
+		return fmt.Errorf("cloud-init not yet complete")
+	}, GoldenVMSetupTimeout, 10*time.Second, "cloud-init completion")
+	if err != nil {
+		return err
+	}
+
+	// Now wait for SSH connectivity to the QEMU VM
+	slog.Info("Cloud-init completed, testing SSH connectivity to QEMU VM", "port", BoxSSHPort)
+	err = RetryOperation(ctx, func(ctx context.Context) error {
 		// Test SSH connection directly to the QEMU VM from bastion
 		cmd := exec.CommandContext(ctx, "ssh",
 			"-o", "ConnectTimeout=5",
@@ -352,29 +381,31 @@ func waitForQEMUSetup(ctx context.Context, _ *AzureClients, tempBox *tempBoxInfo
 			"-i", sshutil.SSHKeyPath,
 			"-p", fmt.Sprintf("%d", BoxSSHPort),
 			fmt.Sprintf("%s@%s", SystemUserUbuntu, tempBox.PrivateIP),
-			"sudo cloud-init status --wait")
+			"echo 'SSH connectivity verified'")
 		if output, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("QEMU VM SSH not yet ready: %w: %s", err, string(output))
 		}
-		cmd = exec.CommandContext(ctx, "ssh",
-			"-o", "ConnectTimeout=5",
-			"-o", "StrictHostKeyChecking=no",
-			"-i", sshutil.SSHKeyPath,
-			"-p", fmt.Sprintf("%d", BoxSSHPort),
-			fmt.Sprintf("%s@%s", SystemUserUbuntu, tempBox.PrivateIP),
-			"sudo touch /etc/cloud/cloud-init.disabled")
-		if output, err := cmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("QEMU VM SSH not yet ready: %w: %s", err, string(output))
-		}
-
 		return nil
 	}, GoldenVMSetupTimeout, 30*time.Second, "QEMU VM SSH connectivity")
 	if err != nil {
 		return err
 	}
 
-	// SSH is ready, now save the VM state
-	slog.Info("QEMU VM SSH confirmed working, saving VM state")
+	// Disable cloud-init for future boots
+	slog.Info("Disabling cloud-init for future boots")
+	cmd := exec.CommandContext(ctx, "ssh",
+		"-o", "ConnectTimeout=5",
+		"-o", "StrictHostKeyChecking=no",
+		"-i", sshutil.SSHKeyPath,
+		"-p", fmt.Sprintf("%d", BoxSSHPort),
+		fmt.Sprintf("%s@%s", SystemUserUbuntu, tempBox.PrivateIP),
+		"sudo touch /etc/cloud/cloud-init.disabled")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to disable cloud-init: %w: %s", err, string(output))
+	}
+
+	// SSH is ready and cloud-init is complete, now save the VM state
+	slog.Info("QEMU VM fully ready, saving VM state")
 
 	// Check if any snapshots exist already
 	checkCmd := `echo "info snapshots" | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock`

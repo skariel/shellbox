@@ -1,0 +1,54 @@
+shellbox@temp-temp-golden-1750544077:~$
+shellbox@temp-temp-golden-1750544077:~$ tail -n 50 /var/log/cloud-init-output.log 2>/dev/null || echo 'Lo
+[   44.395075] cloud-init[1285]: Get:29 http://archive.ubuntu.com/ubuntu noble-updates/restricted Transla
+[   44.416978] cloud-init[1285]: Get:30 http://archive.ubuntu.com/ubuntu noble-updates/restricted amd64 C
+[   44.427249] cloud-init[1285]: Get:31 http://archive.ubuntu.com/ubuntu noble-updates/multiverse amd64 P
+[   44.446477] cloud-init[1285]: Get:32 http://archive.ubuntu.com/ubuntu noble-updates/multiverse Transla
+[   44.463146] cloud-init[1285]: Get:33 http://archive.ubuntu.com/ubuntu noble-updates/multiverse amd64 C
+[   44.471296] cloud-init[1285]: Get:34 http://archive.ubuntu.com/ubuntu noble-updates/multiverse amd64 c
+[   44.475820] cloud-init[1285]: Get:35 http://archive.ubuntu.com/ubuntu noble-backports/main amd64 Packa
+[   44.487324] cloud-init[1285]: Get:36 http://archive.ubuntu.com/ubuntu noble-backports/main Translation
+[   44.495656] cloud-init[1285]: Get:37 http://archive.ubuntu.com/ubuntu noble-backports/main amd64 Compo
+[   44.502442] cloud-init[1285]: Get:38 http://archive.ubuntu.com/ubuntu noble-backports/main amd64 c-n-f
+[   44.509578] cloud-init[1285]: Get:39 http://security.ubuntu.com/ubuntu noble-security/restricted Trans
+[   44.530049] cloud-init[1285]: Get:40 http://security.ubuntu.com/ubuntu noble-security/restricted amd64
+[   44.538938] cloud-init[1285]: Get:41 http://security.ubuntu.com/ubuntu noble-security/multiverse amd64
+[   44.551927] cloud-init[1285]: Get:42 http://security.ubuntu.com/ubuntu noble-security/multiverse Trans
+[   44.559131] cloud-init[1285]: Get:43 http://security.ubuntu.com/ubuntu noble-security/multiverse amd64
+[   44.568053] cloud-init[1285]: Get:44 http://security.ubuntu.com/ubuntu noble-security/multiverse amd64
+[   44.576140] cloud-init[1285]: Get:45 http://archive.ubuntu.com/ubuntu noble-backports/universe amd64 P
+[   44.592557] cloud-init[1285]: Get:46 http://archive.ubuntu.com/ubuntu noble-backports/universe Transla
+[   44.603504] cloud-init[1285]: Get:47 http://archive.ubuntu.com/ubuntu noble-backports/universe amd64 C
+[   44.619721] cloud-init[1285]: Get:48 http://archive.ubuntu.com/ubuntu noble-backports/universe amd64 c
+[   44.633485] cloud-init[1285]: Get:49 http://archive.ubuntu.com/ubuntu noble-backports/restricted amd64
+[   44.648625] cloud-init[1285]: Get:50 http://archive.ubuntu.com/ubuntu noble-backports/restricted amd64
+[   44.671697] cloud-init[1285]: Get:51 http://archive.ubuntu.com/ubuntu noble-backports/multiverse amd64
+[   44.686127] cloud-init[1285]: Get:52 http://archive.ubuntu.com/ubuntu noble-backports/multiverse amd64
+[   60.885170] cloud-init[1285]: Fetched 34.6 MB in 9s (3874 kB/s)
+[   62.269712] cloud-init[1285]: Reading package lists...
+[   62.575649] cloud-init[1285]: Reading package lists...
+[   62.883049] cloud-init[1285]: Building dependency tree...
+[   62.883788] cloud-init[1285]: Reading state information...
+[   63.237881] cloud-init[1285]: openssh-server is already the newest version (1:9.6p1-3ubuntu13.12).
+[   63.243814] cloud-init[1285]: 0 upgraded, 0 newly installed, 0 to remove and 28 not upgraded.
+ci-info: +++++++++++++++++++++++++++++Authorized keys from /home/ubuntu/.ssh/authorized_keys for user ubu
+ci-info: +---------+-------------------------------------------------------------------------------------
+ci-info: | Keytype |                                       Fingerprint (sha256)
+ci-info: +---------+-------------------------------------------------------------------------------------
+ci-info: | ssh-rsa | 69:15:0b:3f:89:b0:27:3c:28:08:96:da:0b:27:6d:8d:57:8d:f0:39:e2:47:4d:b0:05:6b:e2:6c:
+ci-info: +---------+-------------------------------------------------------------------------------------
+<14>Jun 21 22:19:56 cloud-init: #############################################################
+<14>Jun 21 22:19:56 cloud-init: -----BEGIN SSH HOST KEY FINGERPRINTS-----
+<14>Jun 21 22:19:56 cloud-init: 256 SHA256:KRmlySzSxtf0B/ez9UKcP3A8E6Naj1lwptNSReWkjzU root@ubuntu (ECDSA
+<14>Jun 21 22:19:56 cloud-init: 256 SHA256:g1/kuPrWRdSTatnsmSg37v3s08nOTWjm1B9pYh6Yifw root@ubuntu (ED255
+<14>Jun 21 22:19:56 cloud-init: 3072 SHA256:BKeY7CC34y+v6Ug7AKvUljoGqmYEd58zLe3uiRfL4Kw root@ubuntu (RSA)
+<14>Jun 21 22:19:56 cloud-init: -----END SSH HOST KEY FINGERPRINTS-----
+<14>Jun 21 22:19:56 cloud-init: #############################################################
+-----BEGIN SSH HOST KEY KEYS-----
+ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBOMiebQ4SIssugyfNhnd6ReOeO8ohfjbQ
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILpbmGVRED68E7FXh1eO9RobSy/kFdNHglgDOy+QNODO root@ubuntu
+ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCXqGKUFInY5OBV2OsR2W2scLLYN7N/vXeCH3aMTYVpoctU1FKFNIV/hdBGJR/uBKt9c
+-----END SSH HOST KEY KEYS-----
+[   63.509951] cloud-init[1285]: Cloud-init v. 25.1.2-0ubuntu0~24.04.1 finished at Sat, 21 Jun 2025 22:19
+shellbox@temp-temp-golden-1750544077:~$
+
