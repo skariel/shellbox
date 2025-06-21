@@ -352,10 +352,21 @@ func waitForQEMUSetup(ctx context.Context, _ *AzureClients, tempBox *tempBoxInfo
 			"-i", sshutil.SSHKeyPath,
 			"-p", fmt.Sprintf("%d", BoxSSHPort),
 			fmt.Sprintf("%s@%s", SystemUserUbuntu, tempBox.PrivateIP),
-			"echo 'SSH test successful'")
+			"sudo cloud-init status --wait")
 		if output, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("QEMU VM SSH not yet ready: %w: %s", err, string(output))
 		}
+		cmd = exec.CommandContext(ctx, "ssh",
+			"-o", "ConnectTimeout=5",
+			"-o", "StrictHostKeyChecking=no",
+			"-i", sshutil.SSHKeyPath,
+			"-p", fmt.Sprintf("%d", BoxSSHPort),
+			fmt.Sprintf("%s@%s", SystemUserUbuntu, tempBox.PrivateIP),
+			"sudo touch /etc/cloud/cloud-init.disabled")
+		if output, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("QEMU VM SSH not yet ready: %w: %s", err, string(output))
+		}
+
 		return nil
 	}, GoldenVMSetupTimeout, 30*time.Second, "QEMU VM SSH connectivity")
 	if err != nil {
