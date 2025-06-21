@@ -55,6 +55,7 @@ sudo sh -c 'nohup qemu-system-x86_64 \
    -smp 8 \
    -cpu host \
    -drive file=` + QEMUBaseDiskPath + `,format=qcow2 \
+   -device virtio-rng-pci,rng=rng0 -object rng-random,id=rng0,filename=/dev/urandom \
    -nographic \
    -monitor unix:` + QEMUMonitorSocket + `,server,nowait \
    -nic user,model=virtio,hostfwd=tcp::2222-:22,dns=8.8.8.8 \

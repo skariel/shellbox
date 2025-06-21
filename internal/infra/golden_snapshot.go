@@ -58,8 +58,9 @@ echo "\$nrconf{restart} = 'a';" | sudo tee /etc/needrestart/conf.d/50-autorestar
 %s
 # Install QEMU and dependencies
 sudo apt update
-sudo apt install qemu-utils qemu-system-x86 qemu-kvm qemu-system libvirt-daemon-system libvirt-clients bridge-utils genisoimage whois libguestfs-tools socat -y
+sudo apt install haveged rng-tools qemu-utils qemu-system-x86 qemu-kvm qemu-system libvirt-daemon-system libvirt-clients bridge-utils genisoimage whois libguestfs-tools socat -y
 
+sudo systemctl enable haveged
 sudo usermod -aG kvm,libvirt $USER
 sudo systemctl enable --now libvirtd
 
@@ -85,11 +86,16 @@ users:
 package_update: true
 packages:
   - openssh-server
+  - haveged
+  - rng-tools
 ssh_pwauth: false
 ssh:
   install-server: yes
   permit_root_login: false
   password_authentication: false
+runcmd:
+  - systemctl enable haveged
+  - systemctl start haveged
 EOFMARKER
 
 cat > meta-data << 'EOFMARKER'
@@ -108,6 +114,7 @@ sudo qemu-system-x86_64 \
    -cpu host \
    -drive file=%s/qemu-disks/ubuntu-base.qcow2,format=qcow2 \
    -cdrom %s/qemu-disks/cloud-init.iso \
+   -device virtio-rng-pci,rng=rng0 -object rng-random,id=rng0,filename=/dev/urandom \
    -nographic \
    -monitor unix:/tmp/qemu-monitor.sock,server,nowait \
    -nic user,model=virtio,hostfwd=tcp::%d-:22,dns=8.8.8.8`,
