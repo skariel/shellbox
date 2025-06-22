@@ -381,8 +381,8 @@ func GeneralizeVM(ctx context.Context, clients *AzureClients, resourceGroupName,
 		return fmt.Errorf("could not determine private IP for VM %s", vmName)
 	}
 
-	// Run waagent -deprovision+user via SSH
-	deprovisionCmd := "sudo waagent -deprovision+user -force"
+	// Run waagent -deprovision (without +user to preserve the shellbox user)
+	deprovisionCmd := "sudo waagent -deprovision -force"
 	if err := sshutil.ExecuteCommand(ctx, deprovisionCmd, AdminUsername, privateIP); err != nil {
 		return fmt.Errorf("failed to deprovision VM: %w", err)
 	}
