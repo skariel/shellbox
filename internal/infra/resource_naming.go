@@ -87,14 +87,6 @@ func (r *ResourceNamer) VolumePoolDiskName(volumeID string) string {
 	return fmt.Sprintf("shellbox-%s-volume-%s", r.suffix, volumeID)
 }
 
-// GlobalSharedStorageAccountName returns the global storage account name for shared resources
-// This is used for storage that lives in the golden resource group and is shared across all deployments
-func (r *ResourceNamer) GlobalSharedStorageAccountName() string {
-	// Storage account names must be 3-24 chars, lowercase letters and numbers only
-	// Use a fixed name for the global shared storage account
-	return "shellboxshared1"
-}
-
 // EventLogTableName returns the suffixed table name for EventLog
 func (r *ResourceNamer) EventLogTableName() string {
 	cleanSuffix := r.cleanSuffixForTable()

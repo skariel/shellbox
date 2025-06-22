@@ -162,14 +162,13 @@ func InitializeTableStorage(clients *AzureClients, useAzureCli bool) {
 		// Golden resource group is already ensured in CreateNetworkInfrastructure
 
 		namer := NewResourceNamer(clients.Suffix)
-		storageAccount := namer.GlobalSharedStorageAccountName()
 		tableNames := []string{namer.EventLogTableName(), namer.ResourceRegistryTableName()}
 
 		result := CreateTableStorageResourcesInResourceGroup(
 			context.Background(),
 			clients,
 			GoldenSnapshotResourceGroup, // Use shared resource group
-			storageAccount,
+			GlobalSharedStorageAccountName,
 			tableNames,
 		)
 		FatalOnError(result.Error, "Table Storage setup error")
