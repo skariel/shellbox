@@ -2,6 +2,7 @@ package infra
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"log/slog"
 	"shellbox/internal/sshutil"
@@ -312,6 +313,15 @@ func createInstanceVM(ctx context.Context, clients *AzureClients, vmName, nicID 
 		},
 	}
 
+	// Add cloud-init data for VMs created from golden images to ensure SSH is properly configured
+	if config.OSImageID != "" {
+		customData, err := GenerateInstanceInitScript()
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate instance init script: %w", err)
+		}
+		vmParams.Properties.OSProfile.CustomData = to.Ptr(customData)
+	}
+
 	if config.OSImageID == "" {
 		slog.Info("Creating VM with standard Ubuntu image", "computerName", namer.BoxComputerName(tags.InstanceID))
 	} else {
@@ -408,6 +418,18 @@ func GeneralizeVM(ctx context.Context, clients *AzureClients, resourceGroupName,
 
 	slog.Info("VM successfully generalized", "vmName", vmName)
 	return nil
+}
+
+// GenerateInstanceInitScript creates a cloud-init script for instance VMs
+// This is needed for VMs created from generalized golden images to ensure SSH is properly configured
+func GenerateInstanceInitScript() (string, error) {
+	// Simple cloud-init to ensure SSH is running and configured
+	script := `#cloud-config
+runcmd:
+  - systemctl restart ssh
+  - systemctl enable ssh
+`
+	return base64.StdEncoding.EncodeToString([]byte(script)), nil
 }
 
 // FindInstancesByStatus returns instance IDs matching the given status.
