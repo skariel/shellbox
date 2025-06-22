@@ -70,7 +70,7 @@ func (ra *ResourceAllocator) AllocateResourcesForUser(ctx context.Context, userI
 	}
 
 	// Get instance IP and start QEMU
-	instanceIP, err := ra.finalizeAllocation(ctx, &instance, &volume)
+	instanceIP, err := ra.getInstanceIPAndStartQEMU(ctx, &instance, &volume)
 	if err != nil {
 		ra.rollbackAllocation(ctx, instance.ResourceID, volume.ResourceID)
 		return nil, err
@@ -106,8 +106,8 @@ func (ra *ResourceAllocator) ReserveVolumeForUser(ctx context.Context, userID, b
 	return volume.ResourceID, nil
 }
 
-// finalizeAllocation gets IP and starts QEMU
-func (ra *ResourceAllocator) finalizeAllocation(ctx context.Context, instance, volume *ResourceInfo) (string, error) {
+// getInstanceIPAndStartQEMU retrieves the instance IP and starts QEMU with the attached volume
+func (ra *ResourceAllocator) getInstanceIPAndStartQEMU(ctx context.Context, instance, volume *ResourceInfo) (string, error) {
 	// Get instance IP
 	instanceIP, err := GetInstancePrivateIP(ctx, ra.clients, instance.ResourceID)
 	if err != nil {

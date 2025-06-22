@@ -191,14 +191,14 @@ func CreateGoldenSnapshotIfNotExists(ctx context.Context, clients *AzureClients)
 	tempBoxName := fmt.Sprintf("temp-golden-%d", time.Now().Unix())
 	slog.Info("Creating temporary box VM", "tempBoxName", tempBoxName)
 
-	tempBox, err := createBoxWithDataVolume(ctx, clients, clients.ResourceGroupName, tempBoxName, sshPublicKey)
+	tempBox, err := createAndProvisionBoxWithDataVolume(ctx, clients, clients.ResourceGroupName, tempBoxName, sshPublicKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create temporary box for golden snapshot: %w", err)
 	}
 
 	// Wait for the VM to be ready and QEMU setup to complete
 	slog.Info("Waiting for QEMU setup to complete on temporary box")
-	if err := waitForQEMUSetup(ctx, clients, tempBox); err != nil {
+	if err := waitForQEMUAndSaveState(ctx, clients, tempBox); err != nil {
 		// Cleanup temp resources on failure
 		if cleanupErr := DeleteInstance(ctx, clients, clients.ResourceGroupName, tempBoxName); cleanupErr != nil {
 			slog.Warn("Failed to cleanup temporary box during error recovery", "error", cleanupErr)
@@ -218,7 +218,7 @@ func CreateGoldenSnapshotIfNotExists(ctx context.Context, clients *AzureClients)
 
 	// Create data snapshot and OS image from the VM in the persistent resource group
 	slog.Info("Creating data snapshot and OS image from VM")
-	snapshotInfo, err := createSnapshotsFromVM(ctx, clients, GoldenSnapshotResourceGroup, dataSnapshotName, osSnapshotName, tempBox)
+	snapshotInfo, err := createDataSnapshotAndOSImage(ctx, clients, GoldenSnapshotResourceGroup, dataSnapshotName, osSnapshotName, tempBox)
 	if err != nil {
 		// Cleanup temp resources on failure
 		if cleanupErr := DeleteInstance(ctx, clients, clients.ResourceGroupName, tempBoxName); cleanupErr != nil {
@@ -250,8 +250,8 @@ type tempBoxInfo struct {
 	DiskName   string
 }
 
-// createBoxWithDataVolume creates a temporary box VM with a data volume for QEMU setup
-func createBoxWithDataVolume(ctx context.Context, clients *AzureClients, resourceGroupName, vmName, sshPublicKey string) (*tempBoxInfo, error) {
+// createAndProvisionBoxWithDataVolume creates a temporary box VM with a data volume and provisions it for QEMU setup
+func createAndProvisionBoxWithDataVolume(ctx context.Context, clients *AzureClients, resourceGroupName, vmName, sshPublicKey string) (*tempBoxInfo, error) {
 	namer := NewResourceNamer(ExtractSuffix(resourceGroupName))
 
 	// Create data volume using golden-specific tagging
@@ -336,9 +336,9 @@ func createBoxWithDataVolume(ctx context.Context, clients *AzureClients, resourc
 	}, nil
 }
 
-// waitForQEMUSetup waits for the QEMU VM to be accessible via SSH on port 2222
-// TODO: this function waits, but also creates the snapshots. It should just wai? lets refactor the snapshot part out of it
-func waitForQEMUSetup(ctx context.Context, _ *AzureClients, tempBox *tempBoxInfo) error {
+// waitForQEMUAndSaveState waits for the QEMU VM to be accessible via SSH on port 2222 and saves the VM state
+// TODO: this function waits, but also creates the snapshots. It should just wait? lets refactor the snapshot part out of it
+func waitForQEMUAndSaveState(ctx context.Context, _ *AzureClients, tempBox *tempBoxInfo) error {
 	slog.Info("Waiting for host VM setup and QEMU to be ready", "vmName", tempBox.VMName, "privateIP", tempBox.PrivateIP)
 
 	// First, check cloud-init completion on the host VM
@@ -451,7 +451,7 @@ func waitForQEMUSetup(ctx context.Context, _ *AzureClients, tempBox *tempBoxInfo
 	return nil
 }
 
-func createSnapshotsFromVM(ctx context.Context, clients *AzureClients, resourceGroupName, dataSnapshotName, osSnapshotName string, tempBox *tempBoxInfo) (*GoldenSnapshotInfo, error) {
+func createDataSnapshotAndOSImage(ctx context.Context, clients *AzureClients, resourceGroupName, dataSnapshotName, osSnapshotName string, tempBox *tempBoxInfo) (*GoldenSnapshotInfo, error) {
 	osImageName := fmt.Sprintf("%s-image", osSnapshotName)
 	slog.Info("Creating data snapshot and OS image", "dataSnapshot", dataSnapshotName, "osImage", osImageName, "dataDiskID", tempBox.DataDiskID, "osDiskID", tempBox.OSDiskID)
 
