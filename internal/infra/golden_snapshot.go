@@ -107,7 +107,8 @@ genisoimage -output qemu-disks/cloud-init.iso -volid cidata -joliet -rock user-d
 sudo qemu-system-x86_64 \
    -enable-kvm \
    -m 24G \
-   -mem-path %s/qemu-memory/ubuntu-mem \
+   -object memory-backend-file,id=mem,size=24G,mem-path=%s/qemu-memory/ubuntu-mem,share=on \
+   -machine memory-backend=mem \
    -smp 8 \
    -cpu host,+invtsc \
    -drive file=%s/qemu-disks/ubuntu-base.qcow2,format=qcow2 \
@@ -198,7 +199,7 @@ func CreateGoldenSnapshotIfNotExists(ctx context.Context, clients *AzureClients)
 
 	// Wait for the VM to be ready and QEMU setup to complete
 	slog.Info("Waiting for QEMU setup to complete on temporary box")
-	if err := waitForQEMUAndSaveState(ctx, clients, tempBox); err != nil {
+	if err := waitForQEMUReady(ctx, clients, tempBox); err != nil {
 		// Cleanup temp resources on failure
 		if cleanupErr := DeleteInstance(ctx, clients, clients.ResourceGroupName, tempBoxName); cleanupErr != nil {
 			slog.Warn("Failed to cleanup temporary box during error recovery", "error", cleanupErr)
@@ -336,9 +337,8 @@ func createAndProvisionBoxWithDataVolume(ctx context.Context, clients *AzureClie
 	}, nil
 }
 
-// waitForQEMUAndSaveState waits for the QEMU VM to be accessible via SSH on port 2222 and saves the VM state
-// TODO: this function waits, but also creates the snapshots. It should just wait? lets refactor the snapshot part out of it
-func waitForQEMUAndSaveState(ctx context.Context, _ *AzureClients, tempBox *tempBoxInfo) error {
+// waitForQEMUReady waits for the QEMU VM to be accessible via SSH on port 2222 and then shuts it down cleanly
+func waitForQEMUReady(ctx context.Context, _ *AzureClients, tempBox *tempBoxInfo) error {
 	slog.Info("Waiting for host VM setup and QEMU to be ready", "vmName", tempBox.VMName, "privateIP", tempBox.PrivateIP)
 
 	// First, check cloud-init completion on the host VM
@@ -395,59 +395,21 @@ func waitForQEMUAndSaveState(ctx context.Context, _ *AzureClients, tempBox *temp
 		return err
 	}
 
-	// SSH is ready and cloud-init is complete, now save the VM state
-	slog.Info("QEMU VM fully ready, saving VM state")
+	// SSH is ready and cloud-init is complete
+	slog.Info("QEMU VM fully ready, shutting down cleanly")
 
-	// Check if any snapshots exist already
-	checkCmd := `echo "info snapshots" | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock`
-	checkOutput, _ := sshutil.ExecuteCommandWithOutput(ctx, checkCmd, AdminUsername, tempBox.PrivateIP)
-	slog.Info("Current snapshots before save", "output", checkOutput)
-
-	// Save snapshot - wait for completion by checking the output
-	saveCmd := `echo "savevm ssh-ready" | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock`
-	saveOutput, saveErr := sshutil.ExecuteCommandWithOutput(ctx, saveCmd, AdminUsername, tempBox.PrivateIP)
-	slog.Info("Savevm command sent", "output", saveOutput, "error", saveErr)
-
-	// Wait for snapshot to be saved by repeatedly checking snapshots list
-	err = RetryOperation(ctx, func(ctx context.Context) error {
-		checkCmd := `echo "info snapshots" | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock`
-		checkOutput, _ := sshutil.ExecuteCommandWithOutput(ctx, checkCmd, AdminUsername, tempBox.PrivateIP)
-		if !strings.Contains(checkOutput, "ssh-ready") {
-			return fmt.Errorf("snapshot 'ssh-ready' not yet visible in QEMU")
-		}
-		slog.Info("Snapshot confirmed in QEMU", "output", checkOutput)
-		return nil
-	}, 60*time.Second, 3*time.Second, "QEMU snapshot save")
-	if err != nil {
-		return fmt.Errorf("failed to save QEMU snapshot: %w", err)
-	}
-
-	// Attempt to quit QEMU gracefully (but don't wait for it)
+	// Gracefully shut down QEMU using quit command
 	quitCmd := `echo "quit" | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock`
 	quitOutput, quitErr := sshutil.ExecuteCommandWithOutput(ctx, quitCmd, AdminUsername, tempBox.PrivateIP)
 	slog.Info("Quit command sent", "output", quitOutput, "error", quitErr)
 
-	// Force kill QEMU to ensure we can access the qcow2 file
-	_ = sshutil.ExecuteCommand(ctx, `sudo pkill -9 qemu-system-x86_64 || true`, AdminUsername, tempBox.PrivateIP)
-
-	// Brief pause to ensure filesystem sync
+	// Brief pause to ensure shutdown completes
 	time.Sleep(2 * time.Second)
 
-	// Now verify snapshot using qemu-img
-	verifyCmd := `sudo qemu-img snapshot -l /mnt/userdata/qemu-disks/ubuntu-base.qcow2`
-	verifyOutput, verifyErr := sshutil.ExecuteCommandWithOutput(ctx, verifyCmd, AdminUsername, tempBox.PrivateIP)
+	// Force kill QEMU if still running
+	_ = sshutil.ExecuteCommand(ctx, `sudo pkill -9 qemu-system-x86_64 || true`, AdminUsername, tempBox.PrivateIP)
 
-	if verifyErr != nil {
-		return fmt.Errorf("failed to verify QEMU snapshot with qemu-img: %w", verifyErr)
-	}
-
-	// Check if output contains our snapshot
-	if !strings.Contains(verifyOutput, "ssh-ready") {
-		slog.Error("Snapshot 'ssh-ready' not found in qcow2 file", "output", verifyOutput)
-		return fmt.Errorf("snapshot 'ssh-ready' was not saved to qcow2 file")
-	}
-
-	slog.Info("QEMU snapshot verified successfully", "snapshots", verifyOutput)
+	slog.Info("QEMU shutdown complete")
 	return nil
 }
 

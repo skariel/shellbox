@@ -21,10 +21,10 @@ func NewQEMUManager(clients *AzureClients) *QEMUManager {
 	}
 }
 
-// StartQEMUWithVolume starts QEMU VM with the attached volume
+// StartQEMUWithVolume starts QEMU VM with the attached volume using memory-mapped file persistence
 func (qm *QEMUManager) StartQEMUWithVolume(ctx context.Context, instanceIP, _ string) error {
-	// Wait for volume to be available and then resume QEMU
-	resumeCmd := `
+	// Wait for volume to be available and then start QEMU
+	startCmd := `
 # Wait for data disk to be available
 while [ ! -e /dev/disk/azure/scsi1/lun0 ]; do
     echo "Waiting for data disk..."
@@ -46,12 +46,13 @@ ls -la ` + QEMUBaseDiskPath + ` || echo "Base disk missing"
 ls -la ` + QEMUCloudInitPath + ` || echo "Cloud-init missing" 
 ls -la ` + QEMUMemoryPath + ` || echo "Memory file missing"
 
-# Resume QEMU VM from saved state
+# Start QEMU VM with memory-mapped file
 echo "Starting QEMU..."
 sudo sh -c 'nohup qemu-system-x86_64 \
    -enable-kvm \
    -m 24G \
-   -mem-path ` + QEMUMemoryPath + ` \
+   -object memory-backend-file,id=mem,size=24G,mem-path=` + QEMUMemoryPath + `,share=on \
+   -machine memory-backend=mem \
    -smp 8 \
    -cpu host,+invtsc \
    -drive file=` + QEMUBaseDiskPath + `,format=qcow2 \
@@ -60,8 +61,7 @@ sudo sh -c 'nohup qemu-system-x86_64 \
    -nographic \
    -serial file:/mnt/userdata/qemu-serial.log \
    -monitor unix:` + QEMUMonitorSocket + `,server,nowait \
-   -nic user,model=virtio,hostfwd=tcp::2222-:22,dns=8.8.8.8 \
-   -S > /mnt/userdata/qemu.log 2>&1 < /dev/null &'
+   -nic user,model=virtio,hostfwd=tcp::2222-:22,dns=8.8.8.8 > /mnt/userdata/qemu.log 2>&1 < /dev/null &'
 
 # Brief sleep to ensure process starts
 sleep 2
@@ -70,15 +70,6 @@ sleep 2
 if pgrep -f qemu-system-x86_64 > /dev/null; then
     QEMU_PID=$(pgrep -f qemu-system-x86_64)
     echo "SUCCESS: QEMU started with PID: $QEMU_PID"
-    
-    # Load the saved VM state
-    echo "Loading saved VM state..."
-    echo "loadvm ssh-ready" | sudo socat - UNIX-CONNECT:` + QEMUMonitorSocket + `
-    sleep 2
-    
-    # Resume the VM
-    echo "Resuming VM..."
-    echo "cont" | sudo socat - UNIX-CONNECT:` + QEMUMonitorSocket + `
     
     # Check if log file was created
     if [ -f /mnt/userdata/qemu.log ]; then
@@ -100,14 +91,14 @@ fi
 `
 
 	slog.Info("Starting QEMU with volume", "instanceIP", instanceIP)
-	output, err := sshutil.ExecuteCommandWithOutput(ctx, resumeCmd, AdminUsername, instanceIP)
+	output, err := sshutil.ExecuteCommandWithOutput(ctx, startCmd, AdminUsername, instanceIP)
 	if err != nil {
 		slog.Error("Failed to start QEMU", "error", err, "output", output)
 		return fmt.Errorf("failed to start QEMU: %w", err)
 	}
 	slog.Info("QEMU start command completed", "output", output)
 	// Wait for QEMU SSH to be ready
-	// AI: the ssh connectivity below takes forever. Why is that? the sanpshot was saved with fully completed cloud-init and ssh readiness. Then we resume the qemu vm, and I expected this to work fast. Especially since we'rer worikgin from a memory-mapped file as memory. No need to load all memory to memory
+	// Wait for SSH to be ready - should be fast since memory state is preserved in the memory-mapped file
 	if err := qm.waitForQEMUSSH(ctx, instanceIP); err != nil {
 		return fmt.Errorf("QEMU SSH not ready: %w", err)
 	}
@@ -116,11 +107,11 @@ fi
 	return nil
 }
 
-// StopQEMU stops the QEMU VM and saves its state
+// StopQEMU stops the QEMU VM cleanly
 func (qm *QEMUManager) StopQEMU(ctx context.Context, instanceIP string) error {
 	stopCmd := `
-# Save QEMU state and quit
-echo -e "savevm ssh-ready\nquit" | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock || true
+# Quit QEMU cleanly
+echo "quit" | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock || true
 
 # Fallback: kill QEMU if monitor command fails
 sudo pkill qemu-system-x86_64 || true
