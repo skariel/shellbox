@@ -2,7 +2,6 @@ package infra
 
 import (
 	"fmt"
-	"strings"
 )
 
 type ResourceNamer struct {
@@ -76,19 +75,6 @@ func (r *ResourceNamer) BoxOSDiskName(boxID string) string {
 	return fmt.Sprintf("shellbox-%s-box-%s-os-disk", r.suffix, boxID)
 }
 
-func (r *ResourceNamer) StorageAccountName() string {
-	// Storage account names must be 3-24 chars, lowercase letters and numbers only
-	// Remove hyphens and truncate suffix if needed
-	cleanSuffix := r.cleanSuffixAlphanumeric(false) // lowercase only
-	// Ensure total length is <= 24 chars
-	prefix := "sb" // shortened from "shellbox"
-	maxSuffixLen := 24 - len(prefix)
-	if len(cleanSuffix) > maxSuffixLen {
-		cleanSuffix = cleanSuffix[:maxSuffixLen]
-	}
-	return fmt.Sprintf("%s%s", prefix, cleanSuffix)
-}
-
 func (r *ResourceNamer) GoldenSnapshotName() string {
 	return fmt.Sprintf("shellbox-%s-golden-snapshot", r.suffix)
 }
@@ -101,32 +87,12 @@ func (r *ResourceNamer) VolumePoolDiskName(volumeID string) string {
 	return fmt.Sprintf("shellbox-%s-volume-%s", r.suffix, volumeID)
 }
 
-// SharedStorageAccountName returns the suffixed storage account name
-// Uses "test" prefix for testing environments, "prod" prefix for production
-func (r *ResourceNamer) SharedStorageAccountName() string {
-	// Storage account names must be 3-24 chars, lowercase letters and numbers only
-	cleanSuffix := r.cleanSuffixAlphanumeric(false) // lowercase only
-
-	// Choose prefix based on environment type
-	prefix := "shellboxprod"
-	if strings.Contains(r.suffix, "test") {
-		prefix = "shellboxtest"
-	}
-
-	// Ensure total length is <= 24 chars
-	maxSuffixLen := 24 - len(prefix)
-	if len(cleanSuffix) > maxSuffixLen {
-		cleanSuffix = cleanSuffix[:maxSuffixLen]
-	}
-	return fmt.Sprintf("%s%s", prefix, cleanSuffix)
-}
-
 // GlobalSharedStorageAccountName returns the global storage account name for shared resources
 // This is used for storage that lives in the golden resource group and is shared across all deployments
 func (r *ResourceNamer) GlobalSharedStorageAccountName() string {
 	// Storage account names must be 3-24 chars, lowercase letters and numbers only
 	// Use a fixed name for the global shared storage account
-	return "shellboxshared"
+	return "shellboxshared1"
 }
 
 // EventLogTableName returns the suffixed table name for EventLog
