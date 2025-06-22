@@ -44,10 +44,6 @@ func (r *ResourceNamer) BoxVMName(boxID string) string {
 	return fmt.Sprintf("shellbox-%s-box-%s-vm", r.suffix, boxID)
 }
 
-func (r *ResourceNamer) BastionComputerName() string {
-	return "shellbox-bastion"
-}
-
 func (r *ResourceNamer) BoxComputerName(boxID string) string {
 	if len(boxID) > 8 {
 		return fmt.Sprintf("shellbox-box-%s", boxID[:8])

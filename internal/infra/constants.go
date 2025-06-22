@@ -53,8 +53,9 @@ const (
 	BoxSSHPort = 2222
 
 	// VM default configuration
-	VMSize        = "Standard_D8s_v3" // 8 vCPUs, 32GB RAM for good nested VM performance
-	AdminUsername = "shellbox"
+	VMSize              = "Standard_D8s_v3" // 8 vCPUs, 32GB RAM for good nested VM performance
+	AdminUsername       = "shellbox"
+	BastionComputerName = "shellbox-bastion"
 )
 
 // Resource roles
@@ -139,8 +140,8 @@ const (
 
 // Persistent resource group for golden snapshots (shared across deployments)
 const (
-	GoldenSnapshotResourceGroup    = "shellbox-golden-images-1"
-	GlobalSharedStorageAccountName = "shellboxshared1"
+	GoldenSnapshotResourceGroup    = "shellbox-golden-images-5"
+	GlobalSharedStorageAccountName = "shellboxshared5"
 )
 
 // Timeout constants

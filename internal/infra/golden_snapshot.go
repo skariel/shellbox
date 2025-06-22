@@ -85,6 +85,10 @@ users:
 package_update: true
 packages:
   - openssh-server
+  - rng-tools
+runcmd:
+  - systemctl enable rng-tools
+  - systemctl start rng-tools
 ssh_pwauth: false
 ssh:
   install-server: yes
@@ -105,7 +109,7 @@ sudo qemu-system-x86_64 \
    -m 24G \
    -mem-path %s/qemu-memory/ubuntu-mem \
    -smp 8 \
-   -cpu host \
+   -cpu host,+invtsc \
    -drive file=%s/qemu-disks/ubuntu-base.qcow2,format=qcow2 \
    -cdrom %s/qemu-disks/cloud-init.iso \
    -device virtio-rng-pci,rng=rng0 -object rng-random,id=rng0,filename=/dev/urandom \
@@ -389,19 +393,6 @@ func waitForQEMUSetup(ctx context.Context, _ *AzureClients, tempBox *tempBoxInfo
 	}, GoldenVMSetupTimeout, 30*time.Second, "QEMU VM SSH connectivity")
 	if err != nil {
 		return err
-	}
-
-	// Disable cloud-init for future boots
-	slog.Info("Disabling cloud-init for future boots")
-	cmd := exec.CommandContext(ctx, "ssh",
-		"-o", "ConnectTimeout=5",
-		"-o", "StrictHostKeyChecking=no",
-		"-i", sshutil.SSHKeyPath,
-		"-p", fmt.Sprintf("%d", BoxSSHPort),
-		fmt.Sprintf("%s@%s", SystemUserUbuntu, tempBox.PrivateIP),
-		"sudo touch /etc/cloud/cloud-init.disabled")
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("failed to disable cloud-init: %w: %s", err, string(output))
 	}
 
 	// SSH is ready and cloud-init is complete, now save the VM state

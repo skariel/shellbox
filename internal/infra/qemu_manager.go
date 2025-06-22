@@ -53,13 +53,15 @@ sudo sh -c 'nohup qemu-system-x86_64 \
    -m 24G \
    -mem-path ` + QEMUMemoryPath + ` \
    -smp 8 \
-   -cpu host \
+   -cpu host,+invtsc \
    -drive file=` + QEMUBaseDiskPath + `,format=qcow2 \
+   -cdrom ` + QEMUCloudInitPath + ` \
    -device virtio-rng-pci,rng=rng0 -object rng-random,id=rng0,filename=/dev/urandom \
    -nographic \
+   -serial file:/mnt/userdata/qemu-serial.log \
    -monitor unix:` + QEMUMonitorSocket + `,server,nowait \
    -nic user,model=virtio,hostfwd=tcp::2222-:22,dns=8.8.8.8 \
-   -loadvm ssh-ready > /mnt/userdata/qemu.log 2>&1 < /dev/null &'
+   -S > /mnt/userdata/qemu.log 2>&1 < /dev/null &'
 
 # Brief sleep to ensure process starts
 sleep 2
@@ -68,6 +70,16 @@ sleep 2
 if pgrep -f qemu-system-x86_64 > /dev/null; then
     QEMU_PID=$(pgrep -f qemu-system-x86_64)
     echo "SUCCESS: QEMU started with PID: $QEMU_PID"
+    
+    # Load the saved VM state
+    echo "Loading saved VM state..."
+    echo "loadvm ssh-ready" | sudo socat - UNIX-CONNECT:` + QEMUMonitorSocket + `
+    sleep 2
+    
+    # Resume the VM
+    echo "Resuming VM..."
+    echo "cont" | sudo socat - UNIX-CONNECT:` + QEMUMonitorSocket + `
+    
     # Check if log file was created
     if [ -f /mnt/userdata/qemu.log ]; then
         echo "Log file created at /mnt/userdata/qemu.log"
@@ -95,6 +107,7 @@ fi
 	}
 	slog.Info("QEMU start command completed", "output", output)
 	// Wait for QEMU SSH to be ready
+	// AI: the ssh connectivity below takes forever. Why is that? the sanpshot was saved with fully completed cloud-init and ssh readiness. Then we resume the qemu vm, and I expected this to work fast. Especially since we'rer worikgin from a memory-mapped file as memory. No need to load all memory to memory
 	if err := qm.waitForQEMUSSH(ctx, instanceIP); err != nil {
 		return fmt.Errorf("QEMU SSH not ready: %w", err)
 	}

@@ -41,14 +41,6 @@ runcmd:
 	return base64.StdEncoding.EncodeToString([]byte(fullScript)), nil
 }
 
-// DefaultBastionConfig returns a default configuration for bastion deployment
-func DefaultBastionConfig() *VMConfig {
-	return &VMConfig{
-		AdminUsername: "shellbox",
-		VMSize:        string(armcompute.VirtualMachineSizeTypesStandardD2SV3),
-	}
-}
-
 func compileBastionServer() error {
 	if err := exec.Command("go", "build", "-o", "/tmp/server", "./cmd/server").Run(); err != nil {
 		return fmt.Errorf("failed to compile server binary: %w", err)
@@ -135,7 +127,7 @@ func CreateBastionVM(ctx context.Context, clients *AzureClients, config *VMConfi
 				},
 			},
 			OSProfile: &armcompute.OSProfile{
-				ComputerName:  to.Ptr(namer.BastionComputerName()),
+				ComputerName:  to.Ptr(BastionComputerName),
 				AdminUsername: to.Ptr(config.AdminUsername),
 				CustomData:    to.Ptr(customData),
 				LinuxConfiguration: &armcompute.LinuxConfiguration{

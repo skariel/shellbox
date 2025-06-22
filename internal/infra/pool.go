@@ -51,20 +51,6 @@ type PoolConfig struct {
 	ScaleDownCooldown time.Duration
 }
 
-// NewDefaultPoolConfig creates a production pool configuration
-func NewDefaultPoolConfig() PoolConfig {
-	return PoolConfig{
-		MinFreeInstances:  DefaultMinFreeInstances,
-		MaxFreeInstances:  DefaultMaxFreeInstances,
-		MaxTotalInstances: DefaultMaxTotalInstances,
-		MinFreeVolumes:    DefaultMinFreeVolumes,
-		MaxFreeVolumes:    DefaultMaxFreeVolumes,
-		MaxTotalVolumes:   DefaultMaxTotalVolumes,
-		CheckInterval:     DefaultCheckInterval,
-		ScaleDownCooldown: DefaultScaleDownCooldown,
-	}
-}
-
 // NewDevPoolConfig creates a development pool configuration
 func NewDevPoolConfig() PoolConfig {
 	return PoolConfig{
