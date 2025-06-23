@@ -45,9 +45,10 @@ echo "Checking QEMU files:"
 ls -la ` + QEMUBaseDiskPath + ` || echo "Base disk missing"
 ls -la ` + QEMUCloudInitPath + ` || echo "Cloud-init missing" 
 ls -la ` + QEMUMemoryPath + ` || echo "Memory file missing"
+ls -la ` + QEMUStatePath + ` || echo "State file missing"
 
-# Start QEMU VM with memory-mapped file
-echo "Starting QEMU..."
+# Start QEMU VM with memory-mapped file and load saved state
+echo "Starting QEMU with saved state..."
 sudo sh -c 'nohup qemu-system-x86_64 \
    -enable-kvm \
    -m 24G \
@@ -61,7 +62,8 @@ sudo sh -c 'nohup qemu-system-x86_64 \
    -nographic \
    -serial file:/mnt/userdata/qemu-serial.log \
    -monitor unix:` + QEMUMonitorSocket + `,server,nowait \
-   -nic user,model=virtio,hostfwd=tcp::2222-:22,dns=8.8.8.8 > /mnt/userdata/qemu.log 2>&1 < /dev/null &'
+   -nic user,model=virtio,hostfwd=tcp::2222-:22,dns=8.8.8.8 \
+   -incoming "exec:cat ` + QEMUStatePath + `" > /mnt/userdata/qemu.log 2>&1 < /dev/null &'
 
 # Brief sleep to ensure process starts
 sleep 2
@@ -71,9 +73,8 @@ if pgrep -f qemu-system-x86_64 > /dev/null; then
     QEMU_PID=$(pgrep -f qemu-system-x86_64)
     echo "SUCCESS: QEMU started with PID: $QEMU_PID"
     
-    # Resume the VM since it was saved in stopped state
-    echo "Resuming VM execution..."
-    echo "cont" | sudo socat - UNIX-CONNECT:` + QEMUMonitorSocket + ` 2>&1 || true
+    # The VM should automatically resume after loading the saved state
+    echo "VM should be running from saved state..."
     
     # Check if log file was created
     if [ -f /mnt/userdata/qemu.log ]; then

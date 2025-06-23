@@ -396,17 +396,37 @@ func waitForQEMUReady(ctx context.Context, _ *AzureClients, tempBox *tempBoxInfo
 	}
 
 	// SSH is ready and cloud-init is complete
-	slog.Info("QEMU VM fully ready, stopping VM to preserve memory state")
+	slog.Info("QEMU VM fully ready, saving VM state")
 
-	// Stop the VM to pause execution and ensure memory is synced to the memory-mapped file
+	// Stop the VM to pause execution
 	stopCmd := `echo "stop" | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock`
 	stopOutput, stopErr := sshutil.ExecuteCommandWithOutput(ctx, stopCmd, AdminUsername, tempBox.PrivateIP)
 	slog.Info("Stop command sent", "output", stopOutput, "error", stopErr)
 
-	// Give time for memory to be fully synced to the memory-mapped file
-	time.Sleep(5 * time.Second)
+	// Save the complete VM state using migrate
+	saveStateCmd := fmt.Sprintf(`echo "migrate \"exec:cat > %s\"" | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock`, QEMUStatePath)
+	saveOutput, saveErr := sshutil.ExecuteCommandWithOutput(ctx, saveStateCmd, AdminUsername, tempBox.PrivateIP)
+	slog.Info("Save state command sent", "output", saveOutput, "error", saveErr)
 
-	// Now quit QEMU after memory is synced
+	// Wait for migration to complete
+	waitMigrationCmd := `
+for i in {1..60}; do
+    STATUS=$(echo "info migrate" | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock | grep -E "Migration status:|completed|failed")
+    echo "$STATUS"
+    if echo "$STATUS" | grep -q "completed"; then
+        echo "Migration completed successfully"
+        break
+    elif echo "$STATUS" | grep -q "failed"; then
+        echo "Migration failed!"
+        exit 1
+    fi
+    sleep 1
+done
+`
+	waitOutput, waitErr := sshutil.ExecuteCommandWithOutput(ctx, waitMigrationCmd, AdminUsername, tempBox.PrivateIP)
+	slog.Info("Migration wait completed", "output", waitOutput, "error", waitErr)
+
+	// Now quit QEMU after state is saved
 	quitCmd := `echo "quit" | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock`
 	quitOutput, quitErr := sshutil.ExecuteCommandWithOutput(ctx, quitCmd, AdminUsername, tempBox.PrivateIP)
 	slog.Info("Quit command sent", "output", quitOutput, "error", quitErr)

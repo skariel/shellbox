@@ -118,6 +118,7 @@ const (
 // File system paths
 const (
 	QEMUMemoryPath    = "/mnt/userdata/qemu-memory/ubuntu-mem"
+	QEMUStatePath     = "/mnt/userdata/qemu-memory/vm-state"
 	QEMUDisksPath     = "/mnt/userdata/qemu-disks"
 	QEMUBaseDiskPath  = "/mnt/userdata/qemu-disks/ubuntu-base.qcow2"
 	QEMUCloudInitPath = "/mnt/userdata/qemu-disks/cloud-init.iso"
@@ -140,8 +141,8 @@ const (
 
 // Persistent resource group for golden snapshots (shared across deployments)
 const (
-	GoldenSnapshotResourceGroup    = "shellbox-golden-images-6"
-	GlobalSharedStorageAccountName = "shellboxshared6"
+	GoldenSnapshotResourceGroup    = "shellbox-golden-images-7"
+	GlobalSharedStorageAccountName = "shellboxshared7"
 )
 
 // Timeout constants
