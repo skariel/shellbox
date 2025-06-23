@@ -396,9 +396,17 @@ func waitForQEMUReady(ctx context.Context, _ *AzureClients, tempBox *tempBoxInfo
 	}
 
 	// SSH is ready and cloud-init is complete
-	slog.Info("QEMU VM fully ready, shutting down cleanly")
+	slog.Info("QEMU VM fully ready, stopping VM to preserve memory state")
 
-	// Gracefully shut down QEMU using quit command
+	// Stop the VM to pause execution and ensure memory is synced to the memory-mapped file
+	stopCmd := `echo "stop" | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock`
+	stopOutput, stopErr := sshutil.ExecuteCommandWithOutput(ctx, stopCmd, AdminUsername, tempBox.PrivateIP)
+	slog.Info("Stop command sent", "output", stopOutput, "error", stopErr)
+
+	// Give time for memory to be fully synced to the memory-mapped file
+	time.Sleep(5 * time.Second)
+
+	// Now quit QEMU after memory is synced
 	quitCmd := `echo "quit" | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock`
 	quitOutput, quitErr := sshutil.ExecuteCommandWithOutput(ctx, quitCmd, AdminUsername, tempBox.PrivateIP)
 	slog.Info("Quit command sent", "output", quitOutput, "error", quitErr)

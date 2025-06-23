@@ -71,6 +71,10 @@ if pgrep -f qemu-system-x86_64 > /dev/null; then
     QEMU_PID=$(pgrep -f qemu-system-x86_64)
     echo "SUCCESS: QEMU started with PID: $QEMU_PID"
     
+    # Resume the VM since it was saved in stopped state
+    echo "Resuming VM execution..."
+    echo "cont" | sudo socat - UNIX-CONNECT:` + QEMUMonitorSocket + ` 2>&1 || true
+    
     # Check if log file was created
     if [ -f /mnt/userdata/qemu.log ]; then
         echo "Log file created at /mnt/userdata/qemu.log"
