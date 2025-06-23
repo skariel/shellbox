@@ -86,9 +86,12 @@ package_update: true
 packages:
   - openssh-server
   - rng-tools
+  - qemu-guest-agent
 runcmd:
   - systemctl enable rng-tools
   - systemctl start rng-tools
+  - systemctl enable qemu-guest-agent
+  - systemctl start qemu-guest-agent
 ssh_pwauth: false
 ssh:
   install-server: yes
@@ -110,10 +113,14 @@ sudo qemu-system-x86_64 \
    -object memory-backend-file,id=mem,size=24G,mem-path=%s/qemu-memory/ubuntu-mem,share=on \
    -machine memory-backend=mem \
    -smp 8 \
-   -cpu host,+invtsc \
+   -cpu host,+kvmclock,+kvm-asyncpf \
+   -rtc base=utc,driftfix=slew \
    -drive file=%s/qemu-disks/ubuntu-base.qcow2,format=qcow2 \
    -cdrom %s/qemu-disks/cloud-init.iso \
    -device virtio-rng-pci,rng=rng0 -object rng-random,id=rng0,filename=/dev/urandom \
+   -chardev socket,path=/tmp/qemu-ga.sock,server=on,wait=off,id=qga0 \
+   -device virtio-serial \
+   -device virtserialport,chardev=qga0,name=org.qemu.guest_agent.0 \
    -nographic \
    -monitor unix:/tmp/qemu-monitor.sock,server,nowait \
    -nic user,model=virtio,hostfwd=tcp::%d-:22,dns=8.8.8.8`,
@@ -398,25 +405,35 @@ func waitForQEMUReady(ctx context.Context, _ *AzureClients, tempBox *tempBoxInfo
 	// SSH is ready and cloud-init is complete
 	slog.Info("QEMU VM fully ready, saving VM state")
 
+	// Configure migration for maximum speed using QMP
+	setupMigrationCmd := `
+echo '{"execute":"qmp_capabilities"}' | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock
+echo '{"execute":"migrate-set-parameters", "arguments":{"max-bandwidth": 0}}' | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock
+echo '{"execute":"migrate-set-capabilities", "arguments":[{"capability": "xbzrle", "state": true}]}' | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock
+`
+	setupOutput, setupErr := sshutil.ExecuteCommandWithOutput(ctx, setupMigrationCmd, AdminUsername, tempBox.PrivateIP)
+	slog.Info("Migration setup completed", "output", setupOutput, "error", setupErr)
+
 	// Stop the VM to pause execution
-	stopCmd := `echo "stop" | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock`
+	stopCmd := `echo '{"execute":"stop"}' | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock`
 	stopOutput, stopErr := sshutil.ExecuteCommandWithOutput(ctx, stopCmd, AdminUsername, tempBox.PrivateIP)
 	slog.Info("Stop command sent", "output", stopOutput, "error", stopErr)
 
-	// Save the complete VM state using migrate
-	saveStateCmd := fmt.Sprintf(`echo "migrate \"exec:cat > %s\"" | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock`, QEMUStatePath)
+	// Save the complete VM state using migrate with QMP
+	saveStateCmd := fmt.Sprintf(`echo '{"execute":"migrate", "arguments":{"uri":"exec:cat > %s"}}' | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock`, QEMUStatePath)
 	saveOutput, saveErr := sshutil.ExecuteCommandWithOutput(ctx, saveStateCmd, AdminUsername, tempBox.PrivateIP)
 	slog.Info("Save state command sent", "output", saveOutput, "error", saveErr)
 
-	// Wait for migration to complete
+	// Wait for migration to complete using QMP
 	waitMigrationCmd := `
 for i in {1..60}; do
-    STATUS=$(echo "info migrate" | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock | grep -E "Migration status:|completed|failed")
-    echo "$STATUS"
-    if echo "$STATUS" | grep -q "completed"; then
+    RESPONSE=$(echo '{"execute":"query-migrate"}' | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock 2>/dev/null)
+    STATUS=$(echo "$RESPONSE" | grep -o '"status":"[^"]*"' | cut -d'"' -f4)
+    echo "Migration status: $STATUS"
+    if [ "$STATUS" = "completed" ]; then
         echo "Migration completed successfully"
         break
-    elif echo "$STATUS" | grep -q "failed"; then
+    elif [ "$STATUS" = "failed" ]; then
         echo "Migration failed!"
         exit 1
     fi
@@ -427,7 +444,7 @@ done
 	slog.Info("Migration wait completed", "output", waitOutput, "error", waitErr)
 
 	// Now quit QEMU after state is saved
-	quitCmd := `echo "quit" | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock`
+	quitCmd := `echo '{"execute":"quit"}' | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock`
 	quitOutput, quitErr := sshutil.ExecuteCommandWithOutput(ctx, quitCmd, AdminUsername, tempBox.PrivateIP)
 	slog.Info("Quit command sent", "output", quitOutput, "error", quitErr)
 

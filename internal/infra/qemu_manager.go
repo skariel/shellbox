@@ -55,15 +55,19 @@ sudo sh -c 'nohup qemu-system-x86_64 \
    -object memory-backend-file,id=mem,size=24G,mem-path=` + QEMUMemoryPath + `,share=on \
    -machine memory-backend=mem \
    -smp 8 \
-   -cpu host,+invtsc \
+   -cpu host,+kvmclock,+kvm-asyncpf \
+   -rtc base=utc,driftfix=slew \
    -drive file=` + QEMUBaseDiskPath + `,format=qcow2 \
    -cdrom ` + QEMUCloudInitPath + ` \
    -device virtio-rng-pci,rng=rng0 -object rng-random,id=rng0,filename=/dev/urandom \
+   -chardev socket,path=/tmp/qemu-ga.sock,server=on,wait=off,id=qga0 \
+   -device virtio-serial \
+   -device virtserialport,chardev=qga0,name=org.qemu.guest_agent.0 \
    -nographic \
    -serial file:/mnt/userdata/qemu-serial.log \
    -monitor unix:` + QEMUMonitorSocket + `,server,nowait \
    -nic user,model=virtio,hostfwd=tcp::2222-:22,dns=8.8.8.8 \
-   -incoming "exec:cat ` + QEMUStatePath + `" > /mnt/userdata/qemu.log 2>&1 < /dev/null &'
+   -incoming defer > /mnt/userdata/qemu.log 2>&1 < /dev/null &'
 
 # Brief sleep to ensure process starts
 sleep 2
@@ -73,8 +77,32 @@ if pgrep -f qemu-system-x86_64 > /dev/null; then
     QEMU_PID=$(pgrep -f qemu-system-x86_64)
     echo "SUCCESS: QEMU started with PID: $QEMU_PID"
     
-    # The VM should automatically resume after loading the saved state
-    echo "VM should be running from saved state..."
+    # Initialize QMP and load the saved state
+    echo "Initializing QMP and loading saved state..."
+    echo '{"execute":"qmp_capabilities"}' | sudo socat - UNIX-CONNECT:` + QEMUMonitorSocket + ` || true
+    sleep 0.5
+    
+    # Load the saved state
+    echo '{"execute":"migrate-incoming", "arguments":{"uri":"exec:cat ` + QEMUStatePath + `"}}' | sudo socat - UNIX-CONNECT:` + QEMUMonitorSocket + ` || true
+    
+    # Wait for migration to complete (max 10 seconds)
+    for i in {1..20}; do
+        STATUS=$(echo '{"execute":"query-migrate"}' | sudo socat - UNIX-CONNECT:` + QEMUMonitorSocket + ` 2>/dev/null | grep -o '"status":"[^"]*"' | cut -d'"' -f4)
+        if [ "$STATUS" = "completed" ]; then
+            echo "Migration completed successfully"
+            break
+        fi
+        sleep 0.5
+    done
+    
+    # Resume the VM immediately
+    echo "Resuming VM execution..."
+    echo '{"execute":"cont"}' | sudo socat - UNIX-CONNECT:` + QEMUMonitorSocket + ` || true
+    
+    # Sync guest time if guest agent is available
+    echo '{"execute":"guest-set-time"}' | sudo socat - UNIX-CONNECT:` + QEMUMonitorSocket + ` 2>/dev/null || true
+    
+    echo "VM resumed and time synced"
     
     # Check if log file was created
     if [ -f /mnt/userdata/qemu.log ]; then
@@ -102,21 +130,29 @@ fi
 		return fmt.Errorf("failed to start QEMU: %w", err)
 	}
 	slog.Info("QEMU start command completed", "output", output)
+
+	// Track timing for resume process
+	resumeStartTime := time.Now()
+
 	// Wait for QEMU SSH to be ready
-	// Wait for SSH to be ready - should be fast since memory state is preserved in the memory-mapped file
+	// Should be fast since VM is resumed immediately with time sync
 	if err := qm.waitForQEMUSSH(ctx, instanceIP); err != nil {
 		return fmt.Errorf("QEMU SSH not ready: %w", err)
 	}
 
-	slog.Info("QEMU started", "instanceIP", instanceIP)
+	resumeDuration := time.Since(resumeStartTime)
+	slog.Info("QEMU started",
+		"instanceIP", instanceIP,
+		"resumeDuration", resumeDuration,
+		"resumeSeconds", resumeDuration.Seconds())
 	return nil
 }
 
 // StopQEMU stops the QEMU VM cleanly
 func (qm *QEMUManager) StopQEMU(ctx context.Context, instanceIP string) error {
 	stopCmd := `
-# Quit QEMU cleanly
-echo "quit" | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock || true
+# Quit QEMU cleanly using QMP
+echo '{"execute":"quit"}' | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock || true
 
 # Fallback: kill QEMU if monitor command fails
 sudo pkill qemu-system-x86_64 || true
@@ -134,10 +170,20 @@ sudo pkill qemu-system-x86_64 || true
 // waitForQEMUSSH waits for QEMU VM to be SSH-accessible
 func (qm *QEMUManager) waitForQEMUSSH(ctx context.Context, instanceIP string) error {
 	return RetryOperation(ctx, func(ctx context.Context) error {
+		// First check if guest agent is responsive (faster than SSH)
+		guestPingCmd := fmt.Sprintf(`echo '{"execute":"guest-ping"}' | sudo socat - UNIX-CONNECT:%s 2>/dev/null | grep -q '"return":{}'`, QEMUMonitorSocket)
+		if err := sshutil.ExecuteCommand(ctx, guestPingCmd, AdminUsername, instanceIP); err == nil {
+			slog.Debug("Guest agent is responsive")
+			// If guest agent works, sync time one more time
+			syncTimeCmd := fmt.Sprintf(`echo '{"execute":"guest-set-time"}' | sudo socat - UNIX-CONNECT:%s 2>/dev/null || true`, QEMUMonitorSocket)
+			_ = sshutil.ExecuteCommand(ctx, syncTimeCmd, AdminUsername, instanceIP)
+		}
+
 		// Test SSH connection directly to the QEMU VM from bastion
 		cmd := exec.CommandContext(ctx, "ssh",
-			"-o", "ConnectTimeout=5",
+			"-o", "ConnectTimeout=3",
 			"-o", "StrictHostKeyChecking=no",
+			"-o", "ServerAliveInterval=2",
 			"-i", sshutil.SSHKeyPath,
 			"-p", fmt.Sprintf("%d", BoxSSHPort),
 			fmt.Sprintf("%s@%s", SystemUserUbuntu, instanceIP),
@@ -146,5 +192,5 @@ func (qm *QEMUManager) waitForQEMUSSH(ctx context.Context, instanceIP string) er
 			return fmt.Errorf("QEMU VM SSH not yet ready: %w: %s", err, string(output))
 		}
 		return nil
-	}, 5*time.Minute, 10*time.Second, "QEMU SSH connectivity")
+	}, 5*time.Minute, 5*time.Second, "QEMU SSH connectivity")
 }

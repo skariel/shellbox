@@ -1,3 +1,7 @@
+read serena instructions.
+
+Then:
+
 you are running in the dev instance, where the deployment process runs.
 
 You can read the deployment log in the file `deployment.log`. It contains the bastion IP.
@@ -26,3 +30,4 @@ also you can search the wb as if needed.
 
 Use the information above to help the user interactively debug. Note that some logs can be large so maybe grep, sed or start reading them from the end. Also some logs may be being created, as this is all interactive, things are hgapenning. YUou may sleep a bit and then check their status again if needed. You can also check in the code where the logging happens to correlate too the logic.
 
+wait for the user debug request
