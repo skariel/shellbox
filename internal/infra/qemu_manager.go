@@ -102,7 +102,7 @@ if pgrep -f qemu-system-x86_64 > /dev/null; then
     (
     echo '{"execute":"qmp_capabilities"}'
     sleep 0.5
-    echo '{"execute":"migrate-incoming", "arguments":{"uri":"file://` + QEMUStatePath + `"}}'
+    echo '{"execute":"migrate-incoming", "arguments":{"uri":"file:` + QEMUStatePath + `"}}'
     ) | sudo socat - UNIX-CONNECT:` + QEMUMonitorSocket + ` || true
     
     # Wait for migration to complete (max 10 seconds)
@@ -119,10 +119,22 @@ if pgrep -f qemu-system-x86_64 > /dev/null; then
     echo "Resuming VM execution..."
     (echo '{"execute":"qmp_capabilities"}'; sleep 0.1; echo '{"execute":"cont"}') | sudo socat - UNIX-CONNECT:` + QEMUMonitorSocket + ` || true
     
+    # Wait a moment for VM to stabilize
+    sleep 1
+    
     # Sync guest time if guest agent is available
+    echo "Syncing guest time..."
     (echo '{"execute":"qmp_capabilities"}'; sleep 0.1; echo '{"execute":"guest-set-time"}') | sudo socat - UNIX-CONNECT:` + QEMUMonitorSocket + ` 2>/dev/null || true
     
-    echo "VM resumed and time synced"
+    # Refresh network interfaces inside the guest
+    echo "Refreshing guest network interfaces..."
+    (echo '{"execute":"qmp_capabilities"}'; sleep 0.1; echo '{"execute":"guest-network-get-interfaces"}') | sudo socat - UNIX-CONNECT:` + QEMUMonitorSocket + ` 2>/dev/null || true
+    
+    # Execute network restart command inside guest to ensure SSH is ready
+    echo "Ensuring SSH service is active..."
+    (echo '{"execute":"qmp_capabilities"}'; sleep 0.1; echo '{"execute":"guest-exec", "arguments":{"path":"/bin/systemctl", "arg":["restart", "ssh.service"], "capture-output":false}}') | sudo socat - UNIX-CONNECT:` + QEMUMonitorSocket + ` 2>/dev/null || true
+    
+    echo "VM resumed with network refresh"
     
     # Check if log file was created
     if [ -f /mnt/userdata/qemu.log ]; then
@@ -201,9 +213,10 @@ func (qm *QEMUManager) waitForQEMUSSH(ctx context.Context, instanceIP string) er
 
 		// Test SSH connection directly to the QEMU VM from bastion
 		cmd := exec.CommandContext(ctx, "ssh",
-			"-o", "ConnectTimeout=3",
+			"-o", "ConnectTimeout=2",
 			"-o", "StrictHostKeyChecking=no",
-			"-o", "ServerAliveInterval=2",
+			"-o", "ServerAliveInterval=1",
+			"-o", "BatchMode=yes",
 			"-i", sshutil.SSHKeyPath,
 			"-p", fmt.Sprintf("%d", BoxSSHPort),
 			fmt.Sprintf("%s@%s", SystemUserUbuntu, instanceIP),
@@ -212,5 +225,5 @@ func (qm *QEMUManager) waitForQEMUSSH(ctx context.Context, instanceIP string) er
 			return fmt.Errorf("QEMU VM SSH not yet ready: %w: %s", err, string(output))
 		}
 		return nil
-	}, 5*time.Minute, 5*time.Second, "QEMU SSH connectivity")
+	}, 30*time.Second, 500*time.Millisecond, "QEMU SSH connectivity")
 }

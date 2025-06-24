@@ -65,6 +65,11 @@ sudo systemctl enable --now libvirtd
 
 # Create QEMU environment
 mkdir -p %s/qemu-disks %s/qemu-memory
+
+# Pre-allocate memory backing file for faster resume
+echo "Pre-allocating memory backing file..."
+dd if=/dev/zero of=%s/qemu-memory/ubuntu-mem bs=1M count=24576 status=progress
+sync
 %s
 # Download and prepare Ubuntu image
 cd %s/
@@ -87,11 +92,30 @@ packages:
   - openssh-server
   - rng-tools
   - qemu-guest-agent
+bootcmd:
+  # Ensure SSH starts early and stays running
+  - systemctl enable ssh.service
+  - systemctl start ssh.service
 runcmd:
   - systemctl enable rng-tools
   - systemctl start rng-tools
   - systemctl enable qemu-guest-agent
   - systemctl start qemu-guest-agent
+  # Ensure SSH is fully ready
+  - systemctl restart ssh.service
+  # Create systemd drop-in to ensure SSH starts after network
+  - mkdir -p /etc/systemd/system/ssh.service.d
+  - |
+    cat > /etc/systemd/system/ssh.service.d/override.conf << EOF
+    [Unit]
+    After=network-online.target
+    Wants=network-online.target
+    
+    [Service]
+    Restart=always
+    RestartSec=1s
+    EOF
+  - systemctl daemon-reload
 ssh_pwauth: false
 ssh:
   install-server: yes
@@ -125,7 +149,7 @@ sudo qemu-system-x86_64 \
    -qmp unix:/tmp/qemu-monitor.sock,server,nowait \
    -nic user,model=virtio,hostfwd=tcp::%d-:22,dns=8.8.8.8`,
 		mountSection,
-		config.WorkingDir, config.WorkingDir,
+		config.WorkingDir, config.WorkingDir, config.WorkingDir,
 		ownershipSection,
 		config.WorkingDir,
 		config.SSHPublicKey,
@@ -415,9 +439,11 @@ sudo chmod 777 /mnt/userdata/qemu-memory
 (
 echo '{"execute":"qmp_capabilities"}'
 sleep 0.1
-echo '{"execute":"migrate-set-parameters", "arguments":{"max-bandwidth": 0}}'
+# Set migration parameters for maximum speed
+echo '{"execute":"migrate-set-parameters", "arguments":{"max-bandwidth": 0, "downtime-limit": 300, "max-cpu-throttle": 0}}'
 sleep 0.1
-echo '{"execute":"migrate-set-capabilities", "arguments":{"capabilities":[{"capability": "xbzrle", "state": true}, {"capability": "x-ignore-shared", "state": false}]}}'
+# Enable migration capabilities for better performance
+echo '{"execute":"migrate-set-capabilities", "arguments":{"capabilities":[{"capability": "xbzrle", "state": false}, {"capability": "x-ignore-shared", "state": true}, {"capability": "auto-converge", "state": false}, {"capability": "postcopy-ram", "state": false}]}}'
 sleep 0.1
 ) | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock
 `
@@ -442,7 +468,7 @@ if ! pgrep -f qemu-system-x86_64 > /dev/null; then
 fi
 
 # Send migrate command and capture full response
-MIGRATE_RESPONSE=$((echo '{"execute":"qmp_capabilities"}'; sleep 0.5; echo '{"execute":"migrate", "arguments":{"uri":"file://%s"}}'; sleep 0.5) | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock 2>&1)
+MIGRATE_RESPONSE=$((echo '{"execute":"qmp_capabilities"}'; sleep 0.5; echo '{"execute":"migrate", "arguments":{"uri":"file:%s"}}'; sleep 0.5) | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock 2>&1)
 echo "Full migrate response: $MIGRATE_RESPONSE"
 
 # Check if migrate command was accepted
