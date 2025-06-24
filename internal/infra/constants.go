@@ -141,8 +141,8 @@ const (
 
 // Persistent resource group for golden snapshots (shared across deployments)
 const (
-	GoldenSnapshotResourceGroup    = "shellbox-golden-images-8"
-	GlobalSharedStorageAccountName = "shellboxshared8"
+	GoldenSnapshotResourceGroup    = "shellbox-golden-images-12"
+	GlobalSharedStorageAccountName = "shellboxshared12"
 )
 
 // Timeout constants

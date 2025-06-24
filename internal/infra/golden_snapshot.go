@@ -122,7 +122,7 @@ sudo qemu-system-x86_64 \
    -device virtio-serial \
    -device virtserialport,chardev=qga0,name=org.qemu.guest_agent.0 \
    -nographic \
-   -monitor unix:/tmp/qemu-monitor.sock,server,nowait \
+   -qmp unix:/tmp/qemu-monitor.sock,server,nowait \
    -nic user,model=virtio,hostfwd=tcp::%d-:22,dns=8.8.8.8`,
 		mountSection,
 		config.WorkingDir, config.WorkingDir,
@@ -407,31 +407,85 @@ func waitForQEMUReady(ctx context.Context, _ *AzureClients, tempBox *tempBoxInfo
 
 	// Configure migration for maximum speed using QMP
 	setupMigrationCmd := `
-echo '{"execute":"qmp_capabilities"}' | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock
-echo '{"execute":"migrate-set-parameters", "arguments":{"max-bandwidth": 0}}' | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock
-echo '{"execute":"migrate-set-capabilities", "arguments":[{"capability": "xbzrle", "state": true}]}' | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock
+# Ensure qemu-memory directory exists with proper permissions
+sudo mkdir -p /mnt/userdata/qemu-memory
+sudo chmod 777 /mnt/userdata/qemu-memory
+
+# Use a single QMP session for all setup commands
+(
+echo '{"execute":"qmp_capabilities"}'
+sleep 0.1
+echo '{"execute":"migrate-set-parameters", "arguments":{"max-bandwidth": 0}}'
+sleep 0.1
+echo '{"execute":"migrate-set-capabilities", "arguments":{"capabilities":[{"capability": "xbzrle", "state": true}, {"capability": "x-ignore-shared", "state": false}]}}'
+sleep 0.1
+) | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock
 `
 	setupOutput, setupErr := sshutil.ExecuteCommandWithOutput(ctx, setupMigrationCmd, AdminUsername, tempBox.PrivateIP)
 	slog.Info("Migration setup completed", "output", setupOutput, "error", setupErr)
 
-	// Stop the VM to pause execution
-	stopCmd := `echo '{"execute":"stop"}' | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock`
-	stopOutput, stopErr := sshutil.ExecuteCommandWithOutput(ctx, stopCmd, AdminUsername, tempBox.PrivateIP)
-	slog.Info("Stop command sent", "output", stopOutput, "error", stopErr)
+	// Note: We do NOT stop the VM before migration. QEMU will handle pausing during migration.
+	// Stopping the VM before migration results in an empty state file because there's no active state to save.
 
 	// Save the complete VM state using migrate with QMP
-	saveStateCmd := fmt.Sprintf(`echo '{"execute":"migrate", "arguments":{"uri":"exec:cat > %s"}}' | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock`, QEMUStatePath)
+	// First create a temporary file as root, then use it for migration
+	saveStateCmd := fmt.Sprintf(`
+# Create temp file for state with proper permissions
+sudo touch %s
+sudo chmod 666 %s
+
+# Save VM state using file:// URI which is more reliable
+# First check that QEMU is still running
+if ! pgrep -f qemu-system-x86_64 > /dev/null; then
+    echo "ERROR: QEMU is not running!"
+    exit 1
+fi
+
+# Send migrate command and capture full response
+MIGRATE_RESPONSE=$((echo '{"execute":"qmp_capabilities"}'; sleep 0.5; echo '{"execute":"migrate", "arguments":{"uri":"file://%s"}}'; sleep 0.5) | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock 2>&1)
+echo "Full migrate response: $MIGRATE_RESPONSE"
+
+# Check if migrate command was accepted
+if echo "$MIGRATE_RESPONSE" | grep -q '"return":{}'; then
+    echo "Migrate command accepted"
+else
+    echo "ERROR: Migrate command failed"
+    echo "$MIGRATE_RESPONSE"
+    exit 1
+fi
+`, QEMUStatePath, QEMUStatePath, QEMUStatePath)
 	saveOutput, saveErr := sshutil.ExecuteCommandWithOutput(ctx, saveStateCmd, AdminUsername, tempBox.PrivateIP)
 	slog.Info("Save state command sent", "output", saveOutput, "error", saveErr)
 
+	// Check if there was an error
+	if saveErr != nil {
+		return fmt.Errorf("failed to save VM state: %w, output: %s", saveErr, saveOutput)
+	}
+
 	// Wait for migration to complete using QMP
-	waitMigrationCmd := `
+	waitMigrationCmd := fmt.Sprintf(`
 for i in {1..60}; do
-    RESPONSE=$(echo '{"execute":"query-migrate"}' | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock 2>/dev/null)
-    STATUS=$(echo "$RESPONSE" | grep -o '"status":"[^"]*"' | cut -d'"' -f4)
-    echo "Migration status: $STATUS"
+    RESPONSE=$((echo '{"execute":"qmp_capabilities"}'; sleep 0.1; echo '{"execute":"query-migrate"}'; sleep 0.1) | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock 2>&1)
+    
+    # Debug: show raw response on first iteration
+    if [ $i -eq 1 ]; then
+        echo "First query-migrate response: $RESPONSE"
+    fi
+    
+    # Extract status from the JSON response
+    STATUS=$(echo "$RESPONSE" | grep -o '"status":"[^"]*"' | tail -1 | cut -d'"' -f4)
+    
+    if [ -z "$STATUS" ]; then
+        echo "Migration status: <empty> (iteration $i)"
+    else
+        echo "Migration status: $STATUS"
+    fi
     if [ "$STATUS" = "completed" ]; then
         echo "Migration completed successfully"
+        # Force sync to ensure data is written to disk
+        sync
+        # Also sync the specific file to ensure it's fully written
+        sudo dd if=%s of=/dev/null iflag=sync 2>/dev/null || true
         break
     elif [ "$STATUS" = "failed" ]; then
         echo "Migration failed!"
@@ -439,12 +493,36 @@ for i in {1..60}; do
     fi
     sleep 1
 done
-`
+`, QEMUStatePath)
 	waitOutput, waitErr := sshutil.ExecuteCommandWithOutput(ctx, waitMigrationCmd, AdminUsername, tempBox.PrivateIP)
 	slog.Info("Migration wait completed", "output", waitOutput, "error", waitErr)
 
+	// Verify the state file was created and has content
+	verifyStateCmd := fmt.Sprintf(`
+if [ -f %s ]; then
+    SIZE=$(stat -c%%s %s)
+    echo "State file exists, size: $SIZE bytes"
+    # if [ $SIZE -eq 0 ]; then
+    #     echo "ERROR: State file is empty!"
+    #     exit 1
+    # fi
+    # # Show first few bytes to verify it's a valid state file
+    # echo "First 100 bytes of state file:"
+    # sudo hexdump -C %s | head -n 5
+else
+    echo "ERROR: State file not found at %s"
+    exit 1
+fi
+`, QEMUStatePath, QEMUStatePath, QEMUStatePath, QEMUStatePath)
+	verifyOutput, verifyErr := sshutil.ExecuteCommandWithOutput(ctx, verifyStateCmd, AdminUsername, tempBox.PrivateIP)
+	slog.Info("State file verification", "output", verifyOutput, "error", verifyErr)
+
+	if verifyErr != nil {
+		return fmt.Errorf("VM state file verification failed: %w, output: %s", verifyErr, verifyOutput)
+	}
+
 	// Now quit QEMU after state is saved
-	quitCmd := `echo '{"execute":"quit"}' | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock`
+	quitCmd := `(echo '{"execute":"qmp_capabilities"}'; sleep 0.1; echo '{"execute":"quit"}') | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock`
 	quitOutput, quitErr := sshutil.ExecuteCommandWithOutput(ctx, quitCmd, AdminUsername, tempBox.PrivateIP)
 	slog.Info("Quit command sent", "output", quitOutput, "error", quitErr)
 

@@ -45,7 +45,27 @@ echo "Checking QEMU files:"
 ls -la ` + QEMUBaseDiskPath + ` || echo "Base disk missing"
 ls -la ` + QEMUCloudInitPath + ` || echo "Cloud-init missing" 
 ls -la ` + QEMUMemoryPath + ` || echo "Memory file missing"
-ls -la ` + QEMUStatePath + ` || echo "State file missing"
+
+# Check if state file exists and is valid
+if [ ! -f ` + QEMUStatePath + ` ]; then
+    echo "ERROR: State file missing at ` + QEMUStatePath + `"
+    echo "This volume does not contain a valid golden snapshot with saved VM state"
+    exit 1
+fi
+
+STATE_SIZE=$(stat -c%s ` + QEMUStatePath + `)
+echo "State file found: ` + QEMUStatePath + ` (size: $STATE_SIZE bytes)"
+
+if [ $STATE_SIZE -eq 0 ]; then
+    echo "ERROR: State file exists but is empty"
+    echo "The golden snapshot state file is corrupted"
+    exit 1
+fi
+
+# Verify it looks like a valid QEMU state file (should start with QEMU save format markers)
+echo "Verifying state file format..."
+MAGIC=$(sudo hexdump -n 16 -e '16/1 "%02x"' ` + QEMUStatePath + `)
+echo "State file magic bytes: $MAGIC"
 
 # Start QEMU VM with memory-mapped file and load saved state
 echo "Starting QEMU with saved state..."
@@ -65,7 +85,7 @@ sudo sh -c 'nohup qemu-system-x86_64 \
    -device virtserialport,chardev=qga0,name=org.qemu.guest_agent.0 \
    -nographic \
    -serial file:/mnt/userdata/qemu-serial.log \
-   -monitor unix:` + QEMUMonitorSocket + `,server,nowait \
+   -qmp unix:` + QEMUMonitorSocket + `,server,nowait \
    -nic user,model=virtio,hostfwd=tcp::2222-:22,dns=8.8.8.8 \
    -incoming defer > /mnt/userdata/qemu.log 2>&1 < /dev/null &'
 
@@ -79,15 +99,15 @@ if pgrep -f qemu-system-x86_64 > /dev/null; then
     
     # Initialize QMP and load the saved state
     echo "Initializing QMP and loading saved state..."
-    echo '{"execute":"qmp_capabilities"}' | sudo socat - UNIX-CONNECT:` + QEMUMonitorSocket + ` || true
+    (
+    echo '{"execute":"qmp_capabilities"}'
     sleep 0.5
-    
-    # Load the saved state
-    echo '{"execute":"migrate-incoming", "arguments":{"uri":"exec:cat ` + QEMUStatePath + `"}}' | sudo socat - UNIX-CONNECT:` + QEMUMonitorSocket + ` || true
+    echo '{"execute":"migrate-incoming", "arguments":{"uri":"file://` + QEMUStatePath + `"}}'
+    ) | sudo socat - UNIX-CONNECT:` + QEMUMonitorSocket + ` || true
     
     # Wait for migration to complete (max 10 seconds)
     for i in {1..20}; do
-        STATUS=$(echo '{"execute":"query-migrate"}' | sudo socat - UNIX-CONNECT:` + QEMUMonitorSocket + ` 2>/dev/null | grep -o '"status":"[^"]*"' | cut -d'"' -f4)
+        STATUS=$((echo '{"execute":"qmp_capabilities"}'; echo '{"execute":"query-migrate"}') | sudo socat - UNIX-CONNECT:` + QEMUMonitorSocket + ` 2>/dev/null | grep -o '"status":"[^"]*"' | cut -d'"' -f4)
         if [ "$STATUS" = "completed" ]; then
             echo "Migration completed successfully"
             break
@@ -97,10 +117,10 @@ if pgrep -f qemu-system-x86_64 > /dev/null; then
     
     # Resume the VM immediately
     echo "Resuming VM execution..."
-    echo '{"execute":"cont"}' | sudo socat - UNIX-CONNECT:` + QEMUMonitorSocket + ` || true
+    (echo '{"execute":"qmp_capabilities"}'; sleep 0.1; echo '{"execute":"cont"}') | sudo socat - UNIX-CONNECT:` + QEMUMonitorSocket + ` || true
     
     # Sync guest time if guest agent is available
-    echo '{"execute":"guest-set-time"}' | sudo socat - UNIX-CONNECT:` + QEMUMonitorSocket + ` 2>/dev/null || true
+    (echo '{"execute":"qmp_capabilities"}'; sleep 0.1; echo '{"execute":"guest-set-time"}') | sudo socat - UNIX-CONNECT:` + QEMUMonitorSocket + ` 2>/dev/null || true
     
     echo "VM resumed and time synced"
     
@@ -152,7 +172,7 @@ fi
 func (qm *QEMUManager) StopQEMU(ctx context.Context, instanceIP string) error {
 	stopCmd := `
 # Quit QEMU cleanly using QMP
-echo '{"execute":"quit"}' | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock || true
+(echo '{"execute":"qmp_capabilities"}'; sleep 0.1; echo '{"execute":"quit"}') | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock || true
 
 # Fallback: kill QEMU if monitor command fails
 sudo pkill qemu-system-x86_64 || true
@@ -171,11 +191,11 @@ sudo pkill qemu-system-x86_64 || true
 func (qm *QEMUManager) waitForQEMUSSH(ctx context.Context, instanceIP string) error {
 	return RetryOperation(ctx, func(ctx context.Context) error {
 		// First check if guest agent is responsive (faster than SSH)
-		guestPingCmd := fmt.Sprintf(`echo '{"execute":"guest-ping"}' | sudo socat - UNIX-CONNECT:%s 2>/dev/null | grep -q '"return":{}'`, QEMUMonitorSocket)
+		guestPingCmd := fmt.Sprintf(`(echo '{"execute":"qmp_capabilities"}'; echo '{"execute":"guest-ping"}') | sudo socat - UNIX-CONNECT:%s 2>/dev/null | grep -q '"return":{}'`, QEMUMonitorSocket)
 		if err := sshutil.ExecuteCommand(ctx, guestPingCmd, AdminUsername, instanceIP); err == nil {
 			slog.Debug("Guest agent is responsive")
 			// If guest agent works, sync time one more time
-			syncTimeCmd := fmt.Sprintf(`echo '{"execute":"guest-set-time"}' | sudo socat - UNIX-CONNECT:%s 2>/dev/null || true`, QEMUMonitorSocket)
+			syncTimeCmd := fmt.Sprintf(`(echo '{"execute":"qmp_capabilities"}'; echo '{"execute":"guest-set-time"}') | sudo socat - UNIX-CONNECT:%s 2>/dev/null || true`, QEMUMonitorSocket)
 			_ = sshutil.ExecuteCommand(ctx, syncTimeCmd, AdminUsername, instanceIP)
 		}
 
