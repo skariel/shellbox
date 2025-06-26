@@ -5,10 +5,9 @@ import (
 	"encoding/base64"
 	"fmt"
 	"log/slog"
+	"shellbox/internal/sshutil"
 	"strings"
 	"time"
-
-	"shellbox/internal/sshutil"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
