@@ -141,13 +141,13 @@ const (
 
 // Persistent resource group for golden snapshots (shared across deployments)
 const (
-	GoldenSnapshotResourceGroup    = "shellbox-golden-images-12"
-	GlobalSharedStorageAccountName = "shellboxshared12"
+	GoldenSnapshotResourceGroup    = "shellbox-golden-images-21"
+	GlobalSharedStorageAccountName = "shellboxshared21"
 )
 
 // Timeout constants
 const (
-	GoldenVMSetupTimeout = 15 * time.Minute // Timeout for golden VM QEMU setup and SSH connectivity
+	GoldenVMSetupTimeout = 30 * time.Minute // Timeout for golden VM QEMU setup and SSH connectivity
 )
 
 // Default polling options for Azure operations

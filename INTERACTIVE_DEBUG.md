@@ -22,7 +22,7 @@ ssh -p 2222 ubuntu@10.1.0.4
 
 the cloud-init logs of making the golden image are in the bastion in `/var/log/cloud-init-output.log`
 
-the instance of the qemu vm has some logs in the mounted volume in user-data folder, starting with qemu*.log
+the instance of the qemu vm has some logs in the mounted volume in `userdata` folder, starting with qemu*.log
 
 you can also use the "az" cli from the dev instance to debug Azure resources, the bastion, the boxes everything.
 

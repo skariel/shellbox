@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"log/slog"
 	"os/exec"
-	"shellbox/internal/sshutil"
 	"time"
+
+	"shellbox/internal/sshutil"
 )
 
 // QEMUManager handles QEMU VM operations on instances
@@ -62,31 +63,40 @@ if [ $STATE_SIZE -eq 0 ]; then
     exit 1
 fi
 
-# Verify it looks like a valid QEMU state file (should start with QEMU save format markers)
-echo "Verifying state file format..."
-MAGIC=$(sudo hexdump -n 16 -e '16/1 "%02x"' ` + QEMUStatePath + `)
-echo "State file magic bytes: $MAGIC"
+# Verify state file is a valid QEMU savevm format
+if ! file ` + QEMUStatePath + ` | grep -q "QEMU"; then
+    # Try checking with hexdump for QEMU savevm signature
+    HEADER=$(sudo dd if=` + QEMUStatePath + ` bs=1 count=8 2>/dev/null | od -An -tx1 | tr -d ' 
+')
+    if [[ ! "$HEADER" =~ ^(514556|7f454c46) ]]; then
+        echo "ERROR: State file does not appear to be a valid QEMU save file"
+        echo "Header: $HEADER"
+        exit 1
+    fi
+fi
 
 # Start QEMU VM with memory-mapped file and load saved state
 echo "Starting QEMU with saved state..."
 sudo sh -c 'nohup qemu-system-x86_64 \
-   -enable-kvm \
-   -m 24G \
-   -object memory-backend-file,id=mem,size=24G,mem-path=` + QEMUMemoryPath + `,share=on \
-   -machine memory-backend=mem \
-   -smp 8 \
+   -machine pc,accel=kvm,memory-backend=mem \
    -cpu host,+kvmclock,+kvm-asyncpf \
+   -m 24G \
+   -object memory-backend-file,id=mem,size=24G,mem-path=` + QEMUMemoryPath + `,share=on,prealloc=off \
+   -smp 8 \
    -rtc base=utc,driftfix=slew \
-   -drive file=` + QEMUBaseDiskPath + `,format=qcow2 \
+   -drive file=` + QEMUBaseDiskPath + `,format=qcow2,if=virtio \
    -cdrom ` + QEMUCloudInitPath + ` \
-   -device virtio-rng-pci,rng=rng0 -object rng-random,id=rng0,filename=/dev/urandom \
+   -device virtio-rng-pci,rng=rng0 \
+   -object rng-random,id=rng0,filename=/dev/urandom \
    -chardev socket,path=/tmp/qemu-ga.sock,server=on,wait=off,id=qga0 \
    -device virtio-serial \
    -device virtserialport,chardev=qga0,name=org.qemu.guest_agent.0 \
+   -device virtio-net-pci,netdev=net0 \
+   -netdev user,id=net0,hostfwd=tcp::2222-:22,dns=8.8.8.8 \
    -nographic \
    -serial file:/mnt/userdata/qemu-serial.log \
    -qmp unix:` + QEMUMonitorSocket + `,server,nowait \
-   -nic user,model=virtio,hostfwd=tcp::2222-:22,dns=8.8.8.8 \
+   -monitor none \
    -incoming defer > /mnt/userdata/qemu.log 2>&1 < /dev/null &'
 
 # Brief sleep to ensure process starts
@@ -102,18 +112,32 @@ if pgrep -f qemu-system-x86_64 > /dev/null; then
     (
     echo '{"execute":"qmp_capabilities"}'
     sleep 0.5
-    echo '{"execute":"migrate-incoming", "arguments":{"uri":"file:` + QEMUStatePath + `"}}'
+    echo '{"execute":"migrate-incoming", "arguments":{"uri":"exec:cat ` + QEMUStatePath + `"}}'
     ) | sudo socat - UNIX-CONNECT:` + QEMUMonitorSocket + ` || true
     
     # Wait for migration to complete (max 10 seconds)
-    for i in {1..20}; do
-        STATUS=$((echo '{"execute":"qmp_capabilities"}'; echo '{"execute":"query-migrate"}') | sudo socat - UNIX-CONNECT:` + QEMUMonitorSocket + ` 2>/dev/null | grep -o '"status":"[^"]*"' | cut -d'"' -f4)
+    TIMEOUT=30
+    ELAPSED=0
+    while [ $ELAPSED -lt $TIMEOUT ]; do
+        STATUS_JSON=$((echo '{"execute":"qmp_capabilities"}'; echo '{"execute":"query-migrate"}') | sudo socat - UNIX-CONNECT:` + QEMUMonitorSocket + ` 2>/dev/null || echo '{}')
+        STATUS=$(echo "$STATUS_JSON" | grep -o '"status":"[^"]*"' | cut -d'"' -f4)
         if [ "$STATUS" = "completed" ]; then
             echo "Migration completed successfully"
             break
+        elif [ "$STATUS" = "failed" ]; then
+            echo "ERROR: Migration failed"
+            echo "Full status: $STATUS_JSON"
+            exit 1
         fi
-        sleep 0.5
+        
+        sleep 1
+        ELAPSED=$((ELAPSED + 1))
     done
+    
+    if [ $ELAPSED -ge $TIMEOUT ]; then
+        echo "ERROR: Migration timeout after ${TIMEOUT} seconds"
+        exit 1
+    fi
     
     # Resume the VM immediately
     echo "Resuming VM execution..."
@@ -122,17 +146,37 @@ if pgrep -f qemu-system-x86_64 > /dev/null; then
     # Wait a moment for VM to stabilize
     sleep 1
     
-    # Sync guest time if guest agent is available
-    echo "Syncing guest time..."
-    (echo '{"execute":"qmp_capabilities"}'; sleep 0.1; echo '{"execute":"guest-set-time"}') | sudo socat - UNIX-CONNECT:` + QEMUMonitorSocket + ` 2>/dev/null || true
+    # Wait for guest agent to be available (max 10 seconds)
+    echo "Waiting for guest agent..."
+    AGENT_READY=false
+    for i in {1..10}; do
+        if echo '{"execute":"guest-ping"}' | sudo socat - UNIX-CONNECT:` + QEMUMonitorSocket + ` 2>/dev/null | grep -q "return"; then
+            AGENT_READY=true
+            echo "Guest agent is ready"
+            break
+        fi
+        sleep 1
+    done
     
-    # Refresh network interfaces inside the guest
-    echo "Refreshing guest network interfaces..."
-    (echo '{"execute":"qmp_capabilities"}'; sleep 0.1; echo '{"execute":"guest-network-get-interfaces"}') | sudo socat - UNIX-CONNECT:` + QEMUMonitorSocket + ` 2>/dev/null || true
-    
-    # Execute network restart command inside guest to ensure SSH is ready
-    echo "Ensuring SSH service is active..."
-    (echo '{"execute":"qmp_capabilities"}'; sleep 0.1; echo '{"execute":"guest-exec", "arguments":{"path":"/bin/systemctl", "arg":["restart", "ssh.service"], "capture-output":false}}') | sudo socat - UNIX-CONNECT:` + QEMUMonitorSocket + ` 2>/dev/null || true
+    if [ "$AGENT_READY" = true ]; then
+        # Sync time
+        echo "Syncing guest time..."
+        echo '{"execute":"guest-set-time"}' | sudo socat - UNIX-CONNECT:` + QEMUMonitorSocket + ` || true
+        
+        # Restart networking services in guest
+        echo "Restarting guest network services..."
+        echo '{"execute":"guest-exec", "arguments":{"path":"/bin/systemctl", "arg":["restart", "systemd-networkd", "systemd-resolved"], "capture-output":false}}' | \
+            sudo socat - UNIX-CONNECT:` + QEMUMonitorSocket + ` || true
+        
+        sleep 2
+        
+        # Ensure SSH is running
+        echo "Ensuring SSH service is active..."
+        echo '{"execute":"guest-exec", "arguments":{"path":"/bin/systemctl", "arg":["restart", "ssh.service"], "capture-output":false}}' | \
+            sudo socat - UNIX-CONNECT:` + QEMUMonitorSocket + ` || true
+    else
+        echo "WARNING: Guest agent not available, skipping guest operations"
+    fi
     
     echo "VM resumed with network refresh"
     

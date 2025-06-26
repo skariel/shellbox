@@ -8,9 +8,10 @@ import (
 	"fmt"
 	"log/slog"
 	"os/exec"
-	"shellbox/internal/sshutil"
 	"strings"
 	"time"
+
+	"shellbox/internal/sshutil"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
@@ -68,7 +69,8 @@ mkdir -p %s/qemu-disks %s/qemu-memory
 
 # Pre-allocate memory backing file for faster resume
 echo "Pre-allocating memory backing file..."
-dd if=/dev/zero of=%s/qemu-memory/ubuntu-mem bs=1M count=24576 status=progress
+sudo fallocate -l 24G %s/qemu-memory/ubuntu-mem
+sudo chmod 666 %s/qemu-memory/ubuntu-mem
 sync
 %s
 # Download and prepare Ubuntu image
@@ -83,39 +85,41 @@ cat > user-data << 'EOFMARKER'
 hostname: ubuntu
 users:
   - name: ubuntu
+    gecos: Ubuntu User
+    groups: [adm, audio, cdrom, dialout, dip, floppy, lxd, netdev, plugdev, sudo, video]
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    shell: /bin/bash
+    lock_passwd: false
     ssh_authorized_keys:
       - '%s'
-    shell: /bin/bash
-    sudo: ALL=(ALL) NOPASSWD:ALL
 package_update: true
 packages:
   - openssh-server
-  - rng-tools
   - qemu-guest-agent
+  - rng-tools
+  - net-tools
+  - cloud-init
 bootcmd:
-  # Ensure SSH starts early and stays running
-  - systemctl enable ssh.service
-  - systemctl start ssh.service
+  - systemctl restart systemd-resolved
+write_files:
+  - path: /etc/systemd/system/ssh.service.d/override.conf
+    content: |
+      [Unit]
+      After=network-online.target cloud-init.service
+      Wants=network-online.target
+      
+      [Service]
+      ExecStartPre=/bin/sleep 5
+      Restart=always
+      RestartSec=5s
 runcmd:
+  - systemctl daemon-reload
+  - systemctl enable ssh
+  - systemctl start --no-block ssh
   - systemctl enable rng-tools
   - systemctl start rng-tools
   - systemctl enable qemu-guest-agent
   - systemctl start qemu-guest-agent
-  # Ensure SSH is fully ready
-  - systemctl restart ssh.service
-  # Create systemd drop-in to ensure SSH starts after network
-  - mkdir -p /etc/systemd/system/ssh.service.d
-  - |
-    cat > /etc/systemd/system/ssh.service.d/override.conf << EOF
-    [Unit]
-    After=network-online.target
-    Wants=network-online.target
-    
-    [Service]
-    Restart=always
-    RestartSec=1s
-    EOF
-  - systemctl daemon-reload
 ssh_pwauth: false
 ssh:
   install-server: yes
@@ -132,30 +136,32 @@ genisoimage -output qemu-disks/cloud-init.iso -volid cidata -joliet -rock user-d
 
 # Start QEMU VM with SSH-ready configuration and monitor socket
 sudo qemu-system-x86_64 \
-   -enable-kvm \
-   -m 24G \
-   -object memory-backend-file,id=mem,size=24G,mem-path=%s/qemu-memory/ubuntu-mem,share=on \
-   -machine memory-backend=mem \
-   -smp 8 \
+   -machine pc,accel=kvm,memory-backend=mem \
    -cpu host,+kvmclock,+kvm-asyncpf \
+   -m 24G \
+   -object memory-backend-file,id=mem,size=24G,mem-path=%s/qemu-memory/ubuntu-mem,share=on,prealloc=on \
+   -smp 8 \
    -rtc base=utc,driftfix=slew \
-   -drive file=%s/qemu-disks/ubuntu-base.qcow2,format=qcow2 \
+   -drive file=%s/qemu-disks/ubuntu-base.qcow2,format=qcow2,if=virtio \
    -cdrom %s/qemu-disks/cloud-init.iso \
    -device virtio-rng-pci,rng=rng0 -object rng-random,id=rng0,filename=/dev/urandom \
    -chardev socket,path=/tmp/qemu-ga.sock,server=on,wait=off,id=qga0 \
    -device virtio-serial \
    -device virtserialport,chardev=qga0,name=org.qemu.guest_agent.0 \
+   -device virtio-net-pci,netdev=net0 \
+   -netdev user,id=net0,hostfwd=tcp::%d-:22,dns=8.8.8.8 \
    -nographic \
-   -qmp unix:/tmp/qemu-monitor.sock,server,nowait \
-   -nic user,model=virtio,hostfwd=tcp::%d-:22,dns=8.8.8.8`,
+   -serial file:%s/qemu-serial.log \
+   -qmp unix:/tmp/qemu-monitor.sock,server,nowait`,
 		mountSection,
-		config.WorkingDir, config.WorkingDir, config.WorkingDir,
+		config.WorkingDir, config.WorkingDir, config.WorkingDir, config.WorkingDir,
 		ownershipSection,
 		config.WorkingDir,
 		config.SSHPublicKey,
 		config.WorkingDir,
 		config.WorkingDir, config.WorkingDir,
-		config.SSHPort)
+		config.SSHPort,
+		config.WorkingDir)
 
 	return base64.StdEncoding.EncodeToString([]byte(script)), nil
 }
@@ -372,22 +378,27 @@ func createAndProvisionBoxWithDataVolume(ctx context.Context, clients *AzureClie
 func waitForQEMUReady(ctx context.Context, _ *AzureClients, tempBox *tempBoxInfo) error {
 	slog.Info("Waiting for host VM setup and QEMU to be ready", "vmName", tempBox.VMName, "privateIP", tempBox.PrivateIP)
 
-	// First, check cloud-init completion on the host VM
-	slog.Info("Checking cloud-init completion on host VM")
+	// First, check cloud-init completion on the QEMU VM via serial log
+	slog.Info("Checking cloud-init completion on QEMU VM")
 	err := RetryOperation(ctx, func(ctx context.Context) error {
-		// Check cloud-init logs on the host VM (not the QEMU VM)
+		// Check QEMU serial log for cloud-init completion
 		cmd := exec.CommandContext(ctx, "ssh",
 			"-o", "ConnectTimeout=5",
 			"-o", "StrictHostKeyChecking=no",
 			"-i", sshutil.SSHKeyPath,
 			fmt.Sprintf("%s@%s", AdminUsername, tempBox.PrivateIP),
-			"tail -n 50 /var/log/cloud-init-output.log 2>/dev/null || echo 'Log not yet available'")
+			"if [ -f /mnt/userdata/qemu-serial.log ]; then tail -n 50 /mnt/userdata/qemu-serial.log; else echo 'Log not yet available'; fi")
 		output, err := cmd.CombinedOutput()
 		if err != nil {
-			return fmt.Errorf("failed to check cloud-init logs: %w: %s", err, string(output))
+			return fmt.Errorf("failed to check QEMU serial logs: %w: %s", err, string(output))
 		}
 
 		outputStr := string(output)
+
+		// Check if log file doesn't exist yet
+		if outputStr == "Log not yet available" {
+			return fmt.Errorf("QEMU serial log not yet available")
+		}
 
 		// Check for failed cloud-init
 		if strings.Contains(outputStr, "[FAILED] Failed to start cloud-final.service") {
@@ -440,7 +451,7 @@ sudo chmod 777 /mnt/userdata/qemu-memory
 echo '{"execute":"qmp_capabilities"}'
 sleep 0.1
 # Set migration parameters for maximum speed
-echo '{"execute":"migrate-set-parameters", "arguments":{"max-bandwidth": 0, "downtime-limit": 300, "max-cpu-throttle": 0}}'
+echo '{"execute":"migrate-set-parameters", "arguments":{"max-bandwidth": 0, "downtime-limit": 300, "max-cpu-throttle": 99}}'
 sleep 0.1
 # Enable migration capabilities for better performance
 echo '{"execute":"migrate-set-capabilities", "arguments":{"capabilities":[{"capability": "xbzrle", "state": false}, {"capability": "x-ignore-shared", "state": true}, {"capability": "auto-converge", "state": false}, {"capability": "postcopy-ram", "state": false}]}}'
@@ -468,7 +479,7 @@ if ! pgrep -f qemu-system-x86_64 > /dev/null; then
 fi
 
 # Send migrate command and capture full response
-MIGRATE_RESPONSE=$((echo '{"execute":"qmp_capabilities"}'; sleep 0.5; echo '{"execute":"migrate", "arguments":{"uri":"file:%s"}}'; sleep 0.5) | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock 2>&1)
+MIGRATE_RESPONSE=$((echo '{"execute":"qmp_capabilities"}'; sleep 0.5; echo '{"execute":"migrate", "arguments":{"uri":"exec:cat > %s"}}'; sleep 0.5) | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock 2>&1)
 echo "Full migrate response: $MIGRATE_RESPONSE"
 
 # Check if migrate command was accepted
