@@ -478,7 +478,7 @@ if ! pgrep -f qemu-system-x86_64 > /dev/null; then
 fi
 
 # Send migrate command and capture full response
-MIGRATE_RESPONSE=$((echo '{"execute":"qmp_capabilities"}'; sleep 0.5; echo '{"execute":"migrate", "arguments":{"uri":"exec:cat > %s"}}'; sleep 0.5) | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock 2>&1)
+MIGRATE_RESPONSE=$((echo '{"execute":"qmp_capabilities"}'; sleep 0.5; echo '{"execute":"migrate", "arguments":{"uri":"exec:cat>%s"}}'; sleep 0.5) | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock 2>&1)
 echo "Full migrate response: $MIGRATE_RESPONSE"
 
 # Check if migrate command was accepted
