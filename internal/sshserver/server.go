@@ -8,10 +8,11 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"shellbox/internal/infra"
-	"shellbox/internal/sshutil"
 	"strings"
 	"time"
+
+	"shellbox/internal/infra"
+	"shellbox/internal/sshutil"
 
 	gssh "github.com/gliderlabs/ssh" // alias to avoid confusion with crypto/ssh
 	"golang.org/x/crypto/ssh"

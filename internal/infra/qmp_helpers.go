@@ -5,9 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"shellbox/internal/sshutil"
 	"strings"
 	"time"
+
+	"shellbox/internal/sshutil"
 )
 
 // QMPResponse represents a response from QEMU Machine Protocol
@@ -173,15 +174,82 @@ func GetMigrationInfo(ctx context.Context, instanceIP string) (*MigrationInfo, e
 	return nil, fmt.Errorf("migration info not found in response")
 }
 
+// migrationProgress tracks migration progress state
+type migrationProgress struct {
+	lastTransferred    int64
+	lastCheckTime      time.Time
+	progressStallCount int
+}
+
+// calculateCheckInterval returns polling interval based on progress
+func calculateCheckInterval(progress float64) time.Duration {
+	switch {
+	case progress > 90:
+		return 50 * time.Millisecond
+	case progress > 75:
+		return 100 * time.Millisecond
+	case progress > 50:
+		return 200 * time.Millisecond
+	default:
+		return 500 * time.Millisecond
+	}
+}
+
+// handleActiveMigration processes active migration status
+func handleActiveMigration(info *MigrationInfo, progress *migrationProgress, startTime time.Time) time.Duration {
+	if info.RAM == nil {
+		return 100 * time.Millisecond
+	}
+
+	transferred := info.RAM.Transferred
+	remaining := info.RAM.Remaining
+	total := info.RAM.Total
+	speed := info.RAM.MBps
+
+	// Calculate progress percentage
+	var progressPct float64
+	if total > 0 {
+		progressPct = float64(transferred) / float64(total) * 100
+	}
+
+	// Check if progress is stalled
+	if progress.lastTransferred > 0 && transferred == progress.lastTransferred && time.Since(progress.lastCheckTime) > 5*time.Second {
+		progress.progressStallCount++
+		if progress.progressStallCount > 3 {
+			slog.Warn("Migration progress stalled",
+				"transferred", transferred,
+				"remaining", remaining,
+				"stallDuration", time.Since(progress.lastCheckTime))
+		}
+	} else if transferred != progress.lastTransferred {
+		progress.progressStallCount = 0
+	}
+
+	// Log progress every second or when significant progress is made
+	shouldLog := time.Since(progress.lastCheckTime) >= time.Second ||
+		(progress.lastTransferred > 0 && transferred-progress.lastTransferred > 100*1024*1024) // 100MB progress
+
+	if shouldLog {
+		slog.Debug("Migration progress",
+			"status", info.Status,
+			"progress", fmt.Sprintf("%.1f%%", progressPct),
+			"transferred", fmt.Sprintf("%.1f MB", float64(transferred)/1024/1024),
+			"remaining", fmt.Sprintf("%.1f MB", float64(remaining)/1024/1024),
+			"speed", fmt.Sprintf("%.1f MB/s", speed),
+			"elapsed", time.Since(startTime).Round(time.Second))
+		progress.lastCheckTime = time.Now()
+	}
+
+	progress.lastTransferred = transferred
+	return calculateCheckInterval(progressPct)
+}
+
 // WaitForMigrationWithProgress waits for migration to complete with progress tracking
 func WaitForMigrationWithProgress(ctx context.Context, instanceIP string, timeoutSeconds int) error {
 	checkInterval := 100 * time.Millisecond
 	startTime := time.Now()
 	timeout := time.Duration(timeoutSeconds) * time.Second
-
-	var lastTransferred int64
-	var lastCheckTime time.Time
-	progressStallCount := 0
+	progress := &migrationProgress{}
 
 	for {
 		if time.Since(startTime) > timeout {
@@ -209,60 +277,7 @@ func WaitForMigrationWithProgress(ctx context.Context, instanceIP string, timeou
 			return fmt.Errorf("migration cancelled")
 
 		case "active":
-			// Track progress
-			if info.RAM != nil {
-				transferred := info.RAM.Transferred
-				remaining := info.RAM.Remaining
-				total := info.RAM.Total
-				speed := info.RAM.MBps
-
-				// Calculate progress percentage
-				var progress float64
-				if total > 0 {
-					progress = float64(transferred) / float64(total) * 100
-				}
-
-				// Check if progress is stalled
-				if lastTransferred > 0 && transferred == lastTransferred && time.Since(lastCheckTime) > 5*time.Second {
-					progressStallCount++
-					if progressStallCount > 3 {
-						slog.Warn("Migration progress stalled",
-							"transferred", transferred,
-							"remaining", remaining,
-							"stallDuration", time.Since(lastCheckTime))
-					}
-				} else if transferred != lastTransferred {
-					progressStallCount = 0
-				}
-
-				// Log progress every second or when significant progress is made
-				shouldLog := time.Since(lastCheckTime) >= time.Second ||
-					(lastTransferred > 0 && transferred-lastTransferred > 100*1024*1024) // 100MB progress
-
-				if shouldLog {
-					slog.Debug("Migration progress",
-						"status", info.Status,
-						"progress", fmt.Sprintf("%.1f%%", progress),
-						"transferred", fmt.Sprintf("%.1f MB", float64(transferred)/1024/1024),
-						"remaining", fmt.Sprintf("%.1f MB", float64(remaining)/1024/1024),
-						"speed", fmt.Sprintf("%.1f MB/s", speed),
-						"elapsed", time.Since(startTime).Round(time.Second))
-					lastCheckTime = time.Now()
-				}
-
-				lastTransferred = transferred
-
-				// Adaptive polling: check more frequently when near completion
-				if progress > 90 {
-					checkInterval = 50 * time.Millisecond
-				} else if progress > 75 {
-					checkInterval = 100 * time.Millisecond
-				} else if progress > 50 {
-					checkInterval = 200 * time.Millisecond
-				} else {
-					checkInterval = 500 * time.Millisecond
-				}
-			}
+			checkInterval = handleActiveMigration(info, progress, startTime)
 		}
 
 		select {
@@ -333,9 +348,9 @@ func CheckMigrationStatus(ctx context.Context, instanceIP string) (*MigrationSta
 // SendKeyCommand sends a key or key combination via QMP
 func SendKeyCommand(ctx context.Context, keys []string, instanceIP string) error {
 	// Build the keys array for QMP
-	var keyObjs []string
+	keyObjs := make([]string, 0, len(keys))
 	for _, key := range keys {
-		keyObjs = append(keyObjs, fmt.Sprintf(`{"type":"qcode","data":"%s"}`, key))
+		keyObjs = append(keyObjs, fmt.Sprintf(`{"type":"qcode","data":%q}`, key))
 	}
 
 	keyCmd := fmt.Sprintf(`{"execute":"send-key", "arguments":{"keys":[%s]}}`, strings.Join(keyObjs, ","))
@@ -349,7 +364,7 @@ func SendKeyCommand(ctx context.Context, keys []string, instanceIP string) error
 }
 
 // SendTextViaKeys sends text by converting each character to sendkey commands
-func SendTextViaKeys(ctx context.Context, text string, instanceIP string) error {
+func SendTextViaKeys(ctx context.Context, text, instanceIP string) error {
 	// Character to QEMU key mapping
 	charToKey := map[rune][]string{
 		'a': {"a"}, 'b': {"b"}, 'c': {"c"}, 'd': {"d"}, 'e': {"e"},

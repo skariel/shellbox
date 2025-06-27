@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"log/slog"
 	"os/exec"
-	"shellbox/internal/sshutil"
 	"time"
+
+	"shellbox/internal/sshutil"
 )
 
 // QEMUManager handles QEMU VM operations on instances
