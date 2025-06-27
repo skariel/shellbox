@@ -429,7 +429,7 @@ func SendTextViaKeys(ctx context.Context, text, instanceIP string) error {
 		'5': {"5"}, '6': {"6"}, '7': {"7"}, '8': {"8"}, '9': {"9"},
 		' ': {"spc"}, '-': {"minus"}, '.': {"dot"}, '/': {"slash"},
 		':': {"shift", "semicolon"}, ';': {"semicolon"},
-		'=': {"equal"}, '_': {"shift", "minus"},
+		'=': {"equal"}, '_': {"shift", "minus"}, '&': {"shift", "7"},
 		'\n': {"ret"}, '\t': {"tab"},
 	}
 
@@ -446,7 +446,7 @@ func SendTextViaKeys(ctx context.Context, text, instanceIP string) error {
 		}
 
 		// Small delay between keystrokes
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(10 * time.Millisecond)
 	}
 
 	return nil

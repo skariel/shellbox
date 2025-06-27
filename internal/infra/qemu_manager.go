@@ -166,55 +166,37 @@ fi
 	}
 	slog.Info("VM resumed after migration")
 
-	// Use sendkey to restart network services
-	slog.Info("Using sendkey to restart network services")
+	// Use sendkey to refresh network configuration
+	slog.Info("Using sendkey to refresh network configuration")
 
 	// Give VM a moment to stabilize after resume
-	time.Sleep(2 * time.Second)
+	time.Sleep(500 * time.Millisecond)
 
 	// Switch to tty1 console (Ctrl+Alt+F1)
 	if err := SendKeyCommand(ctx, []string{"ctrl", "alt", "f1"}, instanceIP); err != nil {
 		slog.Warn("Failed to switch to console", "error", err)
 	}
-	time.Sleep(1 * time.Second)
+	time.Sleep(300 * time.Millisecond)
 
 	// Press Enter to ensure we're at a prompt (auto-login should have logged us in)
 	if err := SendKeyCommand(ctx, []string{"ret"}, instanceIP); err != nil {
 		slog.Warn("Failed to send enter key", "error", err)
 	}
-	time.Sleep(500 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 
-	// Type and execute systemctl restart systemd-networkd
+	// Just restart systemd-networkd - more reliable than dhclient manipulation
 	slog.Info("Restarting systemd-networkd")
 	if err := SendTextViaKeys(ctx, "sudo systemctl restart systemd-networkd", instanceIP); err != nil {
-		slog.Warn("Failed to type systemd-networkd restart command", "error", err)
+		slog.Warn("Failed to type networkd restart command", "error", err)
 	}
+	// Note: We skip systemd-resolved and SSH restarts as they're not needed
+	// The network interface just needs DHCP renewal after resume
 	if err := SendKeyCommand(ctx, []string{"ret"}, instanceIP); err != nil {
-		slog.Warn("Failed to execute systemd-networkd restart", "error", err)
+		slog.Warn("Failed to execute networkd restart", "error", err)
 	}
-	time.Sleep(2 * time.Second)
+	time.Sleep(2 * time.Second) // Give networkd time to restart and acquire DHCP
 
-	// Type and execute systemctl restart systemd-resolved
-	slog.Info("Restarting systemd-resolved")
-	if err := SendTextViaKeys(ctx, "sudo systemctl restart systemd-resolved", instanceIP); err != nil {
-		slog.Warn("Failed to type systemd-resolved restart command", "error", err)
-	}
-	if err := SendKeyCommand(ctx, []string{"ret"}, instanceIP); err != nil {
-		slog.Warn("Failed to execute systemd-resolved restart", "error", err)
-	}
-	time.Sleep(1 * time.Second)
-
-	// Type and execute systemctl restart ssh
-	slog.Info("Restarting SSH service")
-	if err := SendTextViaKeys(ctx, "sudo systemctl restart ssh", instanceIP); err != nil {
-		slog.Warn("Failed to type ssh restart command", "error", err)
-	}
-	if err := SendKeyCommand(ctx, []string{"ret"}, instanceIP); err != nil {
-		slog.Warn("Failed to execute ssh restart", "error", err)
-	}
-	time.Sleep(2 * time.Second)
-
-	slog.Info("Network services restarted via sendkey")
+	slog.Info("Network refresh completed via sendkey")
 
 	// Track timing for resume process
 	resumeStartTime := time.Now()
