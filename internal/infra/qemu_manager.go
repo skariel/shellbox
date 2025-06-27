@@ -103,6 +103,20 @@ if pgrep -f qemu-system-x86_64 > /dev/null; then
     QEMU_PID=$(pgrep -f qemu-system-x86_64)
     echo "SUCCESS: QEMU started with PID: $QEMU_PID"
     
+    # Wait for QMP socket to be created
+    echo "Waiting for QMP socket..."
+    SOCKET_WAIT=0
+    while [ ! -S ` + QEMUMonitorSocket + ` ]; do
+        if [ $SOCKET_WAIT -ge 10 ]; then
+            echo "ERROR: QMP socket not created after 10 seconds"
+            exit 1
+        fi
+        echo "Waiting for QMP socket to be created..."
+        sleep 1
+        SOCKET_WAIT=$((SOCKET_WAIT + 1))
+    done
+    echo "QMP socket is ready"
+    
     # Initialize QMP and load the saved state
     echo "Initializing QMP and loading saved state..."
     (
