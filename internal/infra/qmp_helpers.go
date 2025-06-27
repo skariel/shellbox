@@ -5,10 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"shellbox/internal/sshutil"
 	"strings"
 	"time"
-
-	"shellbox/internal/sshutil"
 )
 
 // QMPResponse represents a response from QEMU Machine Protocol
@@ -166,6 +165,10 @@ func GetMigrationInfo(ctx context.Context, instanceIP string) (*MigrationInfo, e
 		if resp.Return != nil {
 			var info MigrationInfo
 			if err := json.Unmarshal(resp.Return, &info); err == nil {
+				// If status is empty, it means no migration is active (QEMU returns {})
+				if info.Status == "" {
+					info.Status = "none"
+				}
 				return &info, nil
 			}
 		}
@@ -263,6 +266,12 @@ func WaitForMigrationWithProgress(ctx context.Context, instanceIP string, timeou
 			continue
 		}
 
+		// Log initial status on first check
+		if progress.lastCheckTime.IsZero() {
+			slog.Info("Initial migration status check", "status", info.Status)
+			progress.lastCheckTime = time.Now()
+		}
+
 		switch info.Status {
 		case "completed":
 			slog.Info("Migration completed successfully",
@@ -278,6 +287,21 @@ func WaitForMigrationWithProgress(ctx context.Context, instanceIP string, timeou
 
 		case "active":
 			checkInterval = handleActiveMigration(info, progress, startTime)
+
+		case "none", "setup":
+			// Migration is initializing
+			slog.Debug("Migration initializing", "status", info.Status)
+			checkInterval = 500 * time.Millisecond
+
+		default:
+			// Handle empty status (migration not started) or unknown status
+			if info.Status == "" {
+				slog.Debug("Migration status is empty, migration may not have started yet")
+			} else {
+				slog.Debug("Unknown migration status", "status", info.Status)
+			}
+			// Use a reasonable check interval for initial state
+			checkInterval = 500 * time.Millisecond
 		}
 
 		select {
