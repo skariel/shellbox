@@ -488,14 +488,9 @@ fi
 	if err := ExecuteMigrationCommand(ctx, tempBox.PrivateIP, QEMUStatePath); err != nil {
 		return fmt.Errorf("failed to execute migration: %w", err)
 	}
-	slog.Info("Migration command accepted successfully")
+	slog.Info("Migration completed successfully (synchronous)")
 
-	// Wait for migration to complete using QMP with progress tracking
-	slog.Info("Waiting for migration to complete with progress tracking")
-	if err := WaitForMigrationWithProgress(ctx, tempBox.PrivateIP, 300); err != nil {
-		return fmt.Errorf("migration failed: %w", err)
-	}
-
+	// Migration is synchronous, so it's complete when ExecuteMigrationCommand returns
 	// Force sync to ensure data is written to disk
 	syncCmd := fmt.Sprintf(`
 sync

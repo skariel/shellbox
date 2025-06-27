@@ -65,6 +65,11 @@ func executeQMPCommands(ctx context.Context, commands []string, instanceIP strin
 		}
 	}
 
+	// Debug log the raw QMP output
+	if strings.Contains(cmdStr, "migrate") && !strings.Contains(cmdStr, "query-migrate") {
+		slog.Debug("Raw QMP migration command output", "output", output)
+	}
+
 	// Parse the JSON responses
 	responses, parseErr := parseQMPResponses(output)
 	if parseErr != nil {
@@ -315,11 +320,25 @@ func WaitForMigrationWithProgress(ctx context.Context, instanceIP string, timeou
 
 // ExecuteMigrationCommand executes a migration command and checks for success
 func ExecuteMigrationCommand(ctx context.Context, instanceIP, stateFile string) error {
-	migrateCmd := fmt.Sprintf(`{"execute":"migrate", "arguments":{"uri":"exec:cat>%s"}}`, stateFile)
+	// Note: Space after > is required for shell redirection to work properly
+	migrateCmd := fmt.Sprintf(`{"execute":"migrate", "arguments":{"uri":"exec:cat > %s"}}`, stateFile)
 
 	responses, err := executeQMPCommands(ctx, []string{migrateCmd}, instanceIP)
 	if err != nil {
 		return fmt.Errorf("failed to execute migration command: %w", err)
+	}
+
+	// Log the responses for debugging
+	for i, resp := range responses {
+		if resp.Return != nil {
+			slog.Debug("Migration command response", "index", i, "return", string(resp.Return))
+		}
+		if resp.Error != nil {
+			slog.Warn("Migration command error response", "index", i, "error", resp.Error)
+		}
+		if resp.Event != "" {
+			slog.Debug("Migration command event", "index", i, "event", resp.Event)
+		}
 	}
 
 	// Check for successful execution

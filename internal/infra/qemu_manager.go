@@ -112,10 +112,15 @@ if pgrep -f qemu-system-x86_64 > /dev/null; then
     echo '{"execute":"migrate-set-capabilities", "arguments":{"capabilities":[{"capability": "xbzrle", "state": false}, {"capability": "x-ignore-shared", "state": true}, {"capability": "auto-converge", "state": false}, {"capability": "postcopy-ram", "state": false}]}}'
     sleep 0.5
     echo '{"execute":"migrate-incoming", "arguments":{"uri":"exec:cat ` + QEMUStatePath + `"}}'
-    ) | sudo socat - UNIX-CONNECT:` + QEMUMonitorSocket + ` || true
+    ) | sudo socat - UNIX-CONNECT:` + QEMUMonitorSocket + `
     
-    # Mark end of bash script for migration - will use Go for progress tracking
-    echo "MIGRATION_INIT_COMPLETE"
+    # Check if the migration command succeeded
+    if [ ${PIPESTATUS[1]} -ne 0 ]; then
+        echo "ERROR: Failed to execute migration command via QMP"
+        exit 1
+    fi
+    
+    # Migration is synchronous - when the command returns, it's complete
 else
     echo "ERROR: Failed to start QEMU"
     # Check if log file exists and show any errors
@@ -137,11 +142,8 @@ fi
 	}
 	slog.Info("QEMU start command completed", "output", output)
 
-	// Wait for migration to complete with progress tracking
-	slog.Info("Waiting for incoming migration to complete with progress tracking")
-	if err := WaitForMigrationWithProgress(ctx, instanceIP, 300); err != nil {
-		return fmt.Errorf("incoming migration failed: %w", err)
-	}
+	// Migration is synchronous - it's already complete if the command succeeded
+	slog.Info("Incoming migration completed (synchronous operation)")
 
 	// Resume the VM after migration completes
 	resumeCmd := `(echo '{"execute":"qmp_capabilities"}'; sleep 0.1; echo '{"execute":"cont"}') | sudo socat - UNIX-CONNECT:` + QEMUMonitorSocket + ` || true`
