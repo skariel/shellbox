@@ -68,9 +68,26 @@ func New(port int, clients *infra.AzureClients) (*Server, error) {
 	}, nil
 }
 
-// dialBoxAtIP establishes connection to the box at specified IP
+// dialBoxAtIP establishes connection to the box at specified IP with retry logic
 func (s *Server) dialBoxAtIP(boxIP string) (*ssh.Client, error) {
-	return ssh.Dial("tcp", fmt.Sprintf("%s:%d", boxIP, infra.BoxSSHPort), s.boxSSHConfig)
+	var client *ssh.Client
+	var lastErr error
+
+	// Use RetryOperation to handle connection attempts with retries
+	err := infra.RetryOperation(context.Background(), func(_ context.Context) error {
+		var err error
+		client, err = ssh.Dial("tcp", fmt.Sprintf("%s:%d", boxIP, infra.BoxSSHPort), s.boxSSHConfig)
+		if err != nil {
+			lastErr = err
+			return fmt.Errorf("SSH connection not yet ready: %w", err)
+		}
+		return nil
+	}, 30*time.Second, 500*time.Millisecond, "SSH connectivity to box")
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect after retries: %w", lastErr)
+	}
+
+	return client, nil
 }
 
 // handleSCP handles SCP file transfer sessions

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"os/exec"
 	"shellbox/internal/sshutil"
 	"time"
 )
@@ -170,48 +169,37 @@ fi
 	slog.Info("Using sendkey to refresh network configuration")
 
 	// Give VM a moment to stabilize after resume
-	time.Sleep(500 * time.Millisecond)
+	time.Sleep(300 * time.Millisecond)
 
 	// Switch to tty1 console (Ctrl+Alt+F1)
 	if err := SendKeyCommand(ctx, []string{"ctrl", "alt", "f1"}, instanceIP); err != nil {
 		slog.Warn("Failed to switch to console", "error", err)
 	}
-	time.Sleep(300 * time.Millisecond)
+	time.Sleep(200 * time.Millisecond)
 
 	// Press Enter to ensure we're at a prompt (auto-login should have logged us in)
 	if err := SendKeyCommand(ctx, []string{"ret"}, instanceIP); err != nil {
 		slog.Warn("Failed to send enter key", "error", err)
 	}
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(50 * time.Millisecond)
 
-	// Just restart systemd-networkd - more reliable than dhclient manipulation
-	slog.Info("Restarting systemd-networkd")
-	if err := SendTextViaKeys(ctx, "sudo systemctl restart systemd-networkd", instanceIP); err != nil {
-		slog.Warn("Failed to type networkd restart command", "error", err)
+	// Use dhclient to release and renew DHCP lease (faster than service restart)
+	// Using semicolon to avoid && character issues
+	slog.Info("Renewing DHCP lease")
+	if err := SendTextViaKeys(ctx, "sudo dhclient -r eth0; sudo dhclient eth0", instanceIP); err != nil {
+		slog.Warn("Failed to type dhclient command", "error", err)
 	}
-	// Note: We skip systemd-resolved and SSH restarts as they're not needed
-	// The network interface just needs DHCP renewal after resume
 	if err := SendKeyCommand(ctx, []string{"ret"}, instanceIP); err != nil {
-		slog.Warn("Failed to execute networkd restart", "error", err)
+		slog.Warn("Failed to execute dhclient", "error", err)
 	}
-	time.Sleep(2 * time.Second) // Give networkd time to restart and acquire DHCP
+	time.Sleep(1 * time.Second) // dhclient is usually quick
 
 	slog.Info("Network refresh completed via sendkey")
 
-	// Track timing for resume process
-	resumeStartTime := time.Now()
-
-	// Wait for QEMU SSH to be ready
-	// Should be fast since VM is resumed immediately with time sync
-	if err := qm.waitForQEMUSSH(ctx, instanceIP); err != nil {
-		return fmt.Errorf("QEMU SSH not ready: %w", err)
-	}
-
-	resumeDuration := time.Since(resumeStartTime)
-	slog.Info("QEMU started",
-		"instanceIP", instanceIP,
-		"resumeDuration", resumeDuration,
-		"resumeSeconds", resumeDuration.Seconds())
+	// Skip SSH connectivity test - the actual user connection will handle retries
+	// This eliminates redundant SSH testing and saves ~4-5 seconds
+	slog.Info("QEMU started, ready for user connection",
+		"instanceIP", instanceIP)
 	return nil
 }
 
@@ -232,24 +220,4 @@ sudo pkill qemu-system-x86_64 || true
 
 	slog.Info("QEMU stopped", "instanceIP", instanceIP)
 	return nil
-}
-
-// waitForQEMUSSH waits for QEMU VM to be SSH-accessible
-func (qm *QEMUManager) waitForQEMUSSH(ctx context.Context, instanceIP string) error {
-	return RetryOperation(ctx, func(ctx context.Context) error {
-		// Test SSH connection directly to the QEMU VM from bastion
-		cmd := exec.CommandContext(ctx, "ssh",
-			"-o", "ConnectTimeout=2",
-			"-o", "StrictHostKeyChecking=no",
-			"-o", "ServerAliveInterval=1",
-			"-o", "BatchMode=yes",
-			"-i", sshutil.SSHKeyPath,
-			"-p", fmt.Sprintf("%d", BoxSSHPort),
-			fmt.Sprintf("%s@%s", SystemUserUbuntu, instanceIP),
-			"echo 'QEMU SSH ready'")
-		if output, err := cmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("QEMU VM SSH not yet ready: %w: %s", err, string(output))
-		}
-		return nil
-	}, 30*time.Second, 500*time.Millisecond, "QEMU SSH connectivity")
 }
