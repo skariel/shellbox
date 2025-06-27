@@ -8,10 +8,9 @@ import (
 	"fmt"
 	"log/slog"
 	"os/exec"
+	"shellbox/internal/sshutil"
 	"strings"
 	"time"
-
-	"shellbox/internal/sshutil"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
@@ -123,7 +122,7 @@ runcmd:
     cat > /etc/systemd/system/getty@tty1.service.d/override.conf << EOF
     [Service]
     ExecStart=
-    ExecStart=-/sbin/agetty --autologin ubuntu --noclear %I \$TERM
+    ExecStart=-/sbin/agetty --autologin ubuntu --noclear %%I \$TERM
     EOF
   - systemctl daemon-reload
 ssh_pwauth: false

@@ -5,10 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"shellbox/internal/sshutil"
 	"strings"
 	"time"
-
-	"shellbox/internal/sshutil"
 )
 
 // QMPResponse represents a response from QEMU Machine Protocol
