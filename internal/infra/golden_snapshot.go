@@ -8,9 +8,10 @@ import (
 	"fmt"
 	"log/slog"
 	"os/exec"
-	"shellbox/internal/sshutil"
 	"strings"
 	"time"
+
+	"shellbox/internal/sshutil"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute/v6"
@@ -94,7 +95,6 @@ users:
 package_update: true
 packages:
   - openssh-server
-  - qemu-guest-agent
   - rng-tools
   - net-tools
   - cloud-init
@@ -117,8 +117,15 @@ runcmd:
   - systemctl start --no-block ssh
   - systemctl enable rng-tools
   - systemctl start rng-tools
-  - systemctl enable qemu-guest-agent
-  - systemctl start qemu-guest-agent
+  # Configure auto-login for tty1
+  - mkdir -p /etc/systemd/system/getty@tty1.service.d/
+  - |
+    cat > /etc/systemd/system/getty@tty1.service.d/override.conf << EOF
+    [Service]
+    ExecStart=
+    ExecStart=-/sbin/agetty --autologin ubuntu --noclear %I \$TERM
+    EOF
+  - systemctl daemon-reload
 ssh_pwauth: false
 ssh:
   install-server: yes
@@ -144,9 +151,6 @@ sudo qemu-system-x86_64 \
    -drive file=%s/qemu-disks/ubuntu-base.qcow2,format=qcow2,if=virtio \
    -cdrom %s/qemu-disks/cloud-init.iso \
    -device virtio-rng-pci,rng=rng0 -object rng-random,id=rng0,filename=/dev/urandom \
-   -chardev socket,path=/tmp/qemu-ga.sock,server=on,wait=off,id=qga0 \
-   -device virtio-serial \
-   -device virtserialport,chardev=qga0,name=org.qemu.guest_agent.0 \
    -device virtio-net-pci,netdev=net0 \
    -netdev user,id=net0,hostfwd=tcp::%d-:22,dns=8.8.8.8 \
    -nographic \

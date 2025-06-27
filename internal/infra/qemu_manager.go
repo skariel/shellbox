@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"log/slog"
 	"os/exec"
-	"shellbox/internal/sshutil"
 	"time"
+
+	"shellbox/internal/sshutil"
 )
 
 // QEMUManager handles QEMU VM operations on instances
@@ -87,9 +88,6 @@ sudo sh -c 'nohup qemu-system-x86_64 \
    -cdrom ` + QEMUCloudInitPath + ` \
    -device virtio-rng-pci,rng=rng0 \
    -object rng-random,id=rng0,filename=/dev/urandom \
-   -chardev socket,path=/tmp/qemu-ga.sock,server=on,wait=off,id=qga0 \
-   -device virtio-serial \
-   -device virtserialport,chardev=qga0,name=org.qemu.guest_agent.0 \
    -device virtio-net-pci,netdev=net0 \
    -netdev user,id=net0,hostfwd=tcp::2222-:22,dns=8.8.8.8 \
    -nographic \
@@ -153,47 +151,55 @@ fi
 	}
 	slog.Info("VM resumed after migration")
 
-	// Now handle guest agent operations
-	guestOpsCmd := `
-    # Wait for guest agent to be available (max 10 seconds)
-    echo "Waiting for guest agent..."
-    AGENT_READY=false
-    for i in {1..10}; do
-        if echo '{"execute":"guest-ping"}' | sudo socat - UNIX-CONNECT:` + QEMUMonitorSocket + ` 2>/dev/null | grep -E -q '"return"[[:space:]]*:[[:space:]]*\{[[:space:]]*\}'; then
-            AGENT_READY=true
-            echo "Guest agent is ready"
-            break
-        fi
-        sleep 1
-    done
-    
-    if [ "$AGENT_READY" = true ]; then
-        # Sync time
-        echo "Syncing guest time..."
-        echo '{"execute":"guest-set-time"}' | sudo socat - UNIX-CONNECT:` + QEMUMonitorSocket + ` || true
-        
-        # Restart networking services in guest
-        echo "Restarting guest network services..."
-        echo '{"execute":"guest-exec", "arguments":{"path":"/bin/systemctl", "arg":["restart", "systemd-networkd", "systemd-resolved"], "capture-output":false}}' | \
-            sudo socat - UNIX-CONNECT:` + QEMUMonitorSocket + ` || true
-        
-        sleep 2
-        
-        # Ensure SSH is running
-        echo "Ensuring SSH service is active..."
-        echo '{"execute":"guest-exec", "arguments":{"path":"/bin/systemctl", "arg":["restart", "ssh.service"], "capture-output":false}}' | \
-            sudo socat - UNIX-CONNECT:` + QEMUMonitorSocket + ` || true
-    else
-        echo "WARNING: Guest agent not available, skipping guest operations"
-    fi
-    
-    echo "VM resumed with network refresh"
-`
+	// Use sendkey to restart network services
+	slog.Info("Using sendkey to restart network services")
 
-	// Execute guest operations
-	if _, err := sshutil.ExecuteCommandWithOutput(ctx, guestOpsCmd, AdminUsername, instanceIP); err != nil {
-		slog.Warn("Guest operations failed", "error", err)
+	// Give VM a moment to stabilize after resume
+	time.Sleep(2 * time.Second)
+
+	// Switch to tty1 console (Ctrl+Alt+F1)
+	if err := SendKeyCommand(ctx, []string{"ctrl", "alt", "f1"}, instanceIP); err != nil {
+		slog.Warn("Failed to switch to console", "error", err)
 	}
+	time.Sleep(1 * time.Second)
+
+	// Press Enter to ensure we're at a prompt (auto-login should have logged us in)
+	if err := SendKeyCommand(ctx, []string{"ret"}, instanceIP); err != nil {
+		slog.Warn("Failed to send enter key", "error", err)
+	}
+	time.Sleep(500 * time.Millisecond)
+
+	// Type and execute systemctl restart systemd-networkd
+	slog.Info("Restarting systemd-networkd")
+	if err := SendTextViaKeys(ctx, "sudo systemctl restart systemd-networkd", instanceIP); err != nil {
+		slog.Warn("Failed to type systemd-networkd restart command", "error", err)
+	}
+	if err := SendKeyCommand(ctx, []string{"ret"}, instanceIP); err != nil {
+		slog.Warn("Failed to execute systemd-networkd restart", "error", err)
+	}
+	time.Sleep(2 * time.Second)
+
+	// Type and execute systemctl restart systemd-resolved
+	slog.Info("Restarting systemd-resolved")
+	if err := SendTextViaKeys(ctx, "sudo systemctl restart systemd-resolved", instanceIP); err != nil {
+		slog.Warn("Failed to type systemd-resolved restart command", "error", err)
+	}
+	if err := SendKeyCommand(ctx, []string{"ret"}, instanceIP); err != nil {
+		slog.Warn("Failed to execute systemd-resolved restart", "error", err)
+	}
+	time.Sleep(1 * time.Second)
+
+	// Type and execute systemctl restart ssh
+	slog.Info("Restarting SSH service")
+	if err := SendTextViaKeys(ctx, "sudo systemctl restart ssh", instanceIP); err != nil {
+		slog.Warn("Failed to type ssh restart command", "error", err)
+	}
+	if err := SendKeyCommand(ctx, []string{"ret"}, instanceIP); err != nil {
+		slog.Warn("Failed to execute ssh restart", "error", err)
+	}
+	time.Sleep(2 * time.Second)
+
+	slog.Info("Network services restarted via sendkey")
 
 	// Track timing for resume process
 	resumeStartTime := time.Now()

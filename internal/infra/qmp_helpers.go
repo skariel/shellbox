@@ -5,9 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"shellbox/internal/sshutil"
 	"strings"
 	"time"
+
+	"shellbox/internal/sshutil"
 )
 
 // QMPResponse represents a response from QEMU Machine Protocol
@@ -328,29 +329,68 @@ func CheckMigrationStatus(ctx context.Context, instanceIP string) (*MigrationSta
 	return nil, fmt.Errorf("migration status not found in response")
 }
 
-// ExecuteGuestPing checks if the QEMU guest agent is responsive
-func ExecuteGuestPing(ctx context.Context, instanceIP string) error {
-	pingCmd := `{"execute":"guest-ping"}`
+// Guest agent functions removed - using sendkey approach instead
 
-	responses, err := executeQMPCommands(ctx, []string{pingCmd}, instanceIP)
+// SendKeyCommand sends a key or key combination via QMP
+func SendKeyCommand(ctx context.Context, keys []string, instanceIP string) error {
+	// Build the keys array for QMP
+	var keyObjs []string
+	for _, key := range keys {
+		keyObjs = append(keyObjs, fmt.Sprintf(`{"type":"qcode","data":"%s"}`, key))
+	}
+
+	keyCmd := fmt.Sprintf(`{"execute":"send-key", "arguments":{"keys":[%s]}}`, strings.Join(keyObjs, ","))
+
+	responses, err := executeQMPCommands(ctx, []string{keyCmd}, instanceIP)
 	if err != nil {
-		return fmt.Errorf("failed to execute guest-ping: %w", err)
+		return fmt.Errorf("failed to send key command: %w", err)
 	}
 
-	// Check for successful execution
-	if err := checkQMPSuccess(responses); err != nil {
-		return fmt.Errorf("guest-ping failed: %w", err)
-	}
-
-	return nil
+	return checkQMPSuccess(responses)
 }
 
-// ExecuteGuestSetTime synchronizes the guest time
-func ExecuteGuestSetTime(ctx context.Context, instanceIP string) error {
-	setTimeCmd := `{"execute":"guest-set-time"}`
+// SendTextViaKeys sends text by converting each character to sendkey commands
+func SendTextViaKeys(ctx context.Context, text string, instanceIP string) error {
+	// Character to QEMU key mapping
+	charToKey := map[rune][]string{
+		'a': {"a"}, 'b': {"b"}, 'c': {"c"}, 'd': {"d"}, 'e': {"e"},
+		'f': {"f"}, 'g': {"g"}, 'h': {"h"}, 'i': {"i"}, 'j': {"j"},
+		'k': {"k"}, 'l': {"l"}, 'm': {"m"}, 'n': {"n"}, 'o': {"o"},
+		'p': {"p"}, 'q': {"q"}, 'r': {"r"}, 's': {"s"}, 't': {"t"},
+		'u': {"u"}, 'v': {"v"}, 'w': {"w"}, 'x': {"x"}, 'y': {"y"},
+		'z': {"z"},
+		'A': {"shift", "a"}, 'B': {"shift", "b"}, 'C': {"shift", "c"},
+		'D': {"shift", "d"}, 'E': {"shift", "e"}, 'F': {"shift", "f"},
+		'G': {"shift", "g"}, 'H': {"shift", "h"}, 'I': {"shift", "i"},
+		'J': {"shift", "j"}, 'K': {"shift", "k"}, 'L': {"shift", "l"},
+		'M': {"shift", "m"}, 'N': {"shift", "n"}, 'O': {"shift", "o"},
+		'P': {"shift", "p"}, 'Q': {"shift", "q"}, 'R': {"shift", "r"},
+		'S': {"shift", "s"}, 'T': {"shift", "t"}, 'U': {"shift", "u"},
+		'V': {"shift", "v"}, 'W': {"shift", "w"}, 'X': {"shift", "x"},
+		'Y': {"shift", "y"}, 'Z': {"shift", "z"},
+		'0': {"0"}, '1': {"1"}, '2': {"2"}, '3': {"3"}, '4': {"4"},
+		'5': {"5"}, '6': {"6"}, '7': {"7"}, '8': {"8"}, '9': {"9"},
+		' ': {"spc"}, '-': {"minus"}, '.': {"dot"}, '/': {"slash"},
+		':': {"shift", "semicolon"}, ';': {"semicolon"},
+		'=': {"equal"}, '_': {"shift", "minus"},
+		'\n': {"ret"}, '\t': {"tab"},
+	}
 
-	// This command might fail if guest agent isn't ready, so we don't check for errors
-	_, _ = executeQMPCommands(ctx, []string{setTimeCmd}, instanceIP)
+	for _, char := range text {
+		keys, ok := charToKey[char]
+		if !ok {
+			// Skip unsupported characters
+			slog.Warn("Unsupported character in sendkey", "char", string(char))
+			continue
+		}
+
+		if err := SendKeyCommand(ctx, keys, instanceIP); err != nil {
+			return fmt.Errorf("failed to send key for char %c: %w", char, err)
+		}
+
+		// Small delay between keystrokes
+		time.Sleep(50 * time.Millisecond)
+	}
 
 	return nil
 }
