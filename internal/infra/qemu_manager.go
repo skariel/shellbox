@@ -149,7 +149,7 @@ if pgrep -f qemu-system-x86_64 > /dev/null; then
     echo "Waiting for guest agent..."
     AGENT_READY=false
     for i in {1..10}; do
-        if echo '{"execute":"guest-ping"}' | sudo socat - UNIX-CONNECT:` + QEMUMonitorSocket + ` 2>/dev/null | grep -q "return"; then
+        if echo '{"execute":"guest-ping"}' | sudo socat - UNIX-CONNECT:` + QEMUMonitorSocket + ` 2>/dev/null | grep -E -q '"return"[[:space:]]*:[[:space:]]*\{[[:space:]]*\}'; then
             AGENT_READY=true
             echo "Guest agent is ready"
             break
@@ -246,12 +246,10 @@ sudo pkill qemu-system-x86_64 || true
 func (qm *QEMUManager) waitForQEMUSSH(ctx context.Context, instanceIP string) error {
 	return RetryOperation(ctx, func(ctx context.Context) error {
 		// First check if guest agent is responsive (faster than SSH)
-		guestPingCmd := fmt.Sprintf(`(echo '{"execute":"qmp_capabilities"}'; echo '{"execute":"guest-ping"}') | sudo socat - UNIX-CONNECT:%s 2>/dev/null | grep -q '"return":{}'`, QEMUMonitorSocket)
-		if err := sshutil.ExecuteCommand(ctx, guestPingCmd, AdminUsername, instanceIP); err == nil {
+		if err := ExecuteGuestPing(ctx, instanceIP); err == nil {
 			slog.Debug("Guest agent is responsive")
 			// If guest agent works, sync time one more time
-			syncTimeCmd := fmt.Sprintf(`(echo '{"execute":"qmp_capabilities"}'; echo '{"execute":"guest-set-time"}') | sudo socat - UNIX-CONNECT:%s 2>/dev/null || true`, QEMUMonitorSocket)
-			_ = sshutil.ExecuteCommand(ctx, syncTimeCmd, AdminUsername, instanceIP)
+			_ = ExecuteGuestSetTime(ctx, instanceIP)
 		}
 
 		// Test SSH connection directly to the QEMU VM from bastion

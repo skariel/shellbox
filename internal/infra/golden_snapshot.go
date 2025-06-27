@@ -464,43 +464,32 @@ sleep 0.1
 	// Stopping the VM before migration results in an empty state file because there's no active state to save.
 
 	// Save the complete VM state using migrate with QMP
-	// First create a temporary file as root, then use it for migration
-	saveStateCmd := fmt.Sprintf(`
-# Create temp file for state with proper permissions
+	// First create the state file with proper permissions
+	createStateFileCmd := fmt.Sprintf(`
 sudo touch %s
 sudo chmod 666 %s
 
-# Save VM state using file:// URI which is more reliable
-# First check that QEMU is still running
+# Verify QEMU is still running
 if ! pgrep -f qemu-system-x86_64 > /dev/null; then
     echo "ERROR: QEMU is not running!"
     exit 1
 fi
+`, QEMUStatePath, QEMUStatePath)
 
-# Send migrate command and capture full response
-MIGRATE_RESPONSE=$((echo '{"execute":"qmp_capabilities"}'; sleep 0.5; echo '{"execute":"migrate", "arguments":{"uri":"exec:cat>%s"}}'; sleep 0.5) | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock 2>&1)
-echo "Full migrate response: $MIGRATE_RESPONSE"
-
-# Check if migrate command was accepted
-if echo "$MIGRATE_RESPONSE" | grep -q '"return":{}'; then
-    echo "Migrate command accepted"
-else
-    echo "ERROR: Migrate command failed"
-    echo "$MIGRATE_RESPONSE"
-    exit 1
-fi
-`, QEMUStatePath, QEMUStatePath, QEMUStatePath)
-	saveOutput, saveErr := sshutil.ExecuteCommandWithOutput(ctx, saveStateCmd, AdminUsername, tempBox.PrivateIP)
-	slog.Info("Save state command sent", "output", saveOutput, "error", saveErr)
-
-	// Check if there was an error
-	if saveErr != nil {
-		return fmt.Errorf("failed to save VM state: %w, output: %s", saveErr, saveOutput)
+	if _, err := sshutil.ExecuteCommandWithOutput(ctx, createStateFileCmd, AdminUsername, tempBox.PrivateIP); err != nil {
+		return fmt.Errorf("failed to create state file: %w", err)
 	}
+
+	// Execute migration command using QMP helper
+	slog.Info("Executing migration command")
+	if err := ExecuteMigrationCommand(ctx, tempBox.PrivateIP, QEMUStatePath); err != nil {
+		return fmt.Errorf("failed to execute migration: %w", err)
+	}
+	slog.Info("Migration command accepted successfully")
 
 	// Wait for migration to complete using QMP
 	waitMigrationCmd := fmt.Sprintf(`
-for i in {1..60}; do
+for i in {1..300}; do
     RESPONSE=$((echo '{"execute":"qmp_capabilities"}'; sleep 0.1; echo '{"execute":"query-migrate"}'; sleep 0.1) | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock 2>&1)
     
     # Debug: show raw response on first iteration
