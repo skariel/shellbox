@@ -240,13 +240,6 @@ sudo pkill qemu-system-x86_64 || true
 // waitForQEMUSSH waits for QEMU VM to be SSH-accessible
 func (qm *QEMUManager) waitForQEMUSSH(ctx context.Context, instanceIP string) error {
 	return RetryOperation(ctx, func(ctx context.Context) error {
-		// First check if guest agent is responsive (faster than SSH)
-		if err := ExecuteGuestPing(ctx, instanceIP); err == nil {
-			slog.Debug("Guest agent is responsive")
-			// If guest agent works, sync time one more time
-			_ = ExecuteGuestSetTime(ctx, instanceIP)
-		}
-
 		// Test SSH connection directly to the QEMU VM from bastion
 		cmd := exec.CommandContext(ctx, "ssh",
 			"-o", "ConnectTimeout=2",
