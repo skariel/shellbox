@@ -487,40 +487,21 @@ fi
 	}
 	slog.Info("Migration command accepted successfully")
 
-	// Wait for migration to complete using QMP
-	waitMigrationCmd := fmt.Sprintf(`
-for i in {1..300}; do
-    RESPONSE=$((echo '{"execute":"qmp_capabilities"}'; sleep 0.1; echo '{"execute":"query-migrate"}'; sleep 0.1) | sudo socat - UNIX-CONNECT:/tmp/qemu-monitor.sock 2>&1)
-    
-    # Debug: show raw response on first iteration
-    if [ $i -eq 1 ]; then
-        echo "First query-migrate response: $RESPONSE"
-    fi
-    
-    # Extract status from the JSON response
-    STATUS=$(echo "$RESPONSE" | grep -o '"status":"[^"]*"' | tail -1 | cut -d'"' -f4)
-    
-    if [ -z "$STATUS" ]; then
-        echo "Migration status: <empty> (iteration $i)"
-    else
-        echo "Migration status: $STATUS"
-    fi
-    if [ "$STATUS" = "completed" ]; then
-        echo "Migration completed successfully"
-        # Force sync to ensure data is written to disk
-        sync
-        # Also sync the specific file to ensure it's fully written
-        sudo dd if=%s of=/dev/null iflag=sync 2>/dev/null || true
-        break
-    elif [ "$STATUS" = "failed" ]; then
-        echo "Migration failed!"
-        exit 1
-    fi
-    sleep 1
-done
+	// Wait for migration to complete using QMP with progress tracking
+	slog.Info("Waiting for migration to complete with progress tracking")
+	if err := WaitForMigrationWithProgress(ctx, tempBox.PrivateIP, 300); err != nil {
+		return fmt.Errorf("migration failed: %w", err)
+	}
+
+	// Force sync to ensure data is written to disk
+	syncCmd := fmt.Sprintf(`
+sync
+# Also sync the specific file to ensure it's fully written
+sudo dd if=%s of=/dev/null iflag=sync 2>/dev/null || true
 `, QEMUStatePath)
-	waitOutput, waitErr := sshutil.ExecuteCommandWithOutput(ctx, waitMigrationCmd, AdminUsername, tempBox.PrivateIP)
-	slog.Info("Migration wait completed", "output", waitOutput, "error", waitErr)
+	if _, err := sshutil.ExecuteCommandWithOutput(ctx, syncCmd, AdminUsername, tempBox.PrivateIP); err != nil {
+		slog.Warn("Failed to sync after migration", "error", err)
+	}
 
 	// Verify the state file was created and has content
 	verifyStateCmd := fmt.Sprintf(`

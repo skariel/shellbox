@@ -111,40 +111,50 @@ if pgrep -f qemu-system-x86_64 > /dev/null; then
     (
     echo '{"execute":"qmp_capabilities"}'
     sleep 0.5
+    # Set migration capabilities to match the source
+    echo '{"execute":"migrate-set-capabilities", "arguments":{"capabilities":[{"capability": "xbzrle", "state": false}, {"capability": "x-ignore-shared", "state": true}, {"capability": "auto-converge", "state": false}, {"capability": "postcopy-ram", "state": false}]}}'
+    sleep 0.5
     echo '{"execute":"migrate-incoming", "arguments":{"uri":"exec:cat ` + QEMUStatePath + `"}}'
     ) | sudo socat - UNIX-CONNECT:` + QEMUMonitorSocket + ` || true
     
-    # Wait for migration to complete (max 10 seconds)
-    TIMEOUT=30
-    ELAPSED=0
-    while [ $ELAPSED -lt $TIMEOUT ]; do
-        STATUS_JSON=$((echo '{"execute":"qmp_capabilities"}'; echo '{"execute":"query-migrate"}') | sudo socat - UNIX-CONNECT:` + QEMUMonitorSocket + ` 2>/dev/null || echo '{}')
-        STATUS=$(echo "$STATUS_JSON" | grep -o '"status":"[^"]*"' | cut -d'"' -f4)
-        if [ "$STATUS" = "completed" ]; then
-            echo "Migration completed successfully"
-            break
-        elif [ "$STATUS" = "failed" ]; then
-            echo "ERROR: Migration failed"
-            echo "Full status: $STATUS_JSON"
-            exit 1
-        fi
-        
-        sleep 1
-        ELAPSED=$((ELAPSED + 1))
-    done
-    
-    if [ $ELAPSED -ge $TIMEOUT ]; then
-        echo "ERROR: Migration timeout after ${TIMEOUT} seconds"
-        exit 1
+    # Mark end of bash script for migration - will use Go for progress tracking
+    echo "MIGRATION_INIT_COMPLETE"
+else
+    echo "ERROR: Failed to start QEMU"
+    # Check if log file exists and show any errors
+    if [ -f /mnt/userdata/qemu.log ]; then
+        echo "QEMU log contents:"
+        cat /mnt/userdata/qemu.log
+    else
+        echo "No QEMU log file found - process may have failed to start"
     fi
-    
-    # Resume the VM immediately
-    echo "Resuming VM execution..."
-    (echo '{"execute":"qmp_capabilities"}'; sleep 0.1; echo '{"execute":"cont"}') | sudo socat - UNIX-CONNECT:` + QEMUMonitorSocket + ` || true
-    
-    # Wait a moment for VM to stabilize
-    sleep 1
-    
+    exit 1
+fi
+`
+
+	slog.Info("Starting QEMU with volume", "instanceIP", instanceIP)
+	output, err := sshutil.ExecuteCommandWithOutput(ctx, startCmd, AdminUsername, instanceIP)
+	if err != nil {
+		slog.Error("Failed to start QEMU", "error", err, "output", output)
+		return fmt.Errorf("failed to start QEMU: %w", err)
+	}
+	slog.Info("QEMU start command completed", "output", output)
+
+	// Wait for migration to complete with progress tracking
+	slog.Info("Waiting for incoming migration to complete with progress tracking")
+	if err := WaitForMigrationWithProgress(ctx, instanceIP, 300); err != nil {
+		return fmt.Errorf("incoming migration failed: %w", err)
+	}
+
+	// Resume the VM after migration completes
+	resumeCmd := `(echo '{"execute":"qmp_capabilities"}'; sleep 0.1; echo '{"execute":"cont"}') | sudo socat - UNIX-CONNECT:` + QEMUMonitorSocket + ` || true`
+	if _, err := sshutil.ExecuteCommandWithOutput(ctx, resumeCmd, AdminUsername, instanceIP); err != nil {
+		slog.Warn("Failed to resume VM", "error", err)
+	}
+	slog.Info("VM resumed after migration")
+
+	// Now handle guest agent operations
+	guestOpsCmd := `
     # Wait for guest agent to be available (max 10 seconds)
     echo "Waiting for guest agent..."
     AGENT_READY=false
@@ -178,33 +188,12 @@ if pgrep -f qemu-system-x86_64 > /dev/null; then
     fi
     
     echo "VM resumed with network refresh"
-    
-    # Check if log file was created
-    if [ -f /mnt/userdata/qemu.log ]; then
-        echo "Log file created at /mnt/userdata/qemu.log"
-        echo "First few lines of QEMU output:"
-        head -n 5 /mnt/userdata/qemu.log || true
-    fi
-else
-    echo "ERROR: Failed to start QEMU"
-    # Check if log file exists and show any errors
-    if [ -f /mnt/userdata/qemu.log ]; then
-        echo "QEMU log contents:"
-        cat /mnt/userdata/qemu.log
-    else
-        echo "No QEMU log file found - process may have failed to start"
-    fi
-    exit 1
-fi
 `
 
-	slog.Info("Starting QEMU with volume", "instanceIP", instanceIP)
-	output, err := sshutil.ExecuteCommandWithOutput(ctx, startCmd, AdminUsername, instanceIP)
-	if err != nil {
-		slog.Error("Failed to start QEMU", "error", err, "output", output)
-		return fmt.Errorf("failed to start QEMU: %w", err)
+	// Execute guest operations
+	if _, err := sshutil.ExecuteCommandWithOutput(ctx, guestOpsCmd, AdminUsername, instanceIP); err != nil {
+		slog.Warn("Guest operations failed", "error", err)
 	}
-	slog.Info("QEMU start command completed", "output", output)
 
 	// Track timing for resume process
 	resumeStartTime := time.Now()

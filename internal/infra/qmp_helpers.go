@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"shellbox/internal/sshutil"
 	"strings"
+	"time"
 )
 
 // QMPResponse represents a response from QEMU Machine Protocol
@@ -126,6 +128,150 @@ func checkQMPSuccess(responses []QMPResponse) error {
 	}
 
 	return nil
+}
+
+// MigrationInfo represents detailed migration information
+type MigrationInfo struct {
+	Status           string `json:"status"`
+	TotalTime        int64  `json:"total-time,omitempty"`        // milliseconds
+	ExpectedDowntime int64  `json:"expected-downtime,omitempty"` // milliseconds
+	Downtime         int64  `json:"downtime,omitempty"`          // milliseconds
+	SetupTime        int64  `json:"setup-time,omitempty"`        // milliseconds
+	RAM              *struct {
+		Transferred    int64   `json:"transferred"`  // bytes
+		Remaining      int64   `json:"remaining"`    // bytes
+		Total          int64   `json:"total"`        // bytes
+		Duplicate      int64   `json:"duplicate"`    // pages
+		Skipped        int64   `json:"skipped"`      // pages
+		Normal         int64   `json:"normal"`       // pages
+		NormalBytes    int64   `json:"normal-bytes"` // bytes
+		DirtyPages     int64   `json:"dirty-pages-rate"`
+		MBps           float64 `json:"mbps"` // MB/s
+		DirtySyncCount int64   `json:"dirty-sync-count"`
+	} `json:"ram,omitempty"`
+}
+
+// GetMigrationInfo queries detailed migration information
+func GetMigrationInfo(ctx context.Context, instanceIP string) (*MigrationInfo, error) {
+	queryCmd := `{"execute":"query-migrate"}`
+
+	responses, err := executeQMPCommands(ctx, []string{queryCmd}, instanceIP)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query migration info: %w", err)
+	}
+
+	// Find the response with migration info
+	for _, resp := range responses {
+		if resp.Return != nil {
+			var info MigrationInfo
+			if err := json.Unmarshal(resp.Return, &info); err == nil {
+				return &info, nil
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("migration info not found in response")
+}
+
+// WaitForMigrationWithProgress waits for migration to complete with progress tracking
+func WaitForMigrationWithProgress(ctx context.Context, instanceIP string, timeoutSeconds int) error {
+	checkInterval := 100 * time.Millisecond
+	startTime := time.Now()
+	timeout := time.Duration(timeoutSeconds) * time.Second
+
+	var lastTransferred int64
+	var lastCheckTime time.Time
+	progressStallCount := 0
+
+	for {
+		if time.Since(startTime) > timeout {
+			return fmt.Errorf("migration timeout after %v", timeout)
+		}
+
+		info, err := GetMigrationInfo(ctx, instanceIP)
+		if err != nil {
+			// Don't fail immediately, migration might be in transition
+			time.Sleep(checkInterval)
+			continue
+		}
+
+		switch info.Status {
+		case "completed":
+			slog.Info("Migration completed successfully",
+				"totalTime", time.Duration(info.TotalTime)*time.Millisecond,
+				"downtime", time.Duration(info.Downtime)*time.Millisecond)
+			return nil
+
+		case "failed":
+			return fmt.Errorf("migration failed")
+
+		case "cancelled":
+			return fmt.Errorf("migration cancelled")
+
+		case "active":
+			// Track progress
+			if info.RAM != nil {
+				transferred := info.RAM.Transferred
+				remaining := info.RAM.Remaining
+				total := info.RAM.Total
+				speed := info.RAM.MBps
+
+				// Calculate progress percentage
+				var progress float64
+				if total > 0 {
+					progress = float64(transferred) / float64(total) * 100
+				}
+
+				// Check if progress is stalled
+				if lastTransferred > 0 && transferred == lastTransferred && time.Since(lastCheckTime) > 5*time.Second {
+					progressStallCount++
+					if progressStallCount > 3 {
+						slog.Warn("Migration progress stalled",
+							"transferred", transferred,
+							"remaining", remaining,
+							"stallDuration", time.Since(lastCheckTime))
+					}
+				} else if transferred != lastTransferred {
+					progressStallCount = 0
+				}
+
+				// Log progress every second or when significant progress is made
+				shouldLog := time.Since(lastCheckTime) >= time.Second ||
+					(lastTransferred > 0 && transferred-lastTransferred > 100*1024*1024) // 100MB progress
+
+				if shouldLog {
+					slog.Debug("Migration progress",
+						"status", info.Status,
+						"progress", fmt.Sprintf("%.1f%%", progress),
+						"transferred", fmt.Sprintf("%.1f MB", float64(transferred)/1024/1024),
+						"remaining", fmt.Sprintf("%.1f MB", float64(remaining)/1024/1024),
+						"speed", fmt.Sprintf("%.1f MB/s", speed),
+						"elapsed", time.Since(startTime).Round(time.Second))
+					lastCheckTime = time.Now()
+				}
+
+				lastTransferred = transferred
+
+				// Adaptive polling: check more frequently when near completion
+				if progress > 90 {
+					checkInterval = 50 * time.Millisecond
+				} else if progress > 75 {
+					checkInterval = 100 * time.Millisecond
+				} else if progress > 50 {
+					checkInterval = 200 * time.Millisecond
+				} else {
+					checkInterval = 500 * time.Millisecond
+				}
+			}
+		}
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(checkInterval):
+			// Continue checking
+		}
+	}
 }
 
 // ExecuteMigrationCommand executes a migration command and checks for success
