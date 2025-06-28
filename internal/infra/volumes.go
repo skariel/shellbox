@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
@@ -210,31 +209,6 @@ func DeleteVolume(ctx context.Context, clients *AzureClients, resourceGroupName,
 // FindVolumesByRole returns volume names matching the given role tag.
 // It filters disks based on their role tag and returns their names for further operations.
 // If suffix is provided, it only returns volumes whose names contain that suffix.
-func FindVolumesByRole(ctx context.Context, clients *AzureClients, resourceGroupName, role string, suffix ...string) ([]string, error) {
-	var volumes []string
-
-	pager := clients.DisksClient.NewListByResourceGroupPager(resourceGroupName, nil)
-	for pager.More() {
-		page, err := pager.NextPage(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("listing volumes: %w", err)
-		}
-
-		for _, disk := range page.Value {
-			if disk.Tags != nil {
-				if roleTag, exists := disk.Tags[TagKeyRole]; exists && *roleTag == role {
-					// If suffix filter is provided, only include volumes with that suffix in the name
-					if len(suffix) > 0 && !strings.Contains(*disk.Name, suffix[0]) {
-						continue
-					}
-					volumes = append(volumes, *disk.Name)
-				}
-			}
-		}
-	}
-
-	return volumes, nil
-}
 
 // VolumeTagsToMap converts VolumeTags struct to Azure tags map format
 func VolumeTagsToMap(tags *VolumeTags) map[string]*string {

@@ -253,70 +253,6 @@ func handleActiveMigration(info *MigrationInfo, progress *migrationProgress, sta
 }
 
 // WaitForMigrationWithProgress waits for migration to complete with progress tracking
-func WaitForMigrationWithProgress(ctx context.Context, instanceIP string, timeoutSeconds int) error {
-	checkInterval := 100 * time.Millisecond
-	startTime := time.Now()
-	timeout := time.Duration(timeoutSeconds) * time.Second
-	progress := &migrationProgress{}
-
-	for {
-		if time.Since(startTime) > timeout {
-			return fmt.Errorf("migration timeout after %v", timeout)
-		}
-
-		info, err := GetMigrationInfo(ctx, instanceIP)
-		if err != nil {
-			// Don't fail immediately, migration might be in transition
-			time.Sleep(checkInterval)
-			continue
-		}
-
-		// Log initial status on first check
-		if progress.lastCheckTime.IsZero() {
-			slog.Info("Initial migration status check", "status", info.Status)
-			progress.lastCheckTime = time.Now()
-		}
-
-		switch info.Status {
-		case "completed":
-			slog.Info("Migration completed successfully",
-				"totalTime", time.Duration(info.TotalTime)*time.Millisecond,
-				"downtime", time.Duration(info.Downtime)*time.Millisecond)
-			return nil
-
-		case "failed":
-			return fmt.Errorf("migration failed")
-
-		case "cancelled":
-			return fmt.Errorf("migration cancelled")
-
-		case "active":
-			checkInterval = handleActiveMigration(info, progress, startTime)
-
-		case "none", "setup":
-			// Migration is initializing
-			slog.Debug("Migration initializing", "status", info.Status)
-			checkInterval = 500 * time.Millisecond
-
-		default:
-			// Handle empty status (migration not started) or unknown status
-			if info.Status == "" {
-				slog.Debug("Migration status is empty, migration may not have started yet")
-			} else {
-				slog.Debug("Unknown migration status", "status", info.Status)
-			}
-			// Use a reasonable check interval for initial state
-			checkInterval = 500 * time.Millisecond
-		}
-
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(checkInterval):
-			// Continue checking
-		}
-	}
-}
 
 // ExecuteMigrationCommand executes a migration command and checks for success
 func ExecuteMigrationCommand(ctx context.Context, instanceIP, stateFile string) error {
@@ -365,26 +301,6 @@ func ExecuteMigrationCommand(ctx context.Context, instanceIP, stateFile string) 
 }
 
 // CheckMigrationStatus queries the migration status
-func CheckMigrationStatus(ctx context.Context, instanceIP string) (*MigrationStatus, error) {
-	queryCmd := `{"execute":"query-migrate"}`
-
-	responses, err := executeQMPCommands(ctx, []string{queryCmd}, instanceIP)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query migration status: %w", err)
-	}
-
-	// Find the response with migration status
-	for _, resp := range responses {
-		if resp.Return != nil {
-			var status MigrationStatus
-			if err := json.Unmarshal(resp.Return, &status); err == nil && status.Status != "" {
-				return &status, nil
-			}
-		}
-	}
-
-	return nil, fmt.Errorf("migration status not found in response")
-}
 
 // Guest agent functions removed - using sendkey approach instead
 
@@ -407,47 +323,3 @@ func SendKeyCommand(ctx context.Context, keys []string, instanceIP string) error
 }
 
 // SendTextViaKeys sends text by converting each character to sendkey commands
-func SendTextViaKeys(ctx context.Context, text, instanceIP string) error {
-	// Character to QEMU key mapping
-	charToKey := map[rune][]string{
-		'a': {"a"}, 'b': {"b"}, 'c': {"c"}, 'd': {"d"}, 'e': {"e"},
-		'f': {"f"}, 'g': {"g"}, 'h': {"h"}, 'i': {"i"}, 'j': {"j"},
-		'k': {"k"}, 'l': {"l"}, 'm': {"m"}, 'n': {"n"}, 'o': {"o"},
-		'p': {"p"}, 'q': {"q"}, 'r': {"r"}, 's': {"s"}, 't': {"t"},
-		'u': {"u"}, 'v': {"v"}, 'w': {"w"}, 'x': {"x"}, 'y': {"y"},
-		'z': {"z"},
-		'A': {"shift", "a"}, 'B': {"shift", "b"}, 'C': {"shift", "c"},
-		'D': {"shift", "d"}, 'E': {"shift", "e"}, 'F': {"shift", "f"},
-		'G': {"shift", "g"}, 'H': {"shift", "h"}, 'I': {"shift", "i"},
-		'J': {"shift", "j"}, 'K': {"shift", "k"}, 'L': {"shift", "l"},
-		'M': {"shift", "m"}, 'N': {"shift", "n"}, 'O': {"shift", "o"},
-		'P': {"shift", "p"}, 'Q': {"shift", "q"}, 'R': {"shift", "r"},
-		'S': {"shift", "s"}, 'T': {"shift", "t"}, 'U': {"shift", "u"},
-		'V': {"shift", "v"}, 'W': {"shift", "w"}, 'X': {"shift", "x"},
-		'Y': {"shift", "y"}, 'Z': {"shift", "z"},
-		'0': {"0"}, '1': {"1"}, '2': {"2"}, '3': {"3"}, '4': {"4"},
-		'5': {"5"}, '6': {"6"}, '7': {"7"}, '8': {"8"}, '9': {"9"},
-		' ': {"spc"}, '-': {"minus"}, '.': {"dot"}, '/': {"slash"},
-		':': {"shift", "semicolon"}, ';': {"semicolon"},
-		'=': {"equal"}, '_': {"shift", "minus"}, '&': {"shift", "7"},
-		'\n': {"ret"}, '\t': {"tab"},
-	}
-
-	for _, char := range text {
-		keys, ok := charToKey[char]
-		if !ok {
-			// Skip unsupported characters
-			slog.Warn("Unsupported character in sendkey", "char", string(char))
-			continue
-		}
-
-		if err := SendKeyCommand(ctx, keys, instanceIP); err != nil {
-			return fmt.Errorf("failed to send key for char %c: %w", char, err)
-		}
-
-		// Small delay between keystrokes
-		time.Sleep(10 * time.Millisecond)
-	}
-
-	return nil
-}

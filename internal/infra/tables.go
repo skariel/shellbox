@@ -224,28 +224,5 @@ func WriteResourceRegistry(ctx context.Context, clients *AzureClients, resource 
 }
 
 // UpdateResourceRegistry updates an existing entry in the ResourceRegistry table
-func UpdateResourceRegistry(ctx context.Context, clients *AzureClients, resource *ResourceRegistryEntity) error {
-	namer := NewResourceNamer(clients.Suffix)
-	tableName := namer.ResourceRegistryTableName()
-	return upsertTableEntity(ctx, clients, tableName, resource)
-}
 
 // CleanupTestTables deletes test tables with the given suffix (for test cleanup)
-func CleanupTestTables(ctx context.Context, clients *AzureClients, suffix string) error {
-	if clients.TableClient == nil {
-		return fmt.Errorf("table client not available")
-	}
-
-	namer := NewResourceNamer(suffix)
-	tableNames := []string{namer.EventLogTableName(), namer.ResourceRegistryTableName()}
-
-	for _, tableName := range tableNames {
-		_, err := clients.TableClient.DeleteTable(ctx, tableName, nil)
-		if err != nil {
-			// Log but don't fail on cleanup errors
-			return fmt.Errorf("failed to delete table %s: %w", tableName, err)
-		}
-	}
-
-	return nil
-}

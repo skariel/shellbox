@@ -71,10 +71,6 @@ func (r *ResourceNamer) BoxOSDiskName(boxID string) string {
 	return fmt.Sprintf("shellbox-%s-box-%s-os-disk", r.suffix, boxID)
 }
 
-func (r *ResourceNamer) GoldenSnapshotName() string {
-	return fmt.Sprintf("shellbox-%s-golden-snapshot", r.suffix)
-}
-
 func (r *ResourceNamer) BoxDataDiskName(boxID string) string {
 	return fmt.Sprintf("shellbox-%s-box-%s-data-disk", r.suffix, boxID)
 }

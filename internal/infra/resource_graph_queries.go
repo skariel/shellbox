@@ -180,18 +180,6 @@ func (rq *ResourceGraphQueries) GetVolumesByUserAndBox(ctx context.Context, user
 }
 
 // GetOldestFreeInstances returns oldest free instances for scale-down decisions
-func (rq *ResourceGraphQueries) GetOldestFreeInstances(ctx context.Context, limit int) ([]ResourceInfo, error) {
-	query := fmt.Sprintf(queryOldestFreeResources,
-		AzureResourceTypeVM,
-		TagKeyRole,
-		ResourceRoleInstance,
-		TagKeyStatus,
-		rq.resourceGroup,
-		TagKeyLastUsed,
-		limit)
-
-	return rq.executeResourceQuery(ctx, query)
-}
 
 // GetOldestFreeVolumes returns oldest free volumes for scale-down decisions
 func (rq *ResourceGraphQueries) GetOldestFreeVolumes(ctx context.Context, limit int) ([]ResourceInfo, error) {
@@ -208,26 +196,8 @@ func (rq *ResourceGraphQueries) GetOldestFreeVolumes(ctx context.Context, limit 
 }
 
 // GetAllInstances returns all instances regardless of status
-func (rq *ResourceGraphQueries) GetAllInstances(ctx context.Context) ([]ResourceInfo, error) {
-	query := fmt.Sprintf(queryResourcesByRole,
-		AzureResourceTypeVM,
-		TagKeyRole,
-		ResourceRoleInstance,
-		rq.resourceGroup)
-
-	return rq.executeResourceQuery(ctx, query)
-}
 
 // GetAllVolumes returns all volumes regardless of status
-func (rq *ResourceGraphQueries) GetAllVolumes(ctx context.Context) ([]ResourceInfo, error) {
-	query := fmt.Sprintf(queryResourcesByRole,
-		AzureResourceTypeDisk,
-		TagKeyRole,
-		ResourceRoleVolume,
-		rq.resourceGroup)
-
-	return rq.executeResourceQuery(ctx, query)
-}
 
 // GetRunningInstancesByStatus returns running instances with specific status
 func (rq *ResourceGraphQueries) GetRunningInstancesByStatus(ctx context.Context, status string) ([]ResourceInfo, error) {

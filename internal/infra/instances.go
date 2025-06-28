@@ -345,20 +345,6 @@ func createInstanceVM(ctx context.Context, clients *AzureClients, vmName, nicID 
 
 // DeallocateBox deallocates a box VM.
 // It stops the VM and releases compute resources while preserving the VM configuration.
-func DeallocateBox(ctx context.Context, clients *AzureClients, vmID string) error {
-	pollOptions := &DefaultPollOptions
-
-	poller, err := clients.ComputeClient.BeginDeallocate(ctx, clients.ResourceGroupName, vmID, nil)
-	if err != nil {
-		return fmt.Errorf("starting VM deallocation: %w", err)
-	}
-
-	_, err = poller.PollUntilDone(ctx, pollOptions)
-	if err != nil {
-		return fmt.Errorf("deallocating VM: %w", err)
-	}
-	return nil
-}
 
 // GeneralizeVM generalizes a VM by running waagent -deprovision+user and then marking it as generalized in Azure
 func GeneralizeVM(ctx context.Context, clients *AzureClients, resourceGroupName, vmName string) error {
@@ -434,29 +420,6 @@ runcmd:
 
 // FindInstancesByStatus returns instance IDs matching the given status.
 // It filters VMs based on their status tag and returns their resource IDs.
-func FindInstancesByStatus(ctx context.Context, clients *AzureClients, status string) ([]string, error) {
-	filter := fmt.Sprintf("tagName eq 'status' and tagValue eq '%s'", status)
-
-	pager := clients.ComputeClient.NewListPager(clients.ResourceGroupName, &armcompute.VirtualMachinesClientListOptions{
-		Filter: &filter,
-	})
-	var instances []string
-
-	for pager.More() {
-		page, err := pager.NextPage(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("listing VMs: %w", err)
-		}
-
-		for _, vm := range page.Value {
-			if vm.Tags != nil && vm.Tags[TagKeyStatus] != nil && *vm.Tags[TagKeyStatus] == status {
-				instances = append(instances, *vm.ID)
-			}
-		}
-	}
-
-	return instances, nil
-}
 
 // instanceResourceInfo holds information about resources associated with an instance
 type instanceResourceInfo struct {
