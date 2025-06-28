@@ -97,6 +97,7 @@ packages:
   - rng-tools
   - net-tools
   - cloud-init
+  - qemu-guest-agent
 bootcmd:
   - systemctl restart systemd-resolved
 write_files:
@@ -116,6 +117,8 @@ runcmd:
   - systemctl start --no-block ssh
   - systemctl enable rng-tools
   - systemctl start rng-tools
+  - systemctl enable qemu-guest-agent
+  - systemctl start qemu-guest-agent
   # Configure auto-login for tty1
   - mkdir -p /etc/systemd/system/getty@tty1.service.d/
   - |
@@ -152,6 +155,9 @@ sudo qemu-system-x86_64 \
    -device virtio-rng-pci,rng=rng0 -object rng-random,id=rng0,filename=/dev/urandom \
    -device virtio-net-pci,netdev=net0 \
    -netdev user,id=net0,hostfwd=tcp::%d-:22,dns=8.8.8.8 \
+   -device virtio-serial \
+   -device virtserialport,chardev=qga0,name=org.qemu.guest_agent.0 \
+   -chardev socket,path=%s,server=on,wait=off,id=qga0 \
    -nographic \
    -serial file:%s/qemu-serial.log \
    -qmp unix:/tmp/qemu-monitor.sock,server,nowait`,
@@ -163,6 +169,7 @@ sudo qemu-system-x86_64 \
 		config.WorkingDir,
 		config.WorkingDir, config.WorkingDir,
 		config.SSHPort,
+		QEMUGuestAgentSocket,
 		config.WorkingDir)
 
 	return base64.StdEncoding.EncodeToString([]byte(script)), nil

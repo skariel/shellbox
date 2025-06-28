@@ -117,13 +117,14 @@ const (
 
 // File system paths
 const (
-	QEMUMemoryPath    = "/mnt/userdata/qemu-memory/ubuntu-mem"
-	QEMUStatePath     = "/mnt/userdata/qemu-memory/vm-state"
-	QEMUDisksPath     = "/mnt/userdata/qemu-disks"
-	QEMUBaseDiskPath  = "/mnt/userdata/qemu-disks/ubuntu-base.qcow2"
-	QEMUCloudInitPath = "/mnt/userdata/qemu-disks/cloud-init.iso"
-	QEMUMonitorSocket = "/tmp/qemu-monitor.sock"
-	TempConfigPath    = "/tmp/tablestorage.json"
+	QEMUMemoryPath       = "/mnt/userdata/qemu-memory/ubuntu-mem"
+	QEMUStatePath        = "/mnt/userdata/qemu-memory/vm-state"
+	QEMUDisksPath        = "/mnt/userdata/qemu-disks"
+	QEMUBaseDiskPath     = "/mnt/userdata/qemu-disks/ubuntu-base.qcow2"
+	QEMUCloudInitPath    = "/mnt/userdata/qemu-disks/cloud-init.iso"
+	QEMUMonitorSocket    = "/tmp/qemu-monitor.sock"
+	QEMUGuestAgentSocket = "/tmp/qga.sock"
+	TempConfigPath       = "/tmp/tablestorage.json"
 )
 
 // Azure resource types for Resource Graph queries

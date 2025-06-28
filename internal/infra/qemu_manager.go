@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"shellbox/internal/sshutil"
+	"strings"
 	"time"
 )
 
@@ -88,6 +89,9 @@ sudo sh -c 'nohup qemu-system-x86_64 \
    -object rng-random,id=rng0,filename=/dev/urandom \
    -device virtio-net-pci,netdev=net0 \
    -netdev user,id=net0,hostfwd=tcp::2222-:22,dns=8.8.8.8 \
+   -device virtio-serial \
+   -device virtserialport,chardev=qga0,name=org.qemu.guest_agent.0 \
+   -chardev socket,path=` + QEMUGuestAgentSocket + `,server=on,wait=off,id=qga0 \
    -nographic \
    -serial file:/mnt/userdata/qemu-serial.log \
    -qmp unix:` + QEMUMonitorSocket + `,server,nowait \
@@ -165,36 +169,34 @@ fi
 	}
 	slog.Info("VM resumed after migration")
 
-	// Use sendkey to refresh network configuration
-	slog.Info("Using sendkey to refresh network configuration")
+	// Use guest agent to refresh network configuration
+	slog.Info("Using guest agent to refresh network configuration")
 
 	// Give VM a moment to stabilize after resume
 	time.Sleep(300 * time.Millisecond)
 
-	// Switch to tty1 console (Ctrl+Alt+F1)
-	if err := SendKeyCommand(ctx, []string{"ctrl", "alt", "f1"}, instanceIP); err != nil {
-		slog.Warn("Failed to switch to console", "error", err)
+	// Release DHCP lease
+	slog.Info("Releasing DHCP lease")
+	if err := qm.SendGuestExecCommand(ctx, instanceIP, "/sbin/dhclient", []string{"-r", "eth0"}); err != nil {
+		// Fallback to alternative path if /sbin/dhclient doesn't exist
+		if err := qm.SendGuestExecCommand(ctx, instanceIP, "/usr/sbin/dhclient", []string{"-r", "eth0"}); err != nil {
+			slog.Warn("Failed to release DHCP lease", "error", err)
+		}
 	}
-	time.Sleep(200 * time.Millisecond)
 
-	// Press Enter to ensure we're at a prompt (auto-login should have logged us in)
-	if err := SendKeyCommand(ctx, []string{"ret"}, instanceIP); err != nil {
-		slog.Warn("Failed to send enter key", "error", err)
-	}
-	time.Sleep(50 * time.Millisecond)
+	// Brief pause between release and renew
+	time.Sleep(100 * time.Millisecond)
 
-	// Use dhclient to release and renew DHCP lease (faster than service restart)
-	// Using semicolon to avoid && character issues
+	// Renew DHCP lease
 	slog.Info("Renewing DHCP lease")
-	if err := SendTextViaKeys(ctx, "sudo dhclient -r eth0; sudo dhclient eth0", instanceIP); err != nil {
-		slog.Warn("Failed to type dhclient command", "error", err)
+	if err := qm.SendGuestExecCommand(ctx, instanceIP, "/sbin/dhclient", []string{"eth0"}); err != nil {
+		// Fallback to alternative path if /sbin/dhclient doesn't exist
+		if err := qm.SendGuestExecCommand(ctx, instanceIP, "/usr/sbin/dhclient", []string{"eth0"}); err != nil {
+			slog.Warn("Failed to renew DHCP lease", "error", err)
+		}
 	}
-	if err := SendKeyCommand(ctx, []string{"ret"}, instanceIP); err != nil {
-		slog.Warn("Failed to execute dhclient", "error", err)
-	}
-	time.Sleep(1 * time.Second) // dhclient is usually quick
 
-	slog.Info("Network refresh completed via sendkey")
+	slog.Info("Network refresh completed via guest agent")
 
 	// Skip SSH connectivity test - the actual user connection will handle retries
 	// This eliminates redundant SSH testing and saves ~4-5 seconds
@@ -219,5 +221,65 @@ sudo pkill qemu-system-x86_64 || true
 	}
 
 	slog.Info("QEMU stopped", "instanceIP", instanceIP)
+	return nil
+}
+
+// SendGuestExecCommand executes a command inside the guest VM using QEMU Guest Agent
+func (qm *QEMUManager) SendGuestExecCommand(ctx context.Context, instanceIP, command string, args []string) error {
+	// Build the guest-exec JSON command
+	argsJSON := ""
+	if len(args) > 0 {
+		quotedArgs := make([]string, len(args))
+		for i, arg := range args {
+			quotedArgs[i] = fmt.Sprintf("%q", arg)
+		}
+		argsJSON = fmt.Sprintf(`, "arg": [%s]`, strings.Join(quotedArgs, ", "))
+	}
+
+	guestExecCmd := fmt.Sprintf(`
+# Wait for guest agent socket to be available
+SOCKET_WAIT=0
+while [ ! -S %s ]; do
+    if [ $SOCKET_WAIT -ge 5 ]; then
+        echo "ERROR: Guest agent socket not available after 5 seconds"
+        exit 1
+    fi
+    sleep 1
+    SOCKET_WAIT=$((SOCKET_WAIT + 1))
+done
+
+# Execute command via guest agent
+EXEC_RESULT=$(echo '{"execute":"guest-exec", "arguments":{"path":"%s"%s, "capture-output":true}}' | sudo socat - UNIX-CONNECT:%s 2>&1)
+
+# Extract PID from result
+PID=$(echo "$EXEC_RESULT" | grep -o '"pid":[0-9]*' | cut -d: -f2)
+
+if [ -z "$PID" ]; then
+    echo "ERROR: Failed to execute command via guest agent"
+    echo "Result: $EXEC_RESULT"
+    exit 1
+fi
+
+# Wait for command to complete and get status
+sleep 0.5
+STATUS_RESULT=$(echo '{"execute":"guest-exec-status", "arguments":{"pid":'$PID'}}' | sudo socat - UNIX-CONNECT:%s 2>&1)
+
+# Check if command succeeded
+if echo "$STATUS_RESULT" | grep -q '"exitcode":0'; then
+    echo "Command executed successfully"
+else
+    echo "ERROR: Command failed"
+    echo "Status: $STATUS_RESULT"
+    exit 1
+fi
+`, QEMUGuestAgentSocket, command, argsJSON, QEMUGuestAgentSocket, QEMUGuestAgentSocket)
+
+	output, err := sshutil.ExecuteCommandWithOutput(ctx, guestExecCmd, AdminUsername, instanceIP)
+	if err != nil {
+		slog.Error("Failed to execute guest command", "command", command, "args", args, "error", err, "output", output)
+		return fmt.Errorf("failed to execute guest command %s: %w", command, err)
+	}
+
+	slog.Info("Guest command executed", "command", command, "args", args, "output", output)
 	return nil
 }
