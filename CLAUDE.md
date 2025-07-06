@@ -6,9 +6,9 @@ Shellbox.dev - SSH-based cloud development environments using Azure infrastructu
 
 Cloud service providing instant development environments through SSH. Users connect to a bastion host that allocates Azure VMs running QEMU instances with full state preservation.
 
-There is a pool of "free" volumes, and when a user "spins up" a box, one is chosen and tagged with the user ID. When the user wwants to connect to their box, the volume is connected to a "free" instance from the pool instances and ssh is forwarded. When the user disconnects, we "stop" the machine while preserving memory, processes etc. When the user reconnects, we resume is.
+There is a pool of of volumes and a pool of instances. When a user "spins up" a box, a volume tagged as "free" is chosen and tagged with the user ID. When the user wants to connect to their box, the volume is connected to an instance tagged "free", qemu vm is resumed and ssh is forwarded to it. When the user disconnects, we "stop" the qemu vm while preserving memory, processes etc. When the user reconnects, we resume it.
 
-"free" volumes are duplicated from a "golden" snapshot that has a "stopped" vm with ssh access etc. 
+"free" volumes are duplicated from a "golden" snapshot that has a "stopped" vm with ssh access. 
 
 a user of this servie can use it by runing:
 ssh shellbox.dev spinup dev1
@@ -16,32 +16,30 @@ ssh ubuntu@shellbox.dev connect dev1
 
 the shellbox username is built from the user public key. the user "ubuntu" above is the user in the box vm, which can change as the user pleases and in accordance with linux limitations.
 
-The system is still WIP, so not everything is implemented yet.
+The system is still WIP, so not everything is implemented yet, and some thing that are implemented are just filler or temporary solutions to enable other developments.
 
 I like this project because there is no UI, just CLI commands.
 
-**Architecture**: Bastion host → Azure VM pool → QEMU boxes with volume-based persistence  
-**User Interface**: Pure SSH (no web clients required)  
 **Billing**: $0.70/hour active, $0.02/hour idle, auto-suspend at $5 balance
 
 ## Development
 
 ---------------------------------
 MOST IMPORTANT:
-- DONT ASSUME -- IF IN DOUBT, ASK FOR CLARIFICATIONS
+- IF IN DOUBT, ALWAYS ASK FOR CLARIFICATIONS
 - DO MINIMAL CODE CHANGES NEEDED TO ACOMPLISH TASKS
 - BE CONSISTENT WITH EXISTING CODE: resue existing functions, maintain naming style, code patterns.
-- NOTIFY ME OF ANY OPPORTUNITIES TO REMOVE UNNECESSARY TESTS OR OTHER CODE THAT IS MAINLY MAINTENANCE BURDEN: THEN NOTIFY THE USER!
+- NOTIFY ME OF ANY OPPORTUNITIES TO REMOVE UNNECESSARY TESTS OR OTHER CODE THAT IS MAINLY MAINTENANCE BURDEN
 - USE THE SERENA MCP: initially, always read the instructions
 ---------------------------------------
 
-format, lint and tast that everything builds:
+format, lint and test that everything builds:
 ./tst.sh
 run the above command after every session of code changes. Then fix any errors.
 
-You have permission to search the internet whenever needed.
+You have permission to search the internet whenever needed. Take advnatage of this!
 
-don't hard-code values and string, use instead constants from the constants.go file. Define new constants as needed.
+use constants from the constants.go file instead of hard-coding values. Define new constants as needed.
 
 Azure SDK: always use pointers and consistent polling
 
@@ -61,14 +59,12 @@ fail fatally for deployment -- simpler code handling
 
 handle errors gracefully for runtime -- return errors
 
+we use modern go with modern idioms (go 1.224)
 
-### Go Standards
-- **Go 1.24** with modern idioms
-- **Error Handling**: `log.Fatal()` for deployment, error returns for runtime
-- **Concurrency**: Use `golang.org/x/sync` primitives
-- **Dependencies**: Latest Azure SDK v6/v7, `gliderlabs/ssh`, Cobra
-- **Logging**: Use `log/slog` with structured JSON (production) / text (tests)
-- **Tool Dependencies**: Use `tools.go` pattern for development dependencies
+Concurrency: Use `golang.org/x/sync` primitives
+
+Dependencies: Latest Azure SDK v6/v7, `gliderlabs/ssh`, Cobra
+
 
 ## Key Components
 
