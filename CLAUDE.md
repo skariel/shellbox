@@ -78,5 +78,5 @@ Dependencies: Latest Azure SDK v6/v7, `gliderlabs/ssh`, Cobra
 
 ```bash
 # List all functions
-grep -rn -E "^func\s*(\([^)]+\))?\s*[a-zA-Z_][a-zA-Z0-9_]*\s*\(" . --include="*.go" | grep -v
+grep -rn -E "^func\s*(\([^)]+\))?\s*[a-zA-Z_][a-zA-Z0-9_]*\s*\(" . --include="*.go"
 ```
