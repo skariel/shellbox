@@ -75,13 +75,6 @@ const (
 | order by lastused asc
 | take %d`
 
-	// Get all resources of a specific role
-	queryResourcesByRole = `Resources
-| where type =~ '%s'
-| where tags['%s'] =~ '%s'
-| where resourceGroup =~ '%s'
-| project name, id, tags, location`
-
 	// Get volumes by user ID and box name
 	queryVolumesByUserAndBox = `Resources
 | where type =~ '%s'

@@ -189,26 +189,6 @@ func writeTableEntity(ctx context.Context, clients *AzureClients, tableName stri
 	return nil
 }
 
-// upsertTableEntity is a generic function for upserting entities to Azure Tables
-func upsertTableEntity(ctx context.Context, clients *AzureClients, tableName string, entity interface{}) error {
-	if clients.TableClient == nil {
-		return fmt.Errorf("table client not available")
-	}
-
-	tableClient := clients.TableClient.NewClient(tableName)
-	entityBytes, err := json.Marshal(entity)
-	if err != nil {
-		return fmt.Errorf("failed to marshal entity: %w", err)
-	}
-	_, err = tableClient.UpsertEntity(ctx, entityBytes, &aztables.UpsertEntityOptions{
-		UpdateMode: aztables.UpdateModeReplace,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to upsert entity to table %s: %w", tableName, err)
-	}
-	return nil
-}
-
 // WriteEventLog writes an entry to the EventLog table
 func WriteEventLog(ctx context.Context, clients *AzureClients, event *EventLogEntity) error {
 	namer := NewResourceNamer(clients.Suffix)

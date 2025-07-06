@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"shellbox/internal/sshutil"
 	"strings"
-	"time"
 )
 
 // QMPResponse represents a response from QEMU Machine Protocol
@@ -180,76 +179,6 @@ func GetMigrationInfo(ctx context.Context, instanceIP string) (*MigrationInfo, e
 	}
 
 	return nil, fmt.Errorf("migration info not found in response")
-}
-
-// migrationProgress tracks migration progress state
-type migrationProgress struct {
-	lastTransferred    int64
-	lastCheckTime      time.Time
-	progressStallCount int
-}
-
-// calculateCheckInterval returns polling interval based on progress
-func calculateCheckInterval(progress float64) time.Duration {
-	switch {
-	case progress > 90:
-		return 50 * time.Millisecond
-	case progress > 75:
-		return 100 * time.Millisecond
-	case progress > 50:
-		return 200 * time.Millisecond
-	default:
-		return 500 * time.Millisecond
-	}
-}
-
-// handleActiveMigration processes active migration status
-func handleActiveMigration(info *MigrationInfo, progress *migrationProgress, startTime time.Time) time.Duration {
-	if info.RAM == nil {
-		return 100 * time.Millisecond
-	}
-
-	transferred := info.RAM.Transferred
-	remaining := info.RAM.Remaining
-	total := info.RAM.Total
-	speed := info.RAM.MBps
-
-	// Calculate progress percentage
-	var progressPct float64
-	if total > 0 {
-		progressPct = float64(transferred) / float64(total) * 100
-	}
-
-	// Check if progress is stalled
-	if progress.lastTransferred > 0 && transferred == progress.lastTransferred && time.Since(progress.lastCheckTime) > 5*time.Second {
-		progress.progressStallCount++
-		if progress.progressStallCount > 3 {
-			slog.Warn("Migration progress stalled",
-				"transferred", transferred,
-				"remaining", remaining,
-				"stallDuration", time.Since(progress.lastCheckTime))
-		}
-	} else if transferred != progress.lastTransferred {
-		progress.progressStallCount = 0
-	}
-
-	// Log progress every second or when significant progress is made
-	shouldLog := time.Since(progress.lastCheckTime) >= time.Second ||
-		(progress.lastTransferred > 0 && transferred-progress.lastTransferred > 100*1024*1024) // 100MB progress
-
-	if shouldLog {
-		slog.Debug("Migration progress",
-			"status", info.Status,
-			"progress", fmt.Sprintf("%.1f%%", progressPct),
-			"transferred", fmt.Sprintf("%.1f MB", float64(transferred)/1024/1024),
-			"remaining", fmt.Sprintf("%.1f MB", float64(remaining)/1024/1024),
-			"speed", fmt.Sprintf("%.1f MB/s", speed),
-			"elapsed", time.Since(startTime).Round(time.Second))
-		progress.lastCheckTime = time.Now()
-	}
-
-	progress.lastTransferred = transferred
-	return calculateCheckInterval(progressPct)
 }
 
 // WaitForMigrationWithProgress waits for migration to complete with progress tracking
